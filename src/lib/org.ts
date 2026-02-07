@@ -82,12 +82,6 @@ export async function createOrgWithOwner(name: string, slug: string) {
 
   if (orgError) return { error: orgError }
 
-  // Make user the owner
-  const { error: memberError } = await supabase
-    .from('org_members')
-    .insert({ org_id: org.id, user_id: user.id, role: 'owner' })
-
-  if (memberError) return { error: memberError }
-
+  // Owner membership is auto-created by database trigger
   return { data: org }
 }

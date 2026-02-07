@@ -16,65 +16,80 @@ CREATE TABLE IF NOT EXISTS org_members (
 CREATE INDEX IF NOT EXISTS idx_org_members_user_id ON org_members(user_id);
 CREATE INDEX IF NOT EXISTS idx_org_members_org_id ON org_members(org_id);
 
+-- Helper function to get org IDs for the current user (bypasses RLS)
+CREATE OR REPLACE FUNCTION get_user_org_ids()
+RETURNS SETOF uuid
+LANGUAGE sql
+SECURITY DEFINER
+STABLE
+SET search_path = public
+AS $$
+  SELECT org_id FROM org_members WHERE user_id = auth.uid();
+$$;
+
+-- Helper function to get org IDs where user is owner or admin (bypasses RLS)
+CREATE OR REPLACE FUNCTION get_user_admin_org_ids()
+RETURNS SETOF uuid
+LANGUAGE sql
+SECURITY DEFINER
+STABLE
+SET search_path = public
+AS $$
+  SELECT org_id FROM org_members WHERE user_id = auth.uid() AND role IN ('owner', 'admin');
+$$;
+
+-- Helper function to get org IDs where user is owner (bypasses RLS)
+CREATE OR REPLACE FUNCTION get_user_owner_org_ids()
+RETURNS SETOF uuid
+LANGUAGE sql
+SECURITY DEFINER
+STABLE
+SET search_path = public
+AS $$
+  SELECT org_id FROM org_members WHERE user_id = auth.uid() AND role = 'owner';
+$$;
+
 -- RLS policies for org_members
 ALTER TABLE org_members ENABLE ROW LEVEL SECURITY;
 
--- Users can see memberships for orgs they belong to
+-- Users can see memberships for orgs they belong to (no self-reference)
+DROP POLICY IF EXISTS "Users can view members of their orgs" ON org_members;
 CREATE POLICY "Users can view members of their orgs"
   ON org_members FOR SELECT
-  USING (
-    user_id = auth.uid()
-    OR org_id IN (SELECT org_id FROM org_members WHERE user_id = auth.uid())
-  );
+  USING (org_id IN (SELECT get_user_org_ids()));
 
 -- Only owners/admins can insert new members
+DROP POLICY IF EXISTS "Owners and admins can add members" ON org_members;
 CREATE POLICY "Owners and admins can add members"
   ON org_members FOR INSERT
-  WITH CHECK (
-    org_id IN (
-      SELECT org_id FROM org_members
-      WHERE user_id = auth.uid() AND role IN ('owner', 'admin')
-    )
-  );
+  WITH CHECK (org_id IN (SELECT get_user_admin_org_ids()));
 
 -- Only owners can update roles
+DROP POLICY IF EXISTS "Owners can update member roles" ON org_members;
 CREATE POLICY "Owners can update member roles"
   ON org_members FOR UPDATE
-  USING (
-    org_id IN (
-      SELECT org_id FROM org_members
-      WHERE user_id = auth.uid() AND role = 'owner'
-    )
-  );
+  USING (org_id IN (SELECT get_user_owner_org_ids()));
 
--- Owners/admins can remove members (but not the last owner)
+-- Owners/admins can remove members
+DROP POLICY IF EXISTS "Owners and admins can remove members" ON org_members;
 CREATE POLICY "Owners and admins can remove members"
   ON org_members FOR DELETE
-  USING (
-    org_id IN (
-      SELECT org_id FROM org_members
-      WHERE user_id = auth.uid() AND role IN ('owner', 'admin')
-    )
-  );
+  USING (org_id IN (SELECT get_user_admin_org_ids()));
+
+-- Enable RLS on organizations if not already
+ALTER TABLE organizations ENABLE ROW LEVEL SECURITY;
 
 -- Update organizations RLS: users can only see orgs they belong to
 DROP POLICY IF EXISTS "Users can view their organizations" ON organizations;
 CREATE POLICY "Users can view their organizations"
   ON organizations FOR SELECT
-  USING (
-    id IN (SELECT org_id FROM org_members WHERE user_id = auth.uid())
-  );
+  USING (id IN (SELECT get_user_org_ids()));
 
 -- Owners/admins can update their orgs
 DROP POLICY IF EXISTS "Owners and admins can update orgs" ON organizations;
 CREATE POLICY "Owners and admins can update orgs"
   ON organizations FOR UPDATE
-  USING (
-    id IN (
-      SELECT org_id FROM org_members
-      WHERE user_id = auth.uid() AND role IN ('owner', 'admin')
-    )
-  );
+  USING (id IN (SELECT get_user_admin_org_ids()));
 
 -- Any authenticated user can create an org (they become the owner)
 DROP POLICY IF EXISTS "Authenticated users can create orgs" ON organizations;
@@ -82,23 +97,33 @@ CREATE POLICY "Authenticated users can create orgs"
   ON organizations FOR INSERT
   WITH CHECK (auth.uid() IS NOT NULL);
 
+-- Auto-create owner membership when an org is created
+CREATE OR REPLACE FUNCTION auto_add_org_owner()
+RETURNS TRIGGER
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+BEGIN
+  INSERT INTO org_members (org_id, user_id, role)
+  VALUES (NEW.id, auth.uid(), 'owner');
+  RETURN NEW;
+END;
+$$;
+
+DROP TRIGGER IF EXISTS on_org_created ON organizations;
+CREATE TRIGGER on_org_created
+  AFTER INSERT ON organizations
+  FOR EACH ROW
+  EXECUTE FUNCTION auto_add_org_owner();
+
 -- Update review_profiles RLS: scope to org membership
 DROP POLICY IF EXISTS "Users can view profiles in their orgs" ON review_profiles;
 CREATE POLICY "Users can view profiles in their orgs"
   ON review_profiles FOR SELECT
-  USING (
-    org_id IN (SELECT org_id FROM org_members WHERE user_id = auth.uid())
-  );
+  USING (org_id IN (SELECT get_user_org_ids()));
 
 DROP POLICY IF EXISTS "Users can manage profiles in their orgs" ON review_profiles;
 CREATE POLICY "Users can manage profiles in their orgs"
   ON review_profiles FOR ALL
-  USING (
-    org_id IN (
-      SELECT org_id FROM org_members
-      WHERE user_id = auth.uid() AND role IN ('owner', 'admin')
-    )
-  );
-
--- Enable RLS on organizations if not already
-ALTER TABLE organizations ENABLE ROW LEVEL SECURITY;
+  USING (org_id IN (SELECT get_user_admin_org_ids()));
