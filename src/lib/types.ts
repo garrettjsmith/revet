@@ -125,3 +125,47 @@ export interface AgencyIntegrationMapping {
   metadata: Record<string, unknown>
   created_at: string
 }
+
+// Forms
+
+export type FormFieldType = 'text' | 'email' | 'phone' | 'textarea' | 'select' | 'checkbox'
+
+export interface FormField {
+  id: string
+  type: FormFieldType
+  label: string
+  placeholder?: string
+  required?: boolean
+  options?: string[] // for select fields
+}
+
+export interface FormTemplate {
+  id: string
+  org_id: string
+  location_id: string | null
+  name: string
+  slug: string
+  description: string | null
+  fields: FormField[]
+  alert_email: string | null
+  alert_enabled: boolean
+  heading: string
+  subtext: string
+  primary_color: string
+  logo_url: string | null
+  logo_text: string | null
+  logo_subtext: string | null
+  confirmation_heading: string
+  confirmation_message: string
+  active: boolean
+  created_at: string
+  updated_at: string
+}
+
+export interface FormSubmission {
+  id: string
+  form_id: string
+  data: Record<string, string>
+  metadata: Record<string, unknown>
+  created_at: string
+}
