@@ -1,7 +1,19 @@
 -- ============================================================
--- Migration: Add org_members + org-scoped RLS
--- Idempotent — safe to run multiple times.
+-- FIXUP: Paste this entire script into Supabase SQL Editor.
+-- It cleans up stale data from previous attempts, then sets up
+-- org_members + org-scoped RLS correctly.
+-- Safe to run multiple times.
 -- ============================================================
+
+-- 0. Clean up stale data from failed attempts --------------------
+--    Delete orphan org_members rows, then orphan organizations
+--    that have no members (leftover from partial creates).
+DELETE FROM org_members WHERE org_id NOT IN (SELECT id FROM organizations);
+DELETE FROM organizations WHERE id NOT IN (
+  SELECT DISTINCT org_id FROM review_profiles
+) AND id NOT IN (
+  SELECT DISTINCT org_id FROM org_members
+);
 
 -- 1. Schema changes ------------------------------------------------
 
@@ -74,7 +86,7 @@ CREATE TRIGGER on_org_created
   FOR EACH ROW
   EXECUTE FUNCTION auto_add_org_owner();
 
--- 4. Drop ALL old policies (from 001_initial and previous runs) ----
+-- 4. Drop ALL old policies -----------------------------------------
 
 -- organizations
 DROP POLICY IF EXISTS "Admin full access to organizations"       ON organizations;
@@ -92,9 +104,13 @@ DROP POLICY IF EXISTS "Owners and admins can remove members"     ON org_members;
 DROP POLICY IF EXISTS "Admin full access to review_profiles"     ON review_profiles;
 DROP POLICY IF EXISTS "Users can view profiles in their orgs"    ON review_profiles;
 DROP POLICY IF EXISTS "Users can manage profiles in their orgs"  ON review_profiles;
+DROP POLICY IF EXISTS "Users can insert profiles in their orgs"  ON review_profiles;
+DROP POLICY IF EXISTS "Users can update profiles in their orgs"  ON review_profiles;
+DROP POLICY IF EXISTS "Users can delete profiles in their orgs"  ON review_profiles;
 
 -- review_events — keep anon policies, drop old admin blanket
 DROP POLICY IF EXISTS "Admin full access to review_events"       ON review_events;
+DROP POLICY IF EXISTS "Users can view events for their org profiles" ON review_events;
 
 -- 5. Enable RLS ----------------------------------------------------
 
@@ -136,8 +152,6 @@ CREATE POLICY "Owners and admins can remove members"
   USING (org_id IN (SELECT get_user_admin_org_ids()));
 
 -- 8. New policies: review_profiles ---------------------------------
---    Keep the anon SELECT from 001_initial (Public can read active profiles).
---    Replace the admin blanket with org-scoped policies.
 
 CREATE POLICY "Users can view profiles in their orgs"
   ON review_profiles FOR SELECT
@@ -160,8 +174,6 @@ CREATE POLICY "Users can delete profiles in their orgs"
   USING (org_id IN (SELECT get_user_admin_org_ids()));
 
 -- 9. New policies: review_events -----------------------------------
---    Anon INSERT + SELECT for public funnel pages stay from 001_initial.
---    Add authenticated access scoped to org membership.
 
 CREATE POLICY "Users can view events for their org profiles"
   ON review_events FOR SELECT
@@ -169,3 +181,7 @@ CREATE POLICY "Users can view events for their org profiles"
   USING (profile_id IN (
     SELECT id FROM review_profiles WHERE org_id IN (SELECT get_user_org_ids())
   ));
+
+-- ============================================================
+-- Done. You can now create organizations from the app.
+-- ============================================================
