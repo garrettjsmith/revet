@@ -226,8 +226,10 @@ CREATE POLICY "Users can delete profiles in their orgs"
   USING (org_id IN (SELECT get_user_admin_org_ids()));
 
 -- 9. Update profile_stats view to include location_id ----------------
+--    Must DROP + CREATE because CREATE OR REPLACE can't reorder columns.
 
-CREATE OR REPLACE VIEW public.profile_stats AS
+DROP VIEW IF EXISTS public.profile_stats;
+CREATE VIEW public.profile_stats AS
 SELECT
   rp.id AS profile_id,
   rp.name AS profile_name,
