@@ -9,7 +9,7 @@ export default async function AdminLayout({ children }: { children: React.ReactN
   if (!user) return <>{children}</>
 
   return (
-    <div className="min-h-screen bg-gray-950 text-gray-200">
+    <div className="min-h-screen bg-cream text-ink">
       <AdminNav userEmail={user.email || ''} />
       <main className="max-w-6xl mx-auto px-6 py-8">
         {children}

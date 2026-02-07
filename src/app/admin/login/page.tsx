@@ -29,16 +29,19 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-950 flex items-center justify-center px-4">
-      <div className="w-full max-w-sm">
+    <div className="min-h-screen bg-cream flex items-center justify-center px-4 relative">
+      {/* Blueprint grid overlay */}
+      <div className="absolute inset-0 blueprint-grid pointer-events-none" />
+
+      <div className="w-full max-w-sm relative z-10">
         <div className="text-center mb-8">
           <div className="inline-flex items-center gap-2 mb-4">
-            <div className="w-9 h-9 rounded-lg bg-gradient-to-br from-sky-400 to-blue-900 flex items-center justify-center font-bold text-xs text-white font-mono">
+            <div className="w-9 h-9 rounded-lg bg-ink flex items-center justify-center font-bold text-xs text-cream font-mono">
               LS
             </div>
-            <span className="text-xl font-semibold text-white tracking-tight">lseo.app</span>
+            <span className="text-xl font-serif text-ink tracking-tight">lseo.app</span>
           </div>
-          <p className="text-gray-500 text-sm">Admin access</p>
+          <p className="text-warm-gray text-sm">Admin access</p>
         </div>
 
         <form onSubmit={handleLogin} className="space-y-4">
@@ -49,7 +52,7 @@ export default function LoginPage() {
               onChange={(e) => setEmail(e.target.value)}
               placeholder="Email"
               required
-              className="w-full px-4 py-3 bg-gray-900 border border-gray-800 rounded-lg text-white text-sm outline-none focus:border-sky-500 transition-colors"
+              className="w-full px-4 py-3 bg-ink border border-ink rounded-lg text-cream text-sm outline-none focus:ring-2 focus:ring-warm-gray transition-colors placeholder:text-warm-gray"
             />
           </div>
           <div>
@@ -59,16 +62,16 @@ export default function LoginPage() {
               onChange={(e) => setPassword(e.target.value)}
               placeholder="Password"
               required
-              className="w-full px-4 py-3 bg-gray-900 border border-gray-800 rounded-lg text-white text-sm outline-none focus:border-sky-500 transition-colors"
+              className="w-full px-4 py-3 bg-ink border border-ink rounded-lg text-cream text-sm outline-none focus:ring-2 focus:ring-warm-gray transition-colors placeholder:text-warm-gray"
             />
           </div>
           {error && (
-            <p className="text-red-400 text-xs">{error}</p>
+            <p className="text-red-600 text-xs">{error}</p>
           )}
           <button
             type="submit"
             disabled={loading}
-            className="w-full py-3 bg-sky-500 hover:bg-sky-400 text-white font-semibold rounded-lg text-sm transition-colors disabled:opacity-50"
+            className="w-full py-3 bg-ink hover:bg-ink/90 text-cream font-medium rounded-full text-sm transition-colors disabled:opacity-50"
           >
             {loading ? 'Signing in...' : 'Sign In'}
           </button>
