@@ -10,9 +10,10 @@ interface SidebarProps {
   currentOrg: Organization
   memberships: (OrgMember & { org: Organization })[]
   userEmail: string
+  isAgencyAdmin?: boolean
 }
 
-export function Sidebar({ currentOrg, memberships, userEmail }: SidebarProps) {
+export function Sidebar({ currentOrg, memberships, userEmail, isAgencyAdmin }: SidebarProps) {
   const router = useRouter()
   const pathname = usePathname()
   const supabase = createClient()
@@ -34,16 +35,13 @@ export function Sidebar({ currentOrg, memberships, userEmail }: SidebarProps) {
       ],
     },
     {
-      label: 'Reviews',
+      label: 'Manage',
       items: [
-        { href: `${basePath}/review-funnels`, label: 'Review Funnels', icon: FunnelIcon },
+        { href: `${basePath}/locations`, label: 'Locations', icon: LocationIcon },
       ],
     },
     // Future tool groups:
-    // { label: 'Rankings', items: [
-    //   { href: `${basePath}/rank-tracker`, label: 'Rank Tracker', icon: ... },
-    //   { href: `${basePath}/geo-grid`, label: 'Geo Grid', icon: ... },
-    // ]},
+    // { label: 'Rankings', items: [...] },
     // { label: 'Listings', items: [...] },
     // { label: 'Links', items: [...] },
   ]
@@ -137,8 +135,21 @@ export function Sidebar({ currentOrg, memberships, userEmail }: SidebarProps) {
         ))}
       </nav>
 
-      {/* Settings + User */}
+      {/* Settings + Agency + User */}
       <div className="border-t border-warm-border p-3 space-y-1">
+        {isAgencyAdmin && (
+          <Link
+            href="/agency"
+            className={`flex items-center gap-2.5 px-2 py-1.5 rounded-md text-sm no-underline transition-colors ${
+              pathname.startsWith('/agency')
+                ? 'bg-warm-light text-ink font-medium'
+                : 'text-warm-gray hover:text-ink hover:bg-warm-light/50'
+            }`}
+          >
+            <AgencyIcon className="w-4 h-4 shrink-0" />
+            Agency
+          </Link>
+        )}
         <Link
           href={`${basePath}/settings`}
           className={`flex items-center gap-2.5 px-2 py-1.5 rounded-md text-sm no-underline transition-colors ${
@@ -176,10 +187,11 @@ function DashboardIcon({ className }: { className?: string }) {
   )
 }
 
-function FunnelIcon({ className }: { className?: string }) {
+function LocationIcon({ className }: { className?: string }) {
   return (
     <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-      <polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3" />
+      <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z" />
+      <circle cx="12" cy="10" r="3" />
     </svg>
   )
 }
@@ -189,6 +201,15 @@ function SettingsIcon({ className }: { className?: string }) {
     <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
       <circle cx="12" cy="12" r="3" />
       <path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42" />
+    </svg>
+  )
+}
+
+function AgencyIcon({ className }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />
+      <polyline points="9 22 9 12 15 12 15 22" />
     </svg>
   )
 }

@@ -1,5 +1,6 @@
 import { createServerSupabase } from '@/lib/supabase/server'
 import { getOrgBySlug } from '@/lib/org'
+import { getOrgLocations } from '@/lib/locations'
 import Link from 'next/link'
 import type { ProfileStats } from '@/lib/types'
 
@@ -8,6 +9,7 @@ export const dynamic = 'force-dynamic'
 export default async function OrgDashboard({ params }: { params: { orgSlug: string } }) {
   const org = await getOrgBySlug(params.orgSlug)
   const supabase = createServerSupabase()
+  const locations = await getOrgLocations(org.id)
 
   const { data: stats } = await supabase
     .from('profile_stats')
@@ -34,6 +36,18 @@ export default async function OrgDashboard({ params }: { params: { orgSlug: stri
     { label: 'Manager Emails', value: totals.email },
   ]
 
+  // Group stats by location for the breakdown
+  const locationStats = locations.map((loc) => {
+    const locProfiles = profiles.filter((p) => p.location_id === loc.id)
+    return {
+      location: loc,
+      views7d: locProfiles.reduce((sum, p) => sum + (p.views_7d || 0), 0),
+      google7d: locProfiles.reduce((sum, p) => sum + (p.google_clicks_7d || 0), 0),
+      emails7d: locProfiles.reduce((sum, p) => sum + (p.email_clicks_7d || 0), 0),
+      funnelCount: locProfiles.length,
+    }
+  })
+
   const basePath = `/admin/${params.orgSlug}`
 
   return (
@@ -41,10 +55,10 @@ export default async function OrgDashboard({ params }: { params: { orgSlug: stri
       <div className="flex items-center justify-between mb-8">
         <h1 className="text-2xl font-serif text-ink">Dashboard</h1>
         <Link
-          href={`${basePath}/review-funnels/new`}
+          href={`${basePath}/locations/new`}
           className="px-5 py-2 bg-ink hover:bg-ink/90 text-cream text-sm font-medium rounded-full no-underline transition-colors"
         >
-          + New Review Funnel
+          + New Location
         </Link>
       </div>
 
@@ -58,23 +72,23 @@ export default async function OrgDashboard({ params }: { params: { orgSlug: stri
         ))}
       </div>
 
-      {/* Profiles table */}
+      {/* Locations breakdown */}
       <div className="border border-warm-border rounded-xl overflow-hidden">
         <div className="px-5 py-4 border-b border-warm-border">
-          <h2 className="text-sm font-semibold text-ink">Active Review Funnels</h2>
+          <h2 className="text-sm font-semibold text-ink">Locations</h2>
         </div>
-        {profiles.length === 0 ? (
+        {locationStats.length === 0 ? (
           <div className="p-12 text-center text-warm-gray text-sm">
-            No profiles yet.{' '}
-            <Link href={`${basePath}/review-funnels/new`} className="text-ink underline hover:no-underline">
-              Create your first review funnel
+            No locations yet.{' '}
+            <Link href={`${basePath}/locations/new`} className="text-ink underline hover:no-underline">
+              Add your first location
             </Link>
           </div>
         ) : (
           <table className="w-full">
             <thead>
               <tr className="border-b border-warm-border">
-                {['Profile', 'URL', 'Views (7d)', 'Google (7d)', 'Emails (7d)', 'Avg Rating', ''].map((h) => (
+                {['Location', 'Type', 'Funnels', 'Views (7d)', 'Google (7d)', 'Emails (7d)', ''].map((h) => (
                   <th key={h} className="text-left px-5 py-3 text-[11px] text-warm-gray uppercase tracking-wider font-medium">
                     {h}
                   </th>
@@ -82,26 +96,25 @@ export default async function OrgDashboard({ params }: { params: { orgSlug: stri
               </tr>
             </thead>
             <tbody>
-              {profiles.map((p) => (
-                <tr key={p.profile_id} className="border-b border-warm-border/50 hover:bg-warm-light/50">
+              {locationStats.map(({ location: loc, views7d, google7d, emails7d, funnelCount }) => (
+                <tr key={loc.id} className="border-b border-warm-border/50 hover:bg-warm-light/50">
                   <td className="px-5 py-3.5">
-                    <div className="text-sm font-medium text-ink">{p.profile_name}</div>
+                    <div className="text-sm font-medium text-ink">{loc.name}</div>
+                    {loc.city && loc.state && (
+                      <div className="text-xs text-warm-gray mt-0.5">{loc.city}, {loc.state}</div>
+                    )}
                   </td>
-                  <td className="px-5 py-3.5">
-                    <code className="text-xs text-ink font-mono">/r/{p.slug}</code>
-                  </td>
-                  <td className="px-5 py-3.5 font-mono text-sm text-ink">{p.views_7d}</td>
-                  <td className="px-5 py-3.5 font-mono text-sm text-ink">{p.google_clicks_7d}</td>
-                  <td className="px-5 py-3.5 font-mono text-sm text-ink">{p.email_clicks_7d}</td>
-                  <td className="px-5 py-3.5 font-mono text-sm text-ink">
-                    {p.avg_rating ? `${p.avg_rating}★` : '—'}
-                  </td>
+                  <td className="px-5 py-3.5 text-xs text-warm-gray capitalize">{loc.type.replace('_', ' ')}</td>
+                  <td className="px-5 py-3.5 font-mono text-sm text-ink">{funnelCount}</td>
+                  <td className="px-5 py-3.5 font-mono text-sm text-ink">{views7d}</td>
+                  <td className="px-5 py-3.5 font-mono text-sm text-ink">{google7d}</td>
+                  <td className="px-5 py-3.5 font-mono text-sm text-ink">{emails7d}</td>
                   <td className="px-5 py-3.5">
                     <Link
-                      href={`${basePath}/review-funnels/${p.profile_id}`}
+                      href={`${basePath}/locations/${loc.id}`}
                       className="text-xs text-warm-gray hover:text-ink no-underline"
                     >
-                      Edit
+                      View
                     </Link>
                   </td>
                 </tr>

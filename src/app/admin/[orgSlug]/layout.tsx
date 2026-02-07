@@ -40,6 +40,7 @@ export default async function OrgLayout({
   }
 
   const currentOrg = currentMembership.org
+  const isAgencyAdmin = allMemberships.some((m) => m.is_agency_admin)
 
   return (
     <div className="flex min-h-screen">
@@ -47,6 +48,7 @@ export default async function OrgLayout({
         currentOrg={currentOrg}
         memberships={allMemberships}
         userEmail={user.email || ''}
+        isAgencyAdmin={isAgencyAdmin}
       />
       <main className="flex-1 p-8 max-w-6xl">
         {children}
