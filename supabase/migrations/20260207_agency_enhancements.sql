@@ -7,7 +7,7 @@
 
 ALTER TABLE organizations ADD COLUMN IF NOT EXISTS status text
   NOT NULL DEFAULT 'active'
-  CHECK (status IN ('active', 'lead', 'paused', 'churned'));
+  CHECK (status IN ('active', 'inactive'));
 
 -- 2. Agency integrations (OAuth connections) ----------------------
 

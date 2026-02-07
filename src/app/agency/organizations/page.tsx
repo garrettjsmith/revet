@@ -4,10 +4,8 @@ import Link from 'next/link'
 export const dynamic = 'force-dynamic'
 
 const STATUS_CONFIG: Record<string, { label: string; dot: string; text: string }> = {
-  active:  { label: 'Active',  dot: 'bg-emerald-500', text: 'text-ink' },
-  lead:    { label: 'Lead',    dot: 'bg-blue-400',    text: 'text-blue-600' },
-  paused:  { label: 'Paused',  dot: 'bg-amber-400',   text: 'text-amber-600' },
-  churned: { label: 'Churned', dot: 'bg-red-400',     text: 'text-red-500' },
+  active:   { label: 'Active',   dot: 'bg-emerald-500', text: 'text-ink' },
+  inactive: { label: 'Inactive', dot: 'bg-warm-border', text: 'text-warm-gray' },
 }
 
 export default async function AgencyOrganizationsPage() {
@@ -55,7 +53,7 @@ export default async function AgencyOrganizationsPage() {
 
   // Summary stats
   const activeCount = organizations.filter((o: any) => o.status === 'active').length
-  const leadCount = organizations.filter((o: any) => o.status === 'lead').length
+  const inactiveCount = organizations.filter((o: any) => o.status === 'inactive').length
   const totalLocations = locations?.length || 0
 
   return (
@@ -81,8 +79,8 @@ export default async function AgencyOrganizationsPage() {
           <div className="text-2xl font-bold font-mono text-cream">{activeCount}</div>
         </div>
         <div className="bg-ink rounded-xl p-5">
-          <div className="text-[11px] text-warm-gray uppercase tracking-wider mb-1">Leads</div>
-          <div className="text-2xl font-bold font-mono text-cream">{leadCount}</div>
+          <div className="text-[11px] text-warm-gray uppercase tracking-wider mb-1">Inactive</div>
+          <div className="text-2xl font-bold font-mono text-cream">{inactiveCount}</div>
         </div>
         <div className="bg-ink rounded-xl p-5">
           <div className="text-[11px] text-warm-gray uppercase tracking-wider mb-1">Total Locations</div>

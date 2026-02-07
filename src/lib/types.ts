@@ -1,4 +1,4 @@
-export type OrgStatus = 'active' | 'lead' | 'paused' | 'churned'
+export type OrgStatus = 'active' | 'inactive'
 
 export interface Organization {
   id: string
