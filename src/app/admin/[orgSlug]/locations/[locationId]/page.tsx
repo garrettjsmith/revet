@@ -3,7 +3,7 @@ import { getOrgBySlug } from '@/lib/org'
 import { getLocation } from '@/lib/locations'
 import { notFound } from 'next/navigation'
 import Link from 'next/link'
-import type { ProfileStats } from '@/lib/types'
+import type { ProfileStats, FormTemplate, Review } from '@/lib/types'
 
 export const dynamic = 'force-dynamic'
 
@@ -31,6 +31,36 @@ export default async function LocationDetailPage({
     .select('*')
     .eq('location_id', location.id)
     .returns<ProfileStats[]>()
+
+  // Get forms for this location
+  const { data: forms } = await supabase
+    .from('form_templates')
+    .select('*')
+    .eq('location_id', location.id)
+    .order('created_at', { ascending: false })
+
+  const formList = (forms || []) as FormTemplate[]
+
+  // Get recent reviews for this location
+  const { data: recentReviews } = await supabase
+    .from('reviews')
+    .select('*')
+    .eq('location_id', location.id)
+    .order('published_at', { ascending: false })
+    .limit(5)
+
+  const reviewList = (recentReviews || []) as Review[]
+
+  const { count: reviewCount } = await supabase
+    .from('reviews')
+    .select('*', { count: 'exact', head: true })
+    .eq('location_id', location.id)
+
+  const { count: unreadReviewCount } = await supabase
+    .from('reviews')
+    .select('*', { count: 'exact', head: true })
+    .eq('location_id', location.id)
+    .eq('status', 'new')
 
   const profiles = stats || []
 
@@ -98,6 +128,77 @@ export default async function LocationDetailPage({
             <div className="text-2xl font-bold font-mono text-cream">{s.value}</div>
           </div>
         ))}
+      </div>
+
+      {/* Forms section */}
+      <div className="border border-warm-border rounded-xl overflow-hidden mb-8">
+        <div className="px-5 py-4 border-b border-warm-border flex items-center justify-between">
+          <h2 className="text-sm font-semibold text-ink">Forms</h2>
+          <div className="flex items-center gap-3">
+            <Link
+              href={`${basePath}/forms`}
+              className="text-xs text-warm-gray hover:text-ink no-underline transition-colors"
+            >
+              View all
+            </Link>
+            <Link
+              href={`${basePath}/forms/new`}
+              className="text-xs text-warm-gray hover:text-ink no-underline transition-colors"
+            >
+              + New Form
+            </Link>
+          </div>
+        </div>
+        {formList.length === 0 ? (
+          <div className="p-12 text-center text-warm-gray text-sm">
+            No forms yet.{' '}
+            <Link href={`${basePath}/forms/new`} className="text-ink underline hover:no-underline">
+              Create one
+            </Link>
+          </div>
+        ) : (
+          <table className="w-full">
+            <thead>
+              <tr className="border-b border-warm-border">
+                {['Form', 'URL', 'Status', ''].map((h) => (
+                  <th key={h} className="text-left px-5 py-3 text-[11px] text-warm-gray uppercase tracking-wider font-medium">
+                    {h}
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {formList.map((f) => (
+                <tr key={f.id} className="border-b border-warm-border/50 hover:bg-warm-light/50">
+                  <td className="px-5 py-3.5">
+                    <div className="text-sm font-medium text-ink">{f.name}</div>
+                  </td>
+                  <td className="px-5 py-3.5">
+                    <code className="text-xs text-ink font-mono">/f/{f.slug}</code>
+                  </td>
+                  <td className="px-5 py-3.5">
+                    <span className={`inline-flex items-center gap-1 text-[10px] font-medium ${
+                      f.active ? 'text-emerald-600' : 'text-warm-gray'
+                    }`}>
+                      <span className={`w-1.5 h-1.5 rounded-full ${
+                        f.active ? 'bg-emerald-500' : 'bg-warm-border'
+                      }`} />
+                      {f.active ? 'Active' : 'Inactive'}
+                    </span>
+                  </td>
+                  <td className="px-5 py-3.5">
+                    <Link
+                      href={`${basePath}/forms/${f.id}`}
+                      className="text-xs text-warm-gray hover:text-ink no-underline"
+                    >
+                      Edit
+                    </Link>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
       </div>
 
       {/* Review Funnels section */}
