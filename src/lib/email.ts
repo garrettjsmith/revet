@@ -46,6 +46,71 @@ export async function sendEmail({ to, subject, html, replyTo }: SendEmailOptions
 }
 
 /**
+ * Build an HTML email for a new review alert.
+ */
+export function buildReviewAlertEmail({
+  locationName,
+  platform,
+  reviewerName,
+  rating,
+  body,
+  publishedAt,
+  alertType,
+}: {
+  locationName: string
+  platform: string
+  reviewerName: string | null
+  rating: number | null
+  body: string | null
+  publishedAt: string
+  alertType: string
+}) {
+  const stars = rating
+    ? Array.from({ length: 5 }, (_, i) =>
+        `<span style="color:${i < rating ? '#FBBF24' : '#D5CFC5'};font-size:18px;">★</span>`
+      ).join('')
+    : ''
+
+  const escaped = (body || 'No review text').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+  const isNegative = alertType === 'negative_review'
+
+  return `
+<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8"></head>
+<body style="margin:0;padding:0;background:#FAF8F5;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;">
+  <div style="max-width:560px;margin:0 auto;padding:32px 16px;">
+    <div style="background:#ffffff;border:1px solid ${isNegative ? '#fca5a5' : '#e8e4dc'};border-radius:12px;overflow:hidden;">
+      <div style="background:${isNegative ? '#991b1b' : '#1a1a1a'};padding:20px 24px;">
+        <h1 style="margin:0;color:#FAF8F5;font-size:16px;font-weight:600;">
+          ${isNegative ? 'Negative Review Alert' : 'New Review'}
+        </h1>
+        <p style="margin:4px 0 0;color:#9b9590;font-size:12px;">${locationName} · ${platform}</p>
+      </div>
+      <div style="padding:20px 24px;">
+        <div style="margin-bottom:12px;">
+          ${stars}
+        </div>
+        <p style="margin:0 0 8px;color:#6b6560;font-size:13px;font-weight:500;">
+          ${reviewerName || 'Anonymous'}
+        </p>
+        <p style="margin:0 0 16px;color:#1a1a1a;font-size:14px;line-height:1.6;">
+          &ldquo;${escaped}&rdquo;
+        </p>
+        <p style="margin:0;color:#9b9590;font-size:11px;">
+          Posted ${publishedAt}
+        </p>
+      </div>
+    </div>
+    <p style="text-align:center;margin:16px 0 0;color:#c4bfb8;font-size:10px;">
+      Sent by lseo.app
+    </p>
+  </div>
+</body>
+</html>`
+}
+
+/**
  * Build an HTML email for a new form submission alert.
  */
 export function buildFormSubmissionEmail({

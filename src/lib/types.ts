@@ -126,6 +126,91 @@ export interface AgencyIntegrationMapping {
   created_at: string
 }
 
+// Reviews
+
+export type ReviewPlatform = 'google' | 'healthgrades' | 'yelp' | 'facebook' | 'vitals' | 'zocdoc'
+export type ReviewStatus = 'new' | 'seen' | 'flagged' | 'responded' | 'archived'
+export type ReviewSentiment = 'positive' | 'neutral' | 'negative'
+export type ReviewSyncStatus = 'pending' | 'active' | 'paused' | 'error'
+export type ReviewAlertRuleType = 'new_review' | 'negative_review' | 'no_reply' | 'keyword_match'
+
+export interface ReviewSource {
+  id: string
+  location_id: string
+  platform: ReviewPlatform
+  platform_listing_id: string
+  platform_listing_name: string | null
+  sync_status: ReviewSyncStatus
+  last_synced_at: string | null
+  sync_cursor: string | null
+  total_review_count: number
+  average_rating: number | null
+  metadata: Record<string, unknown>
+  created_at: string
+  updated_at: string
+}
+
+export interface Review {
+  id: string
+  source_id: string
+  location_id: string
+  platform: ReviewPlatform
+  platform_review_id: string
+  reviewer_name: string | null
+  reviewer_photo_url: string | null
+  is_anonymous: boolean
+  rating: number | null
+  original_rating: string | null
+  body: string | null
+  language: string
+  published_at: string
+  updated_at: string | null
+  reply_body: string | null
+  reply_published_at: string | null
+  replied_by: string | null
+  replied_via: string | null
+  status: ReviewStatus
+  sentiment: ReviewSentiment | null
+  internal_notes: string | null
+  assigned_to: string | null
+  platform_metadata: Record<string, unknown>
+  fetched_at: string
+  created_at: string
+  // joined
+  location_name?: string
+  source_name?: string
+}
+
+export interface ReviewAlertRule {
+  id: string
+  org_id: string
+  location_id: string | null
+  name: string
+  rule_type: ReviewAlertRuleType
+  config: Record<string, unknown>
+  notify_emails: string[]
+  notify_in_app: boolean
+  active: boolean
+  created_at: string
+  updated_at: string
+}
+
+export interface ReviewSourceStats {
+  source_id: string
+  location_id: string
+  platform: ReviewPlatform
+  platform_listing_name: string | null
+  sync_status: ReviewSyncStatus
+  last_synced_at: string | null
+  total_reviews: number
+  avg_rating: number | null
+  reviews_7d: number
+  reviews_30d: number
+  negative_count: number
+  replied_count: number
+  unread_count: number
+}
+
 // Forms
 
 export type FormFieldType = 'text' | 'email' | 'phone' | 'textarea' | 'select' | 'checkbox'

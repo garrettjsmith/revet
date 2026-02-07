@@ -3,7 +3,7 @@ import { getOrgBySlug } from '@/lib/org'
 import { getLocation } from '@/lib/locations'
 import { notFound } from 'next/navigation'
 import Link from 'next/link'
-import type { ProfileStats, FormTemplate } from '@/lib/types'
+import type { ProfileStats, FormTemplate, Review } from '@/lib/types'
 
 export const dynamic = 'force-dynamic'
 
@@ -40,6 +40,27 @@ export default async function LocationDetailPage({
     .order('created_at', { ascending: false })
 
   const formList = (forms || []) as FormTemplate[]
+
+  // Get recent reviews for this location
+  const { data: recentReviews } = await supabase
+    .from('reviews')
+    .select('*')
+    .eq('location_id', location.id)
+    .order('published_at', { ascending: false })
+    .limit(5)
+
+  const reviewList = (recentReviews || []) as Review[]
+
+  const { count: reviewCount } = await supabase
+    .from('reviews')
+    .select('*', { count: 'exact', head: true })
+    .eq('location_id', location.id)
+
+  const { count: unreadReviewCount } = await supabase
+    .from('reviews')
+    .select('*', { count: 'exact', head: true })
+    .eq('location_id', location.id)
+    .eq('status', 'new')
 
   const profiles = stats || []
 
