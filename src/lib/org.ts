@@ -67,21 +67,27 @@ export async function getUserRole(orgId: string): Promise<string | null> {
 
 /**
  * Create a new org and make the current user the owner.
+ * Uses a SECURITY DEFINER RPC to bypass RLS.
  */
 export async function createOrgWithOwner(name: string, slug: string) {
   const supabase = createServerSupabase()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) redirect('/admin/login')
 
-  // Insert org
-  const { data: org, error: orgError } = await supabase
+  const { data: orgId, error: rpcError } = await supabase.rpc('create_organization', {
+    org_name: name,
+    org_slug: slug,
+  })
+
+  if (rpcError) return { error: rpcError }
+
+  // Fetch the full org (SELECT policy works now — membership was just created)
+  const { data: org, error: fetchError } = await supabase
     .from('organizations')
-    .insert({ name, slug })
     .select()
+    .eq('id', orgId)
     .single()
 
-  if (orgError) return { error: orgError }
-
-  // Owner membership is auto-created by database trigger
+  if (fetchError) return { error: fetchError }
   return { data: org }
 }

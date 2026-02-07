@@ -30,24 +30,13 @@ export default function NewOrgPage() {
     setSaving(true)
     setError('')
 
-    const { data: { user } } = await supabase.auth.getUser()
-    if (!user) {
-      setError('Not authenticated')
-      setSaving(false)
-      return
-    }
-
-    // Create org
-    const { data: org, error: orgError } = await supabase
-      .from('organizations')
-      .insert({
-        name: form.name,
-        slug: form.slug,
-        website: form.website || null,
-        logo_url: form.logo_url || null,
-      })
-      .select()
-      .single()
+    // Create org + owner membership via SECURITY DEFINER RPC
+    const { error: orgError } = await supabase.rpc('create_organization', {
+      org_name: form.name,
+      org_slug: form.slug,
+      org_website: form.website || null,
+      org_logo_url: form.logo_url || null,
+    })
 
     if (orgError) {
       setError(orgError.message)
@@ -55,7 +44,6 @@ export default function NewOrgPage() {
       return
     }
 
-    // Owner membership is auto-created by database trigger
     router.push(`/admin/${form.slug}`)
     router.refresh()
   }
