@@ -52,8 +52,40 @@ AS $$
   SELECT org_id FROM org_members WHERE user_id = auth.uid() AND role = 'owner';
 $$;
 
--- 3. Auto-create owner membership on org creation ------------------
+-- 3. RPC: create_organization (bypasses RLS entirely) --------------
+--    Returns the new org's UUID. Owner membership is created atomically.
 
+CREATE OR REPLACE FUNCTION create_organization(
+  org_name text,
+  org_slug text,
+  org_website text DEFAULT NULL,
+  org_logo_url text DEFAULT NULL
+)
+RETURNS uuid
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+  new_org_id uuid;
+BEGIN
+  IF auth.uid() IS NULL THEN
+    RAISE EXCEPTION 'Not authenticated';
+  END IF;
+
+  INSERT INTO organizations (name, slug, website, logo_url)
+  VALUES (org_name, org_slug, org_website, org_logo_url)
+  RETURNING id INTO new_org_id;
+
+  INSERT INTO org_members (org_id, user_id, role)
+  VALUES (new_org_id, auth.uid(), 'owner')
+  ON CONFLICT (org_id, user_id) DO NOTHING;
+
+  RETURN new_org_id;
+END;
+$$;
+
+-- Safety-net trigger (keeps working if someone inserts via SQL directly)
 CREATE OR REPLACE FUNCTION auto_add_org_owner()
 RETURNS TRIGGER
 LANGUAGE plpgsql
