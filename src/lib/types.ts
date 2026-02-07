@@ -2,8 +2,23 @@ export interface Organization {
   id: string
   name: string
   slug: string
+  logo_url: string | null
+  website: string | null
   created_at: string
   updated_at: string
+}
+
+export type OrgRole = 'owner' | 'admin' | 'member'
+
+export interface OrgMember {
+  id: string
+  org_id: string
+  user_id: string
+  role: OrgRole
+  created_at: string
+  // joined
+  org?: Organization
+  email?: string
 }
 
 export interface ReviewProfile {

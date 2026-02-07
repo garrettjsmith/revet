@@ -3,23 +3,24 @@
 import { useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { useRouter } from 'next/navigation'
-import type { ReviewProfile, Organization } from '@/lib/types'
+import type { ReviewProfile } from '@/lib/types'
 
 interface Props {
   profile?: ReviewProfile
-  organizations: Organization[]
+  orgId: string
+  orgSlug: string
 }
 
-export function ProfileForm({ profile, organizations }: Props) {
+export function ProfileForm({ profile, orgId, orgSlug }: Props) {
   const isEditing = !!profile
   const router = useRouter()
   const supabase = createClient()
+  const basePath = `/admin/${orgSlug}/review-funnels`
 
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
 
   const [form, setForm] = useState({
-    org_id: profile?.org_id || organizations[0]?.id || '',
     name: profile?.name || '',
     slug: profile?.slug || '',
     heading: profile?.heading || 'Thank you for your visit',
@@ -54,6 +55,7 @@ export function ProfileForm({ profile, organizations }: Props) {
 
     const payload = {
       ...form,
+      org_id: orgId,
       logo_url: form.logo_url || null,
       logo_text: form.logo_text || null,
       logo_subtext: form.logo_subtext || null,
@@ -73,7 +75,7 @@ export function ProfileForm({ profile, organizations }: Props) {
       setError(result.error.message)
       setSaving(false)
     } else {
-      router.push('/admin/profiles')
+      router.push(basePath)
       router.refresh()
     }
   }
@@ -82,7 +84,7 @@ export function ProfileForm({ profile, organizations }: Props) {
     if (!confirm('Delete this profile? This cannot be undone.')) return
     setSaving(true)
     await supabase.from('review_profiles').delete().eq('id', profile!.id)
-    router.push('/admin/profiles')
+    router.push(basePath)
     router.refresh()
   }
 
@@ -97,21 +99,8 @@ export function ProfileForm({ profile, organizations }: Props) {
   return (
     <form onSubmit={handleSubmit}>
       <div className="border border-warm-border rounded-xl p-6 space-y-6">
-        {/* Org + Name + Slug */}
-        <div className="grid grid-cols-3 gap-4">
-          <div>
-            <label className={labelClass}>Organization</label>
-            <select
-              value={form.org_id}
-              onChange={(e) => set('org_id', e.target.value)}
-              className={inputClass}
-              required
-            >
-              {organizations.map((o) => (
-                <option key={o.id} value={o.id}>{o.name}</option>
-              ))}
-            </select>
-          </div>
+        {/* Name + Slug */}
+        <div className="grid grid-cols-2 gap-4">
           <div>
             <label className={labelClass}>Profile Name</label>
             <input

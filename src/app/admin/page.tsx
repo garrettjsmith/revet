@@ -1,110 +1,52 @@
 import { createServerSupabase } from '@/lib/supabase/server'
+import { redirect } from 'next/navigation'
 import Link from 'next/link'
-import type { ProfileStats } from '@/lib/types'
 
 export const dynamic = 'force-dynamic'
 
-export default async function AdminDashboard() {
+export default async function AdminIndexPage() {
   const supabase = createServerSupabase()
+  const { data: { user } } = await supabase.auth.getUser()
 
-  const { data: stats } = await supabase
-    .from('profile_stats')
-    .select('*')
-    .returns<ProfileStats[]>()
+  if (!user) redirect('/admin/login')
 
-  const profiles = stats || []
+  // Get user's org memberships
+  const { data: memberships } = await supabase
+    .from('org_members')
+    .select('org_id, organizations(slug)')
+    .eq('user_id', user.id)
+    .order('created_at')
+    .limit(1)
 
-  const totals = profiles.reduce(
-    (acc, p) => ({
-      views: acc.views + (p.total_views || 0),
-      ratings: acc.ratings + (p.total_ratings || 0),
-      google: acc.google + (p.google_clicks || 0),
-      email: acc.email + (p.email_clicks || 0),
-    }),
-    { views: 0, ratings: 0, google: 0, email: 0 }
-  )
+  const firstOrg = memberships?.[0]?.organizations as any
 
-  const statCards = [
-    { label: 'Total Page Views', value: totals.views },
-    { label: 'Ratings Submitted', value: totals.ratings },
-    { label: 'Google Reviews', value: totals.google },
-    { label: 'Manager Emails', value: totals.email },
-  ]
+  // If user has an org, redirect to it
+  if (firstOrg?.slug) {
+    redirect(`/admin/${firstOrg.slug}`)
+  }
 
+  // No orgs — show onboarding
   return (
-    <div>
-      <div className="flex items-center justify-between mb-8">
-        <h1 className="text-2xl font-serif text-ink">Dashboard</h1>
-        <Link
-          href="/admin/profiles/new"
-          className="px-5 py-2 bg-ink hover:bg-ink/90 text-cream text-sm font-medium rounded-full no-underline transition-colors"
-        >
-          + New Review Funnel
-        </Link>
-      </div>
-
-      {/* Stats */}
-      <div className="grid grid-cols-4 gap-4 mb-8">
-        {statCards.map((s) => (
-          <div key={s.label} className="bg-ink rounded-xl p-5">
-            <div className="text-[11px] text-warm-gray uppercase tracking-wider mb-1">{s.label}</div>
-            <div className="text-2xl font-bold font-mono text-cream">{s.value}</div>
+    <div className="min-h-screen bg-cream flex items-center justify-center px-4 relative">
+      <div className="absolute inset-0 blueprint-grid pointer-events-none" />
+      <div className="text-center relative z-10 max-w-md">
+        <div className="inline-flex items-center gap-2 mb-6">
+          <div className="w-10 h-10 rounded-lg bg-ink flex items-center justify-center font-bold text-sm text-cream font-mono">
+            LS
           </div>
-        ))}
-      </div>
-
-      {/* Profiles table */}
-      <div className="border border-warm-border rounded-xl overflow-hidden">
-        <div className="px-5 py-4 border-b border-warm-border">
-          <h2 className="text-sm font-semibold text-ink">Active Review Funnels</h2>
+          <span className="text-2xl font-serif tracking-tight">lseo.app</span>
         </div>
-        {profiles.length === 0 ? (
-          <div className="p-12 text-center text-warm-gray text-sm">
-            No profiles yet.{' '}
-            <Link href="/admin/profiles/new" className="text-ink underline hover:no-underline">
-              Create your first review funnel
-            </Link>
-          </div>
-        ) : (
-          <table className="w-full">
-            <thead>
-              <tr className="border-b border-warm-border">
-                {['Profile', 'URL', 'Views (7d)', 'Google (7d)', 'Emails (7d)', 'Avg Rating', ''].map((h) => (
-                  <th key={h} className="text-left px-5 py-3 text-[11px] text-warm-gray uppercase tracking-wider font-medium">
-                    {h}
-                  </th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {profiles.map((p) => (
-                <tr key={p.profile_id} className="border-b border-warm-border/50 hover:bg-warm-light/50">
-                  <td className="px-5 py-3.5">
-                    <div className="text-sm font-medium text-ink">{p.profile_name}</div>
-                    <div className="text-xs text-warm-gray">{p.org_name}</div>
-                  </td>
-                  <td className="px-5 py-3.5">
-                    <code className="text-xs text-ink font-mono">/r/{p.slug}</code>
-                  </td>
-                  <td className="px-5 py-3.5 font-mono text-sm text-ink">{p.views_7d}</td>
-                  <td className="px-5 py-3.5 font-mono text-sm text-ink">{p.google_clicks_7d}</td>
-                  <td className="px-5 py-3.5 font-mono text-sm text-ink">{p.email_clicks_7d}</td>
-                  <td className="px-5 py-3.5 font-mono text-sm text-ink">
-                    {p.avg_rating ? `${p.avg_rating}★` : '—'}
-                  </td>
-                  <td className="px-5 py-3.5">
-                    <Link
-                      href={`/admin/profiles/${p.profile_id}`}
-                      className="text-xs text-warm-gray hover:text-ink no-underline"
-                    >
-                      Edit
-                    </Link>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        )}
+        <h1 className="text-3xl font-serif text-ink mb-3 text-balance">Welcome to lseo.app</h1>
+        <p className="text-warm-gray text-sm mb-8 leading-relaxed">
+          Create your first organization to get started. Organizations hold all your tools,
+          review funnels, and team members.
+        </p>
+        <Link
+          href="/admin/orgs/new"
+          className="inline-flex px-6 py-3 bg-ink hover:bg-ink/90 text-cream text-sm font-medium rounded-full no-underline transition-colors"
+        >
+          Create Organization
+        </Link>
       </div>
     </div>
   )
