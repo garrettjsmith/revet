@@ -1,6 +1,7 @@
 import { createAdminClient } from '@/lib/supabase/admin'
 import Link from 'next/link'
 import type { AgencyIntegration, AgencyIntegrationMapping } from '@/lib/types'
+import { IntegrationStatusBanner } from './status-banner'
 
 export const dynamic = 'force-dynamic'
 
@@ -87,6 +88,8 @@ export default async function AgencyIntegrationsPage() {
 
   return (
     <div>
+      <IntegrationStatusBanner />
+
       <div className="flex items-center justify-between mb-8">
         <div>
           <h1 className="text-2xl font-serif text-ink">Integrations</h1>
@@ -139,24 +142,59 @@ export default async function AgencyIntegrationsPage() {
                   </div>
                 </div>
                 <div className="flex items-center gap-2">
-                  {isConnected ? (
+                  {isConnected && integration?.status === 'error' && provider.id === 'google' && (
+                    <a
+                      href="/api/integrations/google/connect"
+                      className="px-4 py-2 bg-amber-600 hover:bg-amber-700 text-white text-xs font-medium rounded-full transition-colors"
+                    >
+                      Reconnect
+                    </a>
+                  )}
+                  {isConnected && integration?.status === 'connected' ? (
                     <>
-                      <button
-                        className="px-4 py-2 border border-warm-border text-warm-gray text-xs rounded-full hover:text-ink hover:border-ink transition-colors cursor-not-allowed opacity-50"
-                        disabled
-                        title="Disconnect integration"
-                      >
-                        Disconnect
-                      </button>
+                      {provider.id === 'google' && (
+                        <Link
+                          href="/agency/integrations/google/setup"
+                          className="px-4 py-2 border border-warm-border text-ink text-xs rounded-full hover:bg-warm-light transition-colors"
+                        >
+                          Manage Mappings
+                        </Link>
+                      )}
+                      {provider.id === 'google' ? (
+                        <form action="/api/integrations/google/disconnect" method="POST">
+                          <button
+                            type="submit"
+                            className="px-4 py-2 border border-warm-border text-warm-gray text-xs rounded-full hover:text-red-600 hover:border-red-300 transition-colors"
+                          >
+                            Disconnect
+                          </button>
+                        </form>
+                      ) : (
+                        <button
+                          className="px-4 py-2 border border-warm-border text-warm-gray text-xs rounded-full cursor-not-allowed opacity-50"
+                          disabled
+                        >
+                          Disconnect
+                        </button>
+                      )}
                     </>
                   ) : (
-                    <button
-                      className="px-5 py-2 bg-ink hover:bg-ink/90 text-cream text-xs font-medium rounded-full transition-colors cursor-not-allowed opacity-50"
-                      disabled
-                      title="OAuth connection coming soon"
-                    >
-                      Connect {provider.name}
-                    </button>
+                    provider.id === 'google' ? (
+                      <a
+                        href="/api/integrations/google/connect"
+                        className="px-5 py-2 bg-ink hover:bg-ink/90 text-cream text-xs font-medium rounded-full transition-colors"
+                      >
+                        Connect Google
+                      </a>
+                    ) : (
+                      <button
+                        className="px-5 py-2 bg-ink text-cream text-xs font-medium rounded-full cursor-not-allowed opacity-50"
+                        disabled
+                        title="Coming soon"
+                      >
+                        Connect {provider.name}
+                      </button>
+                    )
                   )}
                 </div>
               </div>

@@ -109,6 +109,10 @@ export interface AgencyIntegration {
   provider: string
   account_email: string | null
   status: 'connected' | 'disconnected' | 'error'
+  access_token_encrypted: string | null
+  refresh_token_encrypted: string | null
+  token_expires_at: string | null
+  scopes: string[]
   metadata: Record<string, unknown>
   created_at: string
   updated_at: string
@@ -253,4 +257,33 @@ export interface FormSubmission {
   data: Record<string, string>
   metadata: Record<string, unknown>
   created_at: string
+}
+
+// GBP Performance
+
+export interface GBPPerformanceMetric {
+  id: string
+  location_id: string
+  date: string
+  metric: string
+  value: number
+  metadata: Record<string, unknown>
+  created_at: string
+}
+
+// Review Reply Queue
+
+export type ReplyQueueStatus = 'pending' | 'sending' | 'confirmed' | 'failed'
+
+export interface ReviewReplyQueue {
+  id: string
+  review_id: string
+  reply_body: string
+  queued_by: string
+  status: ReplyQueueStatus
+  attempts: number
+  last_error: string | null
+  sent_at: string | null
+  created_at: string
+  updated_at: string
 }
