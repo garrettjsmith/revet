@@ -9,13 +9,18 @@ interface Props {
   profile?: ReviewProfile
   orgId: string
   orgSlug: string
+  locationId?: string
 }
 
-export function ProfileForm({ profile, orgId, orgSlug }: Props) {
+export function ProfileForm({ profile, orgId, orgSlug, locationId }: Props) {
   const isEditing = !!profile
   const router = useRouter()
   const supabase = createClient()
-  const basePath = `/admin/${orgSlug}/review-funnels`
+
+  // Navigate back to the location's review funnels list (or old route if no location)
+  const basePath = locationId
+    ? `/admin/${orgSlug}/locations/${locationId}/review-funnels`
+    : `/admin/${orgSlug}/review-funnels`
 
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
@@ -56,6 +61,7 @@ export function ProfileForm({ profile, orgId, orgSlug }: Props) {
     const payload = {
       ...form,
       org_id: orgId,
+      location_id: locationId || profile?.location_id || null,
       logo_url: form.logo_url || null,
       logo_text: form.logo_text || null,
       logo_subtext: form.logo_subtext || null,

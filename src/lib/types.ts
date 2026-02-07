@@ -15,15 +15,42 @@ export interface OrgMember {
   org_id: string
   user_id: string
   role: OrgRole
+  is_agency_admin: boolean
+  location_access: 'all' | 'specific'
   created_at: string
   // joined
   org?: Organization
   email?: string
 }
 
+export type LocationType = 'place' | 'practitioner' | 'service_area'
+
+export interface Location {
+  id: string
+  org_id: string
+  type: LocationType
+  name: string
+  slug: string
+  place_id: string | null
+  phone: string | null
+  email: string | null
+  timezone: string
+  address_line1: string | null
+  address_line2: string | null
+  city: string | null
+  state: string | null
+  postal_code: string | null
+  country: string
+  metadata: Record<string, unknown>
+  active: boolean
+  created_at: string
+  updated_at: string
+}
+
 export interface ReviewProfile {
   id: string
   org_id: string
+  location_id: string | null
   name: string
   slug: string
   heading: string
@@ -42,6 +69,7 @@ export interface ReviewProfile {
   updated_at: string
   // joined
   org_name?: string
+  location_name?: string
 }
 
 export interface ReviewEvent {
@@ -60,7 +88,9 @@ export interface ProfileStats {
   profile_name: string
   slug: string
   org_id: string
+  location_id: string | null
   org_name: string
+  location_name: string | null
   total_views: number
   total_ratings: number
   google_clicks: number
