@@ -1,9 +1,12 @@
+export type OrgStatus = 'active' | 'lead' | 'paused' | 'churned'
+
 export interface Organization {
   id: string
   name: string
   slug: string
   logo_url: string | null
   website: string | null
+  status: OrgStatus
   created_at: string
   updated_at: string
 }
@@ -99,4 +102,26 @@ export interface ProfileStats {
   views_7d: number
   google_clicks_7d: number
   email_clicks_7d: number
+}
+
+export interface AgencyIntegration {
+  id: string
+  provider: string
+  account_email: string | null
+  status: 'connected' | 'disconnected' | 'error'
+  metadata: Record<string, unknown>
+  created_at: string
+  updated_at: string
+}
+
+export interface AgencyIntegrationMapping {
+  id: string
+  integration_id: string
+  external_resource_id: string
+  external_resource_name: string | null
+  resource_type: string
+  org_id: string | null
+  location_id: string | null
+  metadata: Record<string, unknown>
+  created_at: string
 }
