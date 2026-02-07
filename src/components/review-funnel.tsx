@@ -63,14 +63,16 @@ export function ReviewFunnel({ profile }: { profile: ReviewProfile }) {
   }
 
   const primary = profile.primary_color
-  const accent = profile.accent_color
 
   return (
-    <div className="min-h-screen bg-[#FAFBFC]" style={{ fontFamily: "'DM Sans', system-ui, sans-serif" }}>
-      {/* Top accent bar */}
-      <div className="h-1" style={{ background: `linear-gradient(90deg, ${primary}, ${accent})` }} />
+    <div className="min-h-screen bg-cream relative">
+      {/* Blueprint grid overlay */}
+      <div className="absolute inset-0 blueprint-grid pointer-events-none" />
 
-      <div className="max-w-[480px] mx-auto px-6 pt-16 pb-20 text-center">
+      {/* Top accent bar */}
+      <div className="h-1 bg-ink relative z-10" />
+
+      <div className="max-w-[480px] mx-auto px-6 pt-16 pb-20 text-center relative z-10">
 
         {/* Logo */}
         <div className="mb-12">
@@ -82,7 +84,7 @@ export function ReviewFunnel({ profile }: { profile: ReviewProfile }) {
             />
           ) : (
             <div
-              className="inline-flex flex-col items-center px-8 py-4 rounded-xl text-white"
+              className="inline-flex flex-col items-center px-8 py-4 rounded-xl text-cream"
               style={{ background: primary }}
             >
               <div className="text-xl font-bold tracking-[0.15em] leading-tight">
@@ -100,14 +102,14 @@ export function ReviewFunnel({ profile }: { profile: ReviewProfile }) {
         {/* ── Step: Ask ── */}
         {step === 'ask' && (
           <div className="animate-[fadeUp_0.5s_ease]">
-            <h1 className="text-2xl font-semibold text-gray-900 mb-3 leading-snug tracking-tight">
+            <h1 className="text-3xl font-serif text-ink mb-3 leading-snug text-balance">
               {profile.heading}
             </h1>
-            <p className="text-base text-gray-500 mb-10 leading-relaxed">
+            <p className="text-base text-warm-gray mb-10 leading-relaxed">
               {profile.subtext}
             </p>
 
-            <p className="text-sm font-medium text-gray-700 mb-5">
+            <p className="text-sm font-medium text-ink mb-5">
               How was your experience?
             </p>
 
@@ -120,7 +122,7 @@ export function ReviewFunnel({ profile }: { profile: ReviewProfile }) {
                   onClick={() => handleStarClick(star)}
                   className="p-1 transition-transform duration-150"
                   style={{
-                    color: (hoverStar >= star || selectedRating >= star) ? '#FBBF24' : '#D1D5DB',
+                    color: (hoverStar >= star || selectedRating >= star) ? '#FBBF24' : '#D5CFC5',
                     transform: hoverStar === star ? 'scale(1.2)' : 'scale(1)',
                   }}
                 >
@@ -132,7 +134,7 @@ export function ReviewFunnel({ profile }: { profile: ReviewProfile }) {
             </div>
 
             {selectedRating > 0 && (
-              <p className="text-xs text-gray-400 mt-3 italic">
+              <p className="text-xs text-warm-gray mt-3 italic">
                 {selectedRating >= profile.positive_threshold
                   ? "We're glad to hear that!"
                   : 'We appreciate your honesty.'}
@@ -144,16 +146,16 @@ export function ReviewFunnel({ profile }: { profile: ReviewProfile }) {
         {/* ── Step: Positive → Google Review ── */}
         {step === 'positive' && (
           <div className="animate-[fadeUp_0.4s_ease]">
-            <div className="text-green-500 mb-5">
+            <div className="text-ink mb-5">
               <svg className="mx-auto" width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
                 <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14" />
                 <polyline points="22 4 12 14.01 9 11.01" />
               </svg>
             </div>
-            <h2 className="text-xl font-semibold text-gray-900 mb-3">
+            <h2 className="text-xl font-serif text-ink mb-3">
               We&apos;re so glad!
             </h2>
-            <p className="text-sm text-gray-500 mb-8 leading-relaxed">
+            <p className="text-sm text-warm-gray mb-8 leading-relaxed">
               Would you mind sharing your experience on Google?<br />
               It helps others find great care.
             </p>
@@ -162,7 +164,7 @@ export function ReviewFunnel({ profile }: { profile: ReviewProfile }) {
               target="_blank"
               rel="noopener noreferrer"
               onClick={handleGoogleClick}
-              className="inline-flex items-center gap-3 bg-white text-gray-900 border-2 border-gray-200 rounded-xl px-8 py-3.5 text-base font-semibold no-underline transition-all duration-200 hover:border-blue-500 hover:shadow-lg hover:shadow-blue-500/20"
+              className="inline-flex items-center gap-3 bg-ink text-cream border-2 border-ink rounded-full px-8 py-3.5 text-base font-medium no-underline transition-all duration-200 hover:bg-ink/90"
             >
               <svg width="22" height="22" viewBox="0 0 24 24">
                 <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92a5.06 5.06 0 0 1-2.2 3.32v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.1z" fill="#4285F4"/>
@@ -172,17 +174,17 @@ export function ReviewFunnel({ profile }: { profile: ReviewProfile }) {
               </svg>
               Leave a Google Review
             </a>
-            <p className="text-xs text-gray-400 mt-6">Thank you for your time!</p>
+            <p className="text-xs text-warm-gray mt-6">Thank you for your time!</p>
           </div>
         )}
 
         {/* ── Step: Negative → Email Manager ── */}
         {step === 'negative' && (
           <div className="animate-[fadeUp_0.4s_ease]">
-            <h2 className="text-xl font-semibold text-gray-900 mb-3">
+            <h2 className="text-xl font-serif text-ink mb-3">
               We&apos;d like to make it right
             </h2>
-            <p className="text-sm text-gray-500 mb-6 leading-relaxed">
+            <p className="text-sm text-warm-gray mb-6 leading-relaxed">
               We&apos;re sorry your experience didn&apos;t meet expectations. Please share
               your feedback directly with our {profile.manager_name.toLowerCase()} so we can improve.
             </p>
@@ -191,15 +193,14 @@ export function ReviewFunnel({ profile }: { profile: ReviewProfile }) {
               onChange={(e) => setFeedbackText(e.target.value)}
               placeholder="Tell us what happened (optional)..."
               rows={4}
-              className="w-full p-3.5 bg-white border border-gray-200 rounded-xl text-sm text-gray-700 resize-y outline-none focus:border-sky-400 leading-relaxed mb-5"
+              className="w-full p-3.5 bg-ink border border-ink rounded-xl text-sm text-cream resize-y outline-none focus:ring-2 focus:ring-warm-gray leading-relaxed mb-5 placeholder:text-warm-gray"
             />
             <a
               href={`mailto:${profile.manager_email}?subject=${encodeURIComponent('Feedback about my visit')}&body=${encodeURIComponent(feedbackText || "I'd like to share feedback about my recent visit.")}`}
               onClick={handleEmailClick}
-              className="inline-flex items-center gap-3 text-white rounded-xl px-8 py-3.5 text-base font-semibold no-underline"
+              className="inline-flex items-center gap-3 text-cream rounded-full px-8 py-3.5 text-base font-medium no-underline"
               style={{
                 background: primary,
-                boxShadow: `0 4px 12px ${primary}33`,
               }}
             >
               <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -208,7 +209,7 @@ export function ReviewFunnel({ profile }: { profile: ReviewProfile }) {
               </svg>
               Contact {profile.manager_name}
             </a>
-            <p className="text-xs text-gray-400 mt-6 leading-relaxed">
+            <p className="text-xs text-warm-gray mt-6 leading-relaxed">
               Your feedback goes directly to our team.<br />
               We appreciate you helping us improve.
             </p>
@@ -217,16 +218,9 @@ export function ReviewFunnel({ profile }: { profile: ReviewProfile }) {
       </div>
 
       {/* Footer */}
-      <div className="fixed bottom-0 left-0 right-0 text-center py-3 bg-gradient-to-t from-[#FAFBFC] via-[#FAFBFC] to-transparent">
-        <span className="text-[11px] text-gray-300">Powered by lseo.app</span>
+      <div className="fixed bottom-0 left-0 right-0 text-center py-3 bg-gradient-to-t from-cream via-cream to-transparent relative z-10">
+        <span className="text-[11px] text-warm-border">Powered by lseo.app</span>
       </div>
-
-      <style>{`
-        @keyframes fadeUp {
-          from { opacity: 0; transform: translateY(16px); }
-          to { opacity: 1; transform: translateY(0); }
-        }
-      `}</style>
     </div>
   )
 }

@@ -2,13 +2,69 @@
 @tailwind components;
 @tailwind utilities;
 
-@import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=DM+Mono:wght@400;500&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Inter:wght@400;500;600;700&family=DM+Mono:wght@400;500&display=swap');
 
 :root {
-  --font-sans: 'DM Sans', system-ui, sans-serif;
+  --font-serif: 'Instrument Serif', 'Georgia', serif;
+  --font-sans: 'Inter', system-ui, sans-serif;
   --font-mono: 'DM Mono', monospace;
+
+  --color-cream: #F2EDE4;
+  --color-ink: #1A1A1A;
+  --color-warm-gray: #9A9488;
+  --color-warm-border: #D5CFC5;
+  --color-warm-light: #E8E2D8;
 }
 
 body {
   font-family: var(--font-sans);
+  background-color: var(--color-cream);
+  color: var(--color-ink);
+}
+
+/* Blueprint grid background */
+.blueprint-grid {
+  background-image:
+    repeating-linear-gradient(
+      0deg,
+      transparent,
+      transparent calc(40px - 1px),
+      var(--color-warm-border) calc(40px - 1px),
+      var(--color-warm-border) 40px
+    ),
+    repeating-linear-gradient(
+      90deg,
+      transparent,
+      transparent calc(40px - 1px),
+      var(--color-warm-border) calc(40px - 1px),
+      var(--color-warm-border) 40px
+    );
+  background-size: 40px 40px;
+  mask-image: radial-gradient(ellipse at center, black 30%, transparent 75%);
+  -webkit-mask-image: radial-gradient(ellipse at center, black 30%, transparent 75%);
+}
+
+/* Dashed pill style for tags/chips */
+.pill-dashed {
+  border: 1.5px dashed var(--color-warm-border);
+  border-radius: 9999px;
+  padding: 0.375rem 1rem;
+  font-size: 0.8125rem;
+  color: var(--color-warm-gray);
+  transition: border-color 0.2s, color 0.2s;
+}
+
+.pill-dashed:hover {
+  border-color: var(--color-ink);
+  color: var(--color-ink);
+}
+
+/* Text balance for hero headings */
+.text-balance {
+  text-wrap: balance;
+}
+
+@keyframes fadeUp {
+  from { opacity: 0; transform: translateY(16px); }
+  to { opacity: 1; transform: translateY(0); }
 }

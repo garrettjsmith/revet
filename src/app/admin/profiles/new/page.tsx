@@ -15,15 +15,15 @@ export default async function NewProfilePage() {
 
   return (
     <div>
-      <h1 className="text-xl font-semibold text-white mb-6">New Review Funnel</h1>
+      <h1 className="text-2xl font-serif text-ink mb-6">New Review Funnel</h1>
       {(!orgs || orgs.length === 0) ? (
-        <div className="bg-gray-900 border border-gray-800 rounded-xl p-8 text-center">
-          <p className="text-gray-400 text-sm mb-4">
+        <div className="border border-warm-border rounded-xl p-8 text-center">
+          <p className="text-warm-gray text-sm mb-4">
             You need to create an organization first before adding review funnels.
           </p>
-          <p className="text-xs text-gray-600">
+          <p className="text-xs text-warm-gray">
             Run in Supabase SQL Editor:<br />
-            <code className="text-sky-400 font-mono">
+            <code className="text-ink font-mono">
               INSERT INTO organizations (name, slug) VALUES (&apos;Sturdy Health&apos;, &apos;sturdy-health&apos;);
             </code>
           </p>

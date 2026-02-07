@@ -17,7 +17,7 @@ export default async function EditProfilePage({ params }: { params: { id: string
 
   return (
     <div>
-      <h1 className="text-xl font-semibold text-white mb-6">
+      <h1 className="text-2xl font-serif text-ink mb-6">
         Edit: {profileRes.data.name}
       </h1>
       <ProfileForm

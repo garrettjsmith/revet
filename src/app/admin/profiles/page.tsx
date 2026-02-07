@@ -15,10 +15,10 @@ export default async function ProfilesPage() {
   return (
     <div>
       <div className="flex items-center justify-between mb-6">
-        <h1 className="text-xl font-semibold text-white">Review Funnels</h1>
+        <h1 className="text-2xl font-serif text-ink">Review Funnels</h1>
         <Link
           href="/admin/profiles/new"
-          className="px-4 py-2 bg-sky-500 hover:bg-sky-400 text-white text-sm font-semibold rounded-lg no-underline transition-colors"
+          className="px-5 py-2 bg-ink hover:bg-ink/90 text-cream text-sm font-medium rounded-full no-underline transition-colors"
         >
           + New Profile
         </Link>
@@ -29,26 +29,26 @@ export default async function ProfilesPage() {
           <Link
             key={p.id}
             href={`/admin/profiles/${p.id}`}
-            className="block bg-gray-900 border border-gray-800 rounded-xl p-5 hover:border-gray-700 transition-colors no-underline"
+            className="block border border-warm-border rounded-xl p-5 hover:border-ink/30 transition-colors no-underline"
           >
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-4">
                 <div
-                  className="w-10 h-10 rounded-lg flex items-center justify-center text-white font-bold text-xs font-mono"
+                  className="w-10 h-10 rounded-lg flex items-center justify-center text-cream font-bold text-xs font-mono"
                   style={{ background: p.primary_color }}
                 >
                   {(p.logo_text || p.name)?.[0]}
                 </div>
                 <div>
-                  <div className="text-sm font-medium text-white">{p.name}</div>
-                  <div className="text-xs text-gray-500 mt-0.5">
-                    {p.organizations?.name} · <span className="font-mono text-sky-400">/r/{p.slug}</span>
+                  <div className="text-sm font-medium text-ink">{p.name}</div>
+                  <div className="text-xs text-warm-gray mt-0.5">
+                    {p.organizations?.name} · <span className="font-mono text-ink">/r/{p.slug}</span>
                   </div>
                 </div>
               </div>
               <div className="flex items-center gap-4 text-xs">
-                <span className="text-gray-500">{p.manager_email}</span>
-                <span className={p.active ? 'text-green-400' : 'text-gray-600'}>
+                <span className="text-warm-gray">{p.manager_email}</span>
+                <span className={p.active ? 'text-ink font-medium' : 'text-warm-gray'}>
                   {p.active ? '● Active' : '○ Inactive'}
                 </span>
               </div>
@@ -57,7 +57,7 @@ export default async function ProfilesPage() {
         ))}
 
         {(!profiles || profiles.length === 0) && (
-          <div className="text-center py-16 text-gray-500 text-sm">
+          <div className="text-center py-16 text-warm-gray text-sm">
             No review funnel profiles yet. Create one to get started.
           </div>
         )}
