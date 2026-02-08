@@ -3,6 +3,14 @@ import { googleFetch } from './auth'
 const BUSINESS_INFO_API = 'https://mybusinessbusinessinformation.googleapis.com/v1'
 const GBP_V4_API = 'https://mybusiness.googleapis.com/v4'
 
+/** Ensure a location name has an account prefix for the v4 API. */
+function toV4ResourceName(name: string): string {
+  if (name.startsWith('locations/')) {
+    return `accounts/-/${name}`
+  }
+  return name
+}
+
 /** Full readMask for fetching complete profile data */
 const FULL_READ_MASK = [
   'name', 'title', 'storeCode', 'languageCode', 'phoneNumbers',
@@ -283,7 +291,8 @@ export interface GBPMediaItem {
  * Requires account-scoped resource name for v4 API.
  */
 export async function listMedia(accountLocationName: string): Promise<GBPMediaItem[]> {
-  const response = await googleFetch(`${GBP_V4_API}/${accountLocationName}/media`)
+  const v4Name = toV4ResourceName(accountLocationName)
+  const response = await googleFetch(`${GBP_V4_API}/${v4Name}/media`)
 
   if (!response.ok) {
     const err = await response.json().catch(() => ({}))
@@ -303,7 +312,8 @@ export async function createMediaFromUrl(
   category: string,
   description?: string
 ): Promise<GBPMediaItem> {
-  const response = await googleFetch(`${GBP_V4_API}/${accountLocationName}/media`, {
+  const v4Name = toV4ResourceName(accountLocationName)
+  const response = await googleFetch(`${GBP_V4_API}/${v4Name}/media`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
@@ -326,7 +336,8 @@ export async function createMediaFromUrl(
  * Delete a media item.
  */
 export async function deleteMedia(mediaResourceName: string): Promise<void> {
-  const response = await googleFetch(`${GBP_V4_API}/${mediaResourceName}`, {
+  const v4Name = toV4ResourceName(mediaResourceName)
+  const response = await googleFetch(`${GBP_V4_API}/${v4Name}`, {
     method: 'DELETE',
   })
 
@@ -378,8 +389,9 @@ export async function listPosts(
   })
   if (opts?.pageToken) params.set('pageToken', opts.pageToken)
 
+  const v4Name = toV4ResourceName(accountLocationName)
   const response = await googleFetch(
-    `${GBP_V4_API}/${accountLocationName}/localPosts?${params.toString()}`
+    `${GBP_V4_API}/${v4Name}/localPosts?${params.toString()}`
   )
 
   if (!response.ok) {
@@ -398,7 +410,8 @@ export async function createPost(
   accountLocationName: string,
   post: GBPLocalPost
 ): Promise<GBPLocalPost> {
-  const response = await googleFetch(`${GBP_V4_API}/${accountLocationName}/localPosts`, {
+  const v4Name = toV4ResourceName(accountLocationName)
+  const response = await googleFetch(`${GBP_V4_API}/${v4Name}/localPosts`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(post),
@@ -416,7 +429,8 @@ export async function createPost(
  * Delete a post.
  */
 export async function deletePost(postResourceName: string): Promise<void> {
-  const response = await googleFetch(`${GBP_V4_API}/${postResourceName}`, {
+  const v4Name = toV4ResourceName(postResourceName)
+  const response = await googleFetch(`${GBP_V4_API}/${v4Name}`, {
     method: 'DELETE',
   })
 
