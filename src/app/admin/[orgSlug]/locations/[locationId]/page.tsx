@@ -1,10 +1,11 @@
 import { createServerSupabase } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { getOrgBySlug } from '@/lib/org'
-import { getLocation } from '@/lib/locations'
+import { getLocation, checkAgencyAdmin } from '@/lib/locations'
 import { notFound } from 'next/navigation'
 import Link from 'next/link'
 import type { ProfileStats, FormTemplate, Review, GBPProfile } from '@/lib/types'
+import AuditTrail from '@/components/audit-trail'
 
 export const dynamic = 'force-dynamic'
 
@@ -26,6 +27,7 @@ export default async function LocationDetailPage({
   const supabase = createServerSupabase()
   const adminClient = createAdminClient()
   const basePath = `/admin/${params.orgSlug}/locations/${params.locationId}`
+  const isAgencyAdmin = await checkAgencyAdmin()
 
   // Run all independent queries in parallel
   const [
@@ -347,7 +349,7 @@ export default async function LocationDetailPage({
       </div>
 
       {/* Review Funnels section */}
-      <div className="border border-warm-border rounded-xl overflow-hidden">
+      <div className="border border-warm-border rounded-xl overflow-hidden mb-8">
         <div className="px-5 py-4 border-b border-warm-border flex items-center justify-between">
           <h2 className="text-sm font-semibold text-ink">Review Funnels</h2>
           <Link
@@ -404,6 +406,11 @@ export default async function LocationDetailPage({
           </table>
         )}
       </div>
+
+      {/* Audit Trail - Agency Admin Only */}
+      {isAgencyAdmin && (
+        <AuditTrail resourceType="location" resourceId={location.id} />
+      )}
     </div>
   )
 }
