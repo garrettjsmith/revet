@@ -79,9 +79,9 @@ export async function GET(request: NextRequest) {
       )
 
     if (upsertError) {
-      console.error('[google/callback] Upsert failed:', upsertError)
+      console.error('[google/callback] Upsert failed:', upsertError.message, upsertError.details, upsertError.hint)
       return NextResponse.redirect(
-        `${APP_URL}/agency/integrations?error=save_failed`
+        `${APP_URL}/agency/integrations?error=save_failed&detail=${encodeURIComponent(upsertError.message)}`
       )
     }
 
