@@ -27,60 +27,57 @@ export default async function LocationDetailPage({
   const adminClient = createAdminClient()
   const basePath = `/admin/${params.orgSlug}/locations/${params.locationId}`
 
-  // Get forms for this location
-  const { data: forms } = await supabase
-    .from('form_templates')
-    .select('*')
-    .eq('location_id', location.id)
-    .order('created_at', { ascending: false })
+  // Run all independent queries in parallel
+  const [
+    { data: forms },
+    { data: recentReviews },
+    { count: reviewCount },
+    { count: unreadReviewCount },
+    { data: reviewSource },
+    { data: gbpProfile },
+    { data: stats },
+  ] = await Promise.all([
+    supabase
+      .from('form_templates')
+      .select('*')
+      .eq('location_id', location.id)
+      .order('created_at', { ascending: false }),
+    adminClient
+      .from('reviews')
+      .select('*')
+      .eq('location_id', location.id)
+      .order('published_at', { ascending: false })
+      .limit(5),
+    adminClient
+      .from('reviews')
+      .select('*', { count: 'exact', head: true })
+      .eq('location_id', location.id),
+    adminClient
+      .from('reviews')
+      .select('*', { count: 'exact', head: true })
+      .eq('location_id', location.id)
+      .eq('status', 'new'),
+    adminClient
+      .from('review_sources')
+      .select('total_review_count, average_rating, sync_status, last_synced_at')
+      .eq('location_id', location.id)
+      .eq('platform', 'google')
+      .single(),
+    adminClient
+      .from('gbp_profiles')
+      .select('business_name, primary_category_name, open_status, sync_status, last_synced_at, maps_uri')
+      .eq('location_id', location.id)
+      .single(),
+    supabase
+      .from('profile_stats')
+      .select('*')
+      .eq('location_id', location.id)
+      .returns<ProfileStats[]>(),
+  ])
 
   const formList = (forms || []) as FormTemplate[]
-
-  // Get recent reviews for this location (use admin client to bypass RLS)
-  const { data: recentReviews } = await adminClient
-    .from('reviews')
-    .select('*')
-    .eq('location_id', location.id)
-    .order('published_at', { ascending: false })
-    .limit(5)
-
   const reviewList = (recentReviews || []) as Review[]
-
-  const { count: reviewCount } = await adminClient
-    .from('reviews')
-    .select('*', { count: 'exact', head: true })
-    .eq('location_id', location.id)
-
-  const { count: unreadReviewCount } = await adminClient
-    .from('reviews')
-    .select('*', { count: 'exact', head: true })
-    .eq('location_id', location.id)
-    .eq('status', 'new')
-
-  // Get review source for stats
-  const { data: reviewSource } = await adminClient
-    .from('review_sources')
-    .select('total_review_count, average_rating, sync_status, last_synced_at')
-    .eq('location_id', location.id)
-    .eq('platform', 'google')
-    .single()
-
-  // Get GBP profile summary
-  const { data: gbpProfile } = await adminClient
-    .from('gbp_profiles')
-    .select('business_name, primary_category_name, open_status, sync_status, last_synced_at, maps_uri')
-    .eq('location_id', location.id)
-    .single()
-
   const gbp = gbpProfile as Pick<GBPProfile, 'business_name' | 'primary_category_name' | 'open_status' | 'sync_status' | 'last_synced_at' | 'maps_uri'> | null
-
-  // Get review funnel stats
-  const { data: stats } = await supabase
-    .from('profile_stats')
-    .select('*')
-    .eq('location_id', location.id)
-    .returns<ProfileStats[]>()
-
   const profiles = stats || []
 
   const statCards = [

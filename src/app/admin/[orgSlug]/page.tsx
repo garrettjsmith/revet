@@ -12,38 +12,34 @@ export default async function OrgDashboard({ params }: { params: { orgSlug: stri
 
   const locationIds = locations.map((l) => l.id)
 
-  // Get real review data from review_sources
-  const { data: reviewSources } = locationIds.length > 0
-    ? await adminClient
-        .from('review_sources')
-        .select('location_id, total_review_count, average_rating, sync_status, last_synced_at')
-        .in('location_id', locationIds)
-        .eq('platform', 'google')
-    : { data: [] }
-
-  // Get GBP profiles for sync status
-  const { data: gbpProfiles } = locationIds.length > 0
-    ? await adminClient
-        .from('gbp_profiles')
-        .select('location_id, primary_category_name, open_status, sync_status')
-        .in('location_id', locationIds)
-    : { data: [] }
-
-  // Get review counts
-  const { count: totalReviews } = locationIds.length > 0
-    ? await adminClient
-        .from('reviews')
-        .select('*', { count: 'exact', head: true })
-        .in('location_id', locationIds)
-    : { count: 0 }
-
-  const { count: unreadReviews } = locationIds.length > 0
-    ? await adminClient
-        .from('reviews')
-        .select('*', { count: 'exact', head: true })
-        .in('location_id', locationIds)
-        .eq('status', 'new')
-    : { count: 0 }
+  // Run all independent queries in parallel
+  const [
+    { data: reviewSources },
+    { data: gbpProfiles },
+    { count: totalReviews },
+    { count: unreadReviews },
+  ] = locationIds.length > 0
+    ? await Promise.all([
+        adminClient
+          .from('review_sources')
+          .select('location_id, total_review_count, average_rating, sync_status, last_synced_at')
+          .in('location_id', locationIds)
+          .eq('platform', 'google'),
+        adminClient
+          .from('gbp_profiles')
+          .select('location_id, primary_category_name, open_status, sync_status')
+          .in('location_id', locationIds),
+        adminClient
+          .from('reviews')
+          .select('*', { count: 'exact', head: true })
+          .in('location_id', locationIds),
+        adminClient
+          .from('reviews')
+          .select('*', { count: 'exact', head: true })
+          .in('location_id', locationIds)
+          .eq('status', 'new'),
+      ])
+    : [{ data: [] }, { data: [] }, { count: 0 }, { count: 0 }]
 
   const sources = reviewSources || []
   const profiles = gbpProfiles || []
