@@ -5,11 +5,6 @@ const nextConfig = {
       { protocol: 'https', hostname: '**' },
     ],
   },
-  experimental: {
-    staleTimes: {
-      dynamic: 0,
-    },
-  },
 };
 
 module.exports = nextConfig;
