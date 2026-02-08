@@ -2,15 +2,9 @@ import { getOrgBySlug } from '@/lib/org'
 import { getOrgLocations } from '@/lib/locations'
 import { createAdminClient } from '@/lib/supabase/admin'
 import Link from 'next/link'
-import type { Location } from '@/lib/types'
+import { LocationTable } from '@/components/location-table'
 
 export const dynamic = 'force-dynamic'
-
-const TYPE_LABELS: Record<string, string> = {
-  place: 'Place',
-  practitioner: 'Practitioner',
-  service_area: 'Service Area',
-}
 
 export default async function LocationsPage({ params }: { params: { orgSlug: string } }) {
   const org = await getOrgBySlug(params.orgSlug)
@@ -38,6 +32,21 @@ export default async function LocationsPage({ params }: { params: { orgSlug: str
   const sourceByLocation = new Map((reviewSources || []).map((s) => [s.location_id, s]))
   const profileByLocation = new Map((gbpProfiles || []).map((p) => [p.location_id, p]))
 
+  // Build location rows
+  const locationRows = locations.map((loc) => {
+    const source = sourceByLocation.get(loc.id)
+    const profile = profileByLocation.get(loc.id)
+    return {
+      location: loc,
+      reviews: source?.total_review_count || 0,
+      avgRating: source?.average_rating ? Number(source.average_rating).toFixed(1) : '—',
+      synced: source?.sync_status === 'active',
+      hasSource: !!source,
+      category: profile?.primary_category_name || null,
+      gbpStatus: profile?.open_status || null,
+    }
+  })
+
   return (
     <div>
       <div className="flex items-center justify-between mb-6">
@@ -50,78 +59,15 @@ export default async function LocationsPage({ params }: { params: { orgSlug: str
         </Link>
       </div>
 
-      <div className="border border-warm-border rounded-xl overflow-hidden">
-        {locations.length === 0 ? (
+      {locations.length === 0 ? (
+        <div className="border border-warm-border rounded-xl overflow-hidden">
           <div className="text-center py-16 text-warm-gray text-sm">
             No locations yet. Add your first location to get started.
           </div>
-        ) : (
-          <table className="w-full">
-            <thead>
-              <tr className="border-b border-warm-border">
-                {['Location', 'Type', 'Reviews', 'Rating', 'GBP', ''].map((h) => (
-                  <th key={h} className="text-left px-5 py-3 text-[11px] text-warm-gray uppercase tracking-wider font-medium">
-                    {h}
-                  </th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {locations.map((loc: Location) => {
-                const source = sourceByLocation.get(loc.id)
-                const profile = profileByLocation.get(loc.id)
-                return (
-                  <tr key={loc.id} className="border-b border-warm-border/50 hover:bg-warm-light/50">
-                    <td className="px-5 py-3.5">
-                      <Link
-                        href={`${basePath}/locations/${loc.id}`}
-                        className="text-sm font-medium text-ink no-underline hover:underline"
-                      >
-                        {loc.name}
-                      </Link>
-                      <div className="text-xs text-warm-gray mt-0.5 flex items-center gap-2">
-                        {loc.city && loc.state && (
-                          <span>{loc.city}, {loc.state}</span>
-                        )}
-                      </div>
-                    </td>
-                    <td className="px-5 py-3.5 text-xs text-warm-gray">{TYPE_LABELS[loc.type]}</td>
-                    <td className="px-5 py-3.5 font-mono text-sm text-ink">
-                      {source?.total_review_count || 0}
-                    </td>
-                    <td className="px-5 py-3.5 font-mono text-sm text-ink">
-                      {source?.average_rating ? `${Number(source.average_rating).toFixed(1)}` : '—'}
-                    </td>
-                    <td className="px-5 py-3.5">
-                      {profile ? (
-                        <span className="inline-flex items-center gap-1.5 text-[10px] font-medium text-emerald-600">
-                          <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
-                          {profile.primary_category_name || 'Connected'}
-                        </span>
-                      ) : source ? (
-                        <span className="inline-flex items-center gap-1.5 text-[10px] font-medium text-amber-600">
-                          <span className="w-1.5 h-1.5 rounded-full bg-amber-500" />
-                          Syncing
-                        </span>
-                      ) : (
-                        <span className="text-[10px] text-warm-gray">—</span>
-                      )}
-                    </td>
-                    <td className="px-5 py-3.5">
-                      <Link
-                        href={`${basePath}/locations/${loc.id}`}
-                        className="text-xs text-warm-gray hover:text-ink no-underline"
-                      >
-                        View
-                      </Link>
-                    </td>
-                  </tr>
-                )
-              })}
-            </tbody>
-          </table>
-        )}
-      </div>
+        </div>
+      ) : (
+        <LocationTable locations={locationRows} orgSlug={params.orgSlug} />
+      )}
     </div>
   )
 }
