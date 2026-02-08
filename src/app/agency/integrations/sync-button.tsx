@@ -1,6 +1,7 @@
 'use client'
 
 import { useState } from 'react'
+import { useRouter } from 'next/navigation'
 
 export function SyncButton({
   endpoint,
@@ -9,6 +10,7 @@ export function SyncButton({
   endpoint: string
   label: string
 }) {
+  const router = useRouter()
   const [status, setStatus] = useState<'idle' | 'syncing' | 'done' | 'error'>('idle')
 
   async function handleSync() {
@@ -24,6 +26,7 @@ export function SyncButton({
         setStatus('error')
       } else {
         setStatus('done')
+        router.refresh()
       }
     } catch (err) {
       console.error('Sync failed:', err)

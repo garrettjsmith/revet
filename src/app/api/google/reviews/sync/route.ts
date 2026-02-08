@@ -3,11 +3,14 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { fetchGoogleReviews, normalizeGoogleReview } from '@/lib/google/reviews'
 import { getValidAccessToken, GoogleAuthError } from '@/lib/google/auth'
 
+export const maxDuration = 120
+
 /**
  * POST /api/google/reviews/sync
  *
  * Cron-triggered endpoint that syncs Google reviews for all active review sources.
  * Processes up to 20 locations per run (sorted by last_synced_at ASC for fairness).
+ * Also retries errored sources (they get a second chance each cycle).
  *
  * Auth: REVIEW_SYNC_API_KEY bearer token (same as the generic sync endpoint).
  */
@@ -42,7 +45,7 @@ export async function POST(request: NextRequest) {
     .from('review_sources')
     .select('*, locations(id, name, org_id)')
     .eq('platform', 'google')
-    .in('sync_status', ['pending', 'active'])
+    .in('sync_status', ['pending', 'active', 'error'])
     .order('last_synced_at', { ascending: true, nullsFirst: true })
     .limit(20)
 

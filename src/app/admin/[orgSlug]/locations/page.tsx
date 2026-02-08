@@ -20,22 +20,20 @@ export default async function LocationsPage({ params }: { params: { orgSlug: str
 
   const locationIds = locations.map((l) => l.id)
 
-  // Get review sources for review counts
-  const { data: reviewSources } = locationIds.length > 0
-    ? await adminClient
-        .from('review_sources')
-        .select('location_id, total_review_count, average_rating, sync_status')
-        .in('location_id', locationIds)
-        .eq('platform', 'google')
-    : { data: [] }
-
-  // Get GBP profiles for category
-  const { data: gbpProfiles } = locationIds.length > 0
-    ? await adminClient
-        .from('gbp_profiles')
-        .select('location_id, primary_category_name, open_status')
-        .in('location_id', locationIds)
-    : { data: [] }
+  // Run both queries in parallel
+  const [{ data: reviewSources }, { data: gbpProfiles }] = locationIds.length > 0
+    ? await Promise.all([
+        adminClient
+          .from('review_sources')
+          .select('location_id, total_review_count, average_rating, sync_status')
+          .in('location_id', locationIds)
+          .eq('platform', 'google'),
+        adminClient
+          .from('gbp_profiles')
+          .select('location_id, primary_category_name, open_status')
+          .in('location_id', locationIds),
+      ])
+    : [{ data: [] }, { data: [] }]
 
   const sourceByLocation = new Map((reviewSources || []).map((s) => [s.location_id, s]))
   const profileByLocation = new Map((gbpProfiles || []).map((p) => [p.location_id, p]))

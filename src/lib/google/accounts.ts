@@ -100,24 +100,21 @@ export async function listGBPLocations(accountName: string): Promise<GBPLocation
 /**
  * Discover ALL GBP locations the authenticated user can access.
  *
- * Uses the wildcard endpoint `accounts/-/locations` which returns locations
- * across all accounts, location groups, and organizations — not just directly
- * owned ones. This is critical for large accounts (600+ locations) where
- * locations are organized into Location Groups.
+ * Two-phase approach:
+ * 1. Fetch all accounts to get ownership metadata
+ * 2. Fetch locations per-account to preserve the account→location mapping
+ *    (the wildcard `accounts/-` endpoint strips account info from responses)
  *
- * Also fetches accounts for metadata (display names) used in the UI.
+ * Falls back to wildcard if per-account fetching yields no results (e.g. org-managed
+ * accounts where locations are only visible via wildcard).
  */
 export async function discoverAllLocations(): Promise<{
   accounts: GBPAccount[]
   locations: Array<GBPLocation & { accountName: string; accountDisplayName: string }>
 }> {
-  // Fetch accounts (for metadata) and ALL locations in parallel
-  const [accounts, allLocations] = await Promise.all([
-    listGBPAccounts(),
-    listGBPLocations('accounts/-'),  // wildcard = all accessible locations
-  ])
+  const accounts = await listGBPAccounts()
 
-  console.log(`[google/accounts] Found ${accounts.length} accounts, ${allLocations.length} total locations via wildcard`)
+  console.log(`[google/accounts] Found ${accounts.length} accounts`)
 
   // Build account lookup for display names
   const accountMap = new Map<string, string>()
@@ -125,26 +122,54 @@ export async function discoverAllLocations(): Promise<{
     accountMap.set(acct.name, acct.accountName)
   }
 
-  // Deduplicate by location name (a location can appear in multiple groups)
+  // Phase 1: Fetch locations per-account to preserve ownership
   const seen = new Set<string>()
   const deduped: Array<GBPLocation & { accountName: string; accountDisplayName: string }> = []
 
-  for (const loc of allLocations) {
-    if (seen.has(loc.name)) continue
-    seen.add(loc.name)
+  for (const acct of accounts) {
+    try {
+      const locations = await listGBPLocations(acct.name)
+      console.log(`[google/accounts] ${acct.name} (${acct.accountName}): ${locations.length} locations`)
 
-    // The location's name format is "locations/xxx" — no account prefix in wildcard response.
-    // Try to match account from metadata or fall back to "Unknown"
-    const accountName = ''
-    const accountDisplayName = accountMap.get(accountName) || ''
+      for (const loc of locations) {
+        // Extract the location ID portion (e.g. "locations/abc123")
+        const locKey = loc.name.startsWith('locations/') ? loc.name : loc.name.split('/').slice(-2).join('/')
+        if (seen.has(locKey)) continue
+        seen.add(locKey)
 
-    deduped.push({
-      ...loc,
-      accountName,
-      accountDisplayName,
-    })
+        deduped.push({
+          ...loc,
+          accountName: acct.name,
+          accountDisplayName: acct.accountName,
+        })
+      }
+    } catch (err) {
+      // Some account types (ORGANIZATION, USER_GROUP) may not support listing
+      console.warn(`[google/accounts] Could not list locations for ${acct.name}:`, err instanceof Error ? err.message : err)
+    }
   }
 
-  console.log(`[google/accounts] After dedup: ${deduped.length} unique locations`)
+  // Phase 2: If per-account yielded nothing, fall back to wildcard
+  if (deduped.length === 0) {
+    console.log(`[google/accounts] Per-account discovery found 0 locations, falling back to wildcard`)
+    const wildcardLocations = await listGBPLocations('accounts/-')
+    console.log(`[google/accounts] Wildcard found ${wildcardLocations.length} locations`)
+
+    for (const loc of wildcardLocations) {
+      if (seen.has(loc.name)) continue
+      seen.add(loc.name)
+
+      // Best-effort: use first PERSONAL account as owner
+      const fallbackAccount = accounts.find((a) => a.type === 'PERSONAL') || accounts[0]
+
+      deduped.push({
+        ...loc,
+        accountName: fallbackAccount?.name || '',
+        accountDisplayName: fallbackAccount?.accountName || '',
+      })
+    }
+  }
+
+  console.log(`[google/accounts] Total: ${deduped.length} unique locations`)
   return { accounts, locations: deduped }
 }
