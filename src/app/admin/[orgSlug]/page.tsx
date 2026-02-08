@@ -2,6 +2,7 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { getOrgBySlug } from '@/lib/org'
 import { getOrgLocations } from '@/lib/locations'
 import Link from 'next/link'
+import { LocationTable } from '@/components/location-table'
 
 export const dynamic = 'force-dynamic'
 
@@ -100,70 +101,21 @@ export default async function OrgDashboard({ params }: { params: { orgSlug: stri
       </div>
 
       {/* Locations breakdown */}
-      <div className="border border-warm-border rounded-xl overflow-hidden">
-        <div className="px-5 py-4 border-b border-warm-border">
+      <div>
+        <div className="mb-4">
           <h2 className="text-sm font-semibold text-ink">Locations</h2>
         </div>
         {locationRows.length === 0 ? (
-          <div className="p-12 text-center text-warm-gray text-sm">
-            No locations yet.{' '}
-            <Link href={`${basePath}/locations/new`} className="text-ink underline hover:no-underline">
-              Add your first location
-            </Link>
+          <div className="border border-warm-border rounded-xl overflow-hidden">
+            <div className="p-12 text-center text-warm-gray text-sm">
+              No locations yet.{' '}
+              <Link href={`${basePath}/locations/new`} className="text-ink underline hover:no-underline">
+                Add your first location
+              </Link>
+            </div>
           </div>
         ) : (
-          <table className="w-full">
-            <thead>
-              <tr className="border-b border-warm-border">
-                {['Location', 'Category', 'Reviews', 'Avg Rating', 'Status', ''].map((h) => (
-                  <th key={h} className="text-left px-5 py-3 text-[11px] text-warm-gray uppercase tracking-wider font-medium">
-                    {h}
-                  </th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {locationRows.map(({ location: loc, reviews, avgRating: rating, synced, hasSource, category, gbpStatus }) => (
-                <tr key={loc.id} className="border-b border-warm-border/50 hover:bg-warm-light/50">
-                  <td className="px-5 py-3.5">
-                    <div className="text-sm font-medium text-ink">{loc.name}</div>
-                    {loc.city && loc.state && (
-                      <div className="text-xs text-warm-gray mt-0.5">{loc.city}, {loc.state}</div>
-                    )}
-                  </td>
-                  <td className="px-5 py-3.5 text-xs text-warm-gray">{category || '—'}</td>
-                  <td className="px-5 py-3.5 font-mono text-sm text-ink">{reviews}</td>
-                  <td className="px-5 py-3.5 font-mono text-sm text-ink">{rating}</td>
-                  <td className="px-5 py-3.5">
-                    {synced ? (
-                      <span className="inline-flex items-center gap-1.5 text-[10px] font-medium text-emerald-600">
-                        <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
-                        Synced
-                      </span>
-                    ) : (gbpStatus || hasSource) ? (
-                      <span className="inline-flex items-center gap-1.5 text-[10px] font-medium text-amber-600">
-                        <span className="w-1.5 h-1.5 rounded-full bg-amber-500" />
-                        Syncing
-                      </span>
-                    ) : (
-                      <span className="inline-flex items-center gap-1.5 text-[10px] text-warm-gray">
-                        <span className="w-1.5 h-1.5 rounded-full bg-warm-border" />
-                        Not connected
-                      </span>
-                    )}
-                  </td>
-                  <td className="px-5 py-3.5">
-                    <Link
-                      href={`${basePath}/locations/${loc.id}`}
-                      className="text-xs text-warm-gray hover:text-ink no-underline"
-                    >
-                      View
-                    </Link>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+          <LocationTable locations={locationRows} orgSlug={params.orgSlug} compact />
         )}
       </div>
     </div>
