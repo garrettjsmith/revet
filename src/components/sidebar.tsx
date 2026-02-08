@@ -140,7 +140,7 @@ export function Sidebar({ currentOrg, memberships, userEmail, isAgencyAdmin }: S
       {/* Settings + Agency + User */}
       <div className="border-t border-warm-border p-3 space-y-1">
         {isAgencyAdmin && (
-          <Link
+          <a
             href="/agency"
             className={`flex items-center gap-2.5 px-2 py-1.5 rounded-md text-sm no-underline transition-colors ${
               pathname.startsWith('/agency')
@@ -150,7 +150,7 @@ export function Sidebar({ currentOrg, memberships, userEmail, isAgencyAdmin }: S
           >
             <AgencyIcon className="w-4 h-4 shrink-0" />
             Agency
-          </Link>
+          </a>
         )}
         <Link
           href={`${basePath}/settings`}

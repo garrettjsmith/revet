@@ -1,5 +1,4 @@
 import { createAdminClient } from '@/lib/supabase/admin'
-import Link from 'next/link'
 
 export const dynamic = 'force-dynamic'
 
@@ -55,12 +54,12 @@ export default async function AgencyOverview() {
         <div className="bg-ink rounded-xl p-5">
           <div className="text-[11px] text-warm-gray uppercase tracking-wider mb-1">Quick Links</div>
           <div className="flex flex-col gap-1 mt-1">
-            <Link href="/agency/organizations" className="text-xs text-warm-gray hover:text-cream no-underline transition-colors">
+            <a href="/agency/organizations" className="text-xs text-warm-gray hover:text-cream no-underline transition-colors">
               Manage Orgs
-            </Link>
-            <Link href="/agency/integrations" className="text-xs text-warm-gray hover:text-cream no-underline transition-colors">
+            </a>
+            <a href="/agency/integrations" className="text-xs text-warm-gray hover:text-cream no-underline transition-colors">
               Integrations
-            </Link>
+            </a>
           </div>
         </div>
       </div>
@@ -69,16 +68,16 @@ export default async function AgencyOverview() {
       <div className="border border-warm-border rounded-xl overflow-hidden">
         <div className="px-5 py-4 border-b border-warm-border flex items-center justify-between">
           <h2 className="text-sm font-semibold text-ink">Organizations</h2>
-          <Link href="/agency/organizations" className="text-xs text-warm-gray hover:text-ink no-underline transition-colors">
+          <a href="/agency/organizations" className="text-xs text-warm-gray hover:text-ink no-underline transition-colors">
             View all
-          </Link>
+          </a>
         </div>
         {organizations.length === 0 ? (
           <div className="p-12 text-center text-warm-gray text-sm">
             No organizations yet.{' '}
-            <Link href="/admin/orgs/new" className="text-ink underline hover:no-underline">
+            <a href="/admin/orgs/new" className="text-ink underline hover:no-underline">
               Create your first
-            </Link>
+            </a>
           </div>
         ) : (
           <table className="w-full">
@@ -109,12 +108,12 @@ export default async function AgencyOverview() {
                     {org.website || '—'}
                   </td>
                   <td className="px-5 py-3.5">
-                    <Link
+                    <a
                       href={`/admin/${org.slug}`}
                       className="text-xs text-warm-gray hover:text-ink no-underline"
                     >
                       Manage
-                    </Link>
+                    </a>
                   </td>
                 </tr>
               ))}
