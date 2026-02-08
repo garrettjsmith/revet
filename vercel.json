@@ -1,13 +1,3 @@
 {
-  "framework": "nextjs",
-  "crons": [
-    {
-      "path": "/api/google/reviews/sync",
-      "schedule": "*/15 * * * *"
-    },
-    {
-      "path": "/api/google/performance/sync",
-      "schedule": "0 2 * * *"
-    }
-  ]
+  "framework": "nextjs"
 }
