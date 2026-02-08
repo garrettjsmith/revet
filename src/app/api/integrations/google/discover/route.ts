@@ -4,6 +4,9 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { discoverAllLocations } from '@/lib/google/accounts'
 import { GoogleAuthError } from '@/lib/google/auth'
 
+// Allow up to 60s for large accounts (600+ locations)
+export const maxDuration = 60
+
 /**
  * POST /api/integrations/google/discover
  *
