@@ -1,5 +1,6 @@
 import { createAdminClient } from '@/lib/supabase/admin'
 import Link from 'next/link'
+import { Suspense } from 'react'
 import type { AgencyIntegration, AgencyIntegrationMapping } from '@/lib/types'
 import { IntegrationStatusBanner } from './status-banner'
 
@@ -88,7 +89,9 @@ export default async function AgencyIntegrationsPage() {
 
   return (
     <div>
-      <IntegrationStatusBanner />
+      <Suspense fallback={null}>
+        <IntegrationStatusBanner />
+      </Suspense>
 
       <div className="flex items-center justify-between mb-8">
         <div>
@@ -107,6 +110,7 @@ export default async function AgencyIntegrationsPage() {
         {PROVIDERS.map((provider) => {
           const integration = integrationByProvider[provider.id]
           const isConnected = integration?.status === 'connected'
+          const isError = integration?.status === 'error'
           const integrationMappings = integration ? (mappingsByIntegration[integration.id] || []) : []
 
           return (
@@ -128,6 +132,11 @@ export default async function AgencyIntegrationsPage() {
                           <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
                           Connected
                         </span>
+                      ) : isError ? (
+                        <span className="inline-flex items-center gap-1 text-[10px] text-amber-600 font-medium">
+                          <span className="w-1.5 h-1.5 rounded-full bg-amber-500" />
+                          Reconnect needed
+                        </span>
                       ) : (
                         <span className="inline-flex items-center gap-1 text-[10px] text-warm-gray">
                           <span className="w-1.5 h-1.5 rounded-full bg-warm-border" />
@@ -136,21 +145,14 @@ export default async function AgencyIntegrationsPage() {
                       )}
                     </div>
                     <p className="text-xs text-warm-gray mt-0.5">{provider.description}</p>
-                    {isConnected && integration.account_email && (
-                      <p className="text-xs text-ink font-mono mt-1">{integration.account_email}</p>
+                    {(isConnected || isError) && integration!.account_email && (
+                      <p className="text-xs text-ink font-mono mt-1">{integration!.account_email}</p>
                     )}
                   </div>
                 </div>
                 <div className="flex items-center gap-2">
-                  {isConnected && integration?.status === 'error' && provider.id === 'google' && (
-                    <a
-                      href="/api/integrations/google/connect"
-                      className="px-4 py-2 bg-amber-600 hover:bg-amber-700 text-white text-xs font-medium rounded-full transition-colors"
-                    >
-                      Reconnect
-                    </a>
-                  )}
-                  {isConnected && integration?.status === 'connected' ? (
+                  {isConnected ? (
+                    /* Connected state — manage mappings + disconnect */
                     <>
                       {provider.id === 'google' && (
                         <Link
@@ -178,23 +180,31 @@ export default async function AgencyIntegrationsPage() {
                         </button>
                       )}
                     </>
+                  ) : isError && provider.id === 'google' ? (
+                    /* Error state — reconnect button */
+                    <a
+                      href="/api/integrations/google/connect"
+                      className="px-5 py-2 bg-amber-600 hover:bg-amber-700 text-white text-xs font-medium rounded-full transition-colors"
+                    >
+                      Reconnect Google
+                    </a>
+                  ) : provider.id === 'google' ? (
+                    /* Not connected — live connect button for Google */
+                    <a
+                      href="/api/integrations/google/connect"
+                      className="px-5 py-2 bg-ink hover:bg-ink/90 text-cream text-xs font-medium rounded-full transition-colors"
+                    >
+                      Connect Google
+                    </a>
                   ) : (
-                    provider.id === 'google' ? (
-                      <a
-                        href="/api/integrations/google/connect"
-                        className="px-5 py-2 bg-ink hover:bg-ink/90 text-cream text-xs font-medium rounded-full transition-colors"
-                      >
-                        Connect Google
-                      </a>
-                    ) : (
-                      <button
-                        className="px-5 py-2 bg-ink text-cream text-xs font-medium rounded-full cursor-not-allowed opacity-50"
-                        disabled
-                        title="Coming soon"
-                      >
-                        Connect {provider.name}
-                      </button>
-                    )
+                    /* Not connected — disabled for other providers */
+                    <button
+                      className="px-5 py-2 bg-ink text-cream text-xs font-medium rounded-full cursor-not-allowed opacity-50"
+                      disabled
+                      title="Coming soon"
+                    >
+                      Connect {provider.name}
+                    </button>
                   )}
                 </div>
               </div>
