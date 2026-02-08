@@ -42,10 +42,17 @@ export function Sidebar({ currentOrg, memberships, userEmail, isAgencyAdmin }: S
         { href: `${basePath}/forms`, label: 'Forms', icon: FormIcon },
       ],
     },
-    // Future tool groups:
-    // { label: 'Rankings', items: [...] },
-    // { label: 'Listings', items: [...] },
-    // { label: 'Links', items: [...] },
+    ...(isAgencyAdmin
+      ? [
+          {
+            label: 'Agency',
+            items: [
+              { href: '/agency/integrations', label: 'Integrations', icon: IntegrationsIcon },
+              { href: '/agency/organizations', label: 'Organizations', icon: AgencyIcon },
+            ],
+          },
+        ]
+      : []),
   ]
 
   const isActive = (href: string) => {
@@ -137,21 +144,8 @@ export function Sidebar({ currentOrg, memberships, userEmail, isAgencyAdmin }: S
         ))}
       </nav>
 
-      {/* Settings + Agency + User */}
+      {/* Settings + User */}
       <div className="border-t border-warm-border p-3 space-y-1">
-        {isAgencyAdmin && (
-          <a
-            href="/agency"
-            className={`flex items-center gap-2.5 px-2 py-1.5 rounded-md text-sm no-underline transition-colors ${
-              pathname.startsWith('/agency')
-                ? 'bg-warm-light text-ink font-medium'
-                : 'text-warm-gray hover:text-ink hover:bg-warm-light/50'
-            }`}
-          >
-            <AgencyIcon className="w-4 h-4 shrink-0" />
-            Agency
-          </a>
-        )}
         <Link
           href={`${basePath}/settings`}
           className={`flex items-center gap-2.5 px-2 py-1.5 rounded-md text-sm no-underline transition-colors ${
@@ -232,6 +226,16 @@ function FormIcon({ className }: { className?: string }) {
       <line x1="16" y1="13" x2="8" y2="13" />
       <line x1="16" y1="17" x2="8" y2="17" />
       <polyline points="10 9 9 9 8 9" />
+    </svg>
+  )
+}
+
+function IntegrationsIcon({ className }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" />
+      <polyline points="15 3 21 3 21 9" />
+      <line x1="10" y1="14" x2="21" y2="3" />
     </svg>
   )
 }

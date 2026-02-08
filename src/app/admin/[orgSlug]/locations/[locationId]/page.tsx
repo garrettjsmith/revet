@@ -24,14 +24,8 @@ export default async function LocationDetailPage({
   if (!location) notFound()
 
   const supabase = createServerSupabase()
+  const adminClient = createAdminClient()
   const basePath = `/admin/${params.orgSlug}/locations/${params.locationId}`
-
-  // Get profile stats for this location
-  const { data: stats } = await supabase
-    .from('profile_stats')
-    .select('*')
-    .eq('location_id', location.id)
-    .returns<ProfileStats[]>()
 
   // Get forms for this location
   const { data: forms } = await supabase
@@ -42,8 +36,8 @@ export default async function LocationDetailPage({
 
   const formList = (forms || []) as FormTemplate[]
 
-  // Get recent reviews for this location
-  const { data: recentReviews } = await supabase
+  // Get recent reviews for this location (use admin client to bypass RLS)
+  const { data: recentReviews } = await adminClient
     .from('reviews')
     .select('*')
     .eq('location_id', location.id)
@@ -52,19 +46,26 @@ export default async function LocationDetailPage({
 
   const reviewList = (recentReviews || []) as Review[]
 
-  const { count: reviewCount } = await supabase
+  const { count: reviewCount } = await adminClient
     .from('reviews')
     .select('*', { count: 'exact', head: true })
     .eq('location_id', location.id)
 
-  const { count: unreadReviewCount } = await supabase
+  const { count: unreadReviewCount } = await adminClient
     .from('reviews')
     .select('*', { count: 'exact', head: true })
     .eq('location_id', location.id)
     .eq('status', 'new')
 
+  // Get review source for stats
+  const { data: reviewSource } = await adminClient
+    .from('review_sources')
+    .select('total_review_count, average_rating, sync_status, last_synced_at')
+    .eq('location_id', location.id)
+    .eq('platform', 'google')
+    .single()
+
   // Get GBP profile summary
-  const adminClient = createAdminClient()
   const { data: gbpProfile } = await adminClient
     .from('gbp_profiles')
     .select('business_name, primary_category_name, open_status, sync_status, last_synced_at, maps_uri')
@@ -73,23 +74,20 @@ export default async function LocationDetailPage({
 
   const gbp = gbpProfile as Pick<GBPProfile, 'business_name' | 'primary_category_name' | 'open_status' | 'sync_status' | 'last_synced_at' | 'maps_uri'> | null
 
+  // Get review funnel stats
+  const { data: stats } = await supabase
+    .from('profile_stats')
+    .select('*')
+    .eq('location_id', location.id)
+    .returns<ProfileStats[]>()
+
   const profiles = stats || []
 
-  const totals = profiles.reduce(
-    (acc, p) => ({
-      views: acc.views + (p.total_views || 0),
-      ratings: acc.ratings + (p.total_ratings || 0),
-      google: acc.google + (p.google_clicks || 0),
-      email: acc.email + (p.email_clicks || 0),
-    }),
-    { views: 0, ratings: 0, google: 0, email: 0 }
-  )
-
   const statCards = [
-    { label: 'Page Views', value: totals.views },
-    { label: 'Ratings', value: totals.ratings },
-    { label: 'Google Reviews', value: totals.google },
-    { label: 'Manager Emails', value: totals.email },
+    { label: 'Reviews', value: reviewCount || 0 },
+    { label: 'Avg Rating', value: reviewSource?.average_rating ? Number(reviewSource.average_rating).toFixed(1) : '—' },
+    { label: 'Unread', value: unreadReviewCount || 0 },
+    { label: 'GBP Status', value: gbp ? (gbp.open_status === 'OPEN' ? 'Open' : gbp.open_status || '—') : 'Not linked' },
   ]
 
   return (
@@ -165,13 +163,13 @@ export default async function LocationDetailPage({
               </span>
               {gbp.primary_category_name && (
                 <>
-                  <span className="text-warm-border">·</span>
+                  <span className="text-warm-border">&middot;</span>
                   <span className="text-xs text-warm-gray">{gbp.primary_category_name}</span>
                 </>
               )}
               {gbp.last_synced_at && (
                 <>
-                  <span className="text-warm-border">·</span>
+                  <span className="text-warm-border">&middot;</span>
                   <span className="text-xs text-warm-gray">
                     Synced {new Date(gbp.last_synced_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
                   </span>
@@ -192,9 +190,9 @@ export default async function LocationDetailPage({
         ) : (
           <div className="p-12 text-center text-warm-gray text-sm">
             No GBP profile linked.{' '}
-            <a href="/agency/integrations" className="text-ink underline hover:no-underline">
+            <Link href="/agency/integrations" className="text-ink underline hover:no-underline">
               Connect via integrations
-            </a>
+            </Link>
           </div>
         )}
       </div>
@@ -210,7 +208,17 @@ export default async function LocationDetailPage({
               </span>
             )}
           </div>
-          <span className="text-xs text-warm-gray">{reviewCount || 0} total</span>
+          <div className="flex items-center gap-3">
+            <span className="text-xs text-warm-gray">{reviewCount || 0} total</span>
+            {(reviewCount || 0) > 0 && (
+              <Link
+                href={`${basePath}/reviews`}
+                className="text-xs text-warm-gray hover:text-ink no-underline transition-colors"
+              >
+                View all
+              </Link>
+            )}
+          </div>
         </div>
         {reviewList.length === 0 ? (
           <div className="p-12 text-center text-warm-gray text-sm">

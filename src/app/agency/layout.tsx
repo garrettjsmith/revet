@@ -1,6 +1,7 @@
 import { createServerSupabase } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
-import { AgencyNav } from './nav'
+import { Sidebar } from '@/components/sidebar'
+import type { Organization, OrgMember } from '@/lib/types'
 
 export const dynamic = 'force-dynamic'
 
@@ -14,35 +15,35 @@ export default async function AgencyLayout({
 
   if (!user) redirect('/admin/login')
 
-  // Check agency admin status
-  const { data: adminMembership } = await supabase
+  // Get all user memberships for the sidebar
+  const { data: memberships } = await supabase
     .from('org_members')
-    .select('is_agency_admin')
+    .select('*, organizations(*)')
     .eq('user_id', user.id)
-    .eq('is_agency_admin', true)
-    .limit(1)
+    .order('created_at')
 
-  if (!adminMembership || adminMembership.length === 0) {
-    redirect('/admin')
-  }
+  const allMemberships = (memberships || []).map((m: any) => ({
+    ...m,
+    org: m.organizations as Organization,
+  })) as (OrgMember & { org: Organization })[]
+
+  // Must be agency admin
+  const isAgencyAdmin = allMemberships.some((m) => m.is_agency_admin)
+  if (!isAgencyAdmin) redirect('/admin')
+
+  // Use first org as the "current" for sidebar context
+  const currentOrg = allMemberships[0]?.org
+  if (!currentOrg) redirect('/admin')
 
   return (
-    <div className="min-h-screen bg-cream">
-      <header className="border-b border-warm-border bg-ink">
-        <div className="max-w-7xl mx-auto px-6 py-3 flex items-center justify-between">
-          <div className="flex items-center gap-6">
-            <span className="text-sm font-bold text-cream font-mono">AGENCY</span>
-            <AgencyNav />
-          </div>
-          <a
-            href="/admin"
-            className="text-xs text-warm-gray hover:text-cream no-underline transition-colors"
-          >
-            Back to Admin
-          </a>
-        </div>
-      </header>
-      <main className="max-w-7xl mx-auto px-6 py-8">
+    <div className="flex min-h-screen">
+      <Sidebar
+        currentOrg={currentOrg}
+        memberships={allMemberships}
+        userEmail={user.email || ''}
+        isAgencyAdmin={true}
+      />
+      <main className="flex-1 p-8 max-w-6xl">
         {children}
       </main>
     </div>
