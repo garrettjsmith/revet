@@ -1,9 +1,10 @@
 import { createServerSupabase } from '@/lib/supabase/server'
+import { createAdminClient } from '@/lib/supabase/admin'
 import { getOrgBySlug } from '@/lib/org'
 import { getLocation } from '@/lib/locations'
 import { notFound } from 'next/navigation'
 import Link from 'next/link'
-import type { ProfileStats, FormTemplate, Review } from '@/lib/types'
+import type { ProfileStats, FormTemplate, Review, GBPProfile } from '@/lib/types'
 
 export const dynamic = 'force-dynamic'
 
@@ -61,6 +62,16 @@ export default async function LocationDetailPage({
     .select('*', { count: 'exact', head: true })
     .eq('location_id', location.id)
     .eq('status', 'new')
+
+  // Get GBP profile summary
+  const adminClient = createAdminClient()
+  const { data: gbpProfile } = await adminClient
+    .from('gbp_profiles')
+    .select('business_name, primary_category_name, open_status, sync_status, last_synced_at, maps_uri')
+    .eq('location_id', location.id)
+    .single()
+
+  const gbp = gbpProfile as Pick<GBPProfile, 'business_name' | 'primary_category_name' | 'open_status' | 'sync_status' | 'last_synced_at' | 'maps_uri'> | null
 
   const profiles = stats || []
 
@@ -128,6 +139,103 @@ export default async function LocationDetailPage({
             <div className="text-2xl font-bold font-mono text-cream">{s.value}</div>
           </div>
         ))}
+      </div>
+
+      {/* Google Business Profile */}
+      <div className="border border-warm-border rounded-xl overflow-hidden mb-8">
+        <div className="px-5 py-4 border-b border-warm-border flex items-center justify-between">
+          <h2 className="text-sm font-semibold text-ink">Google Business Profile</h2>
+          <Link
+            href={`${basePath}/gbp-profile`}
+            className="text-xs text-warm-gray hover:text-ink no-underline transition-colors"
+          >
+            View full profile
+          </Link>
+        </div>
+        {gbp ? (
+          <div className="px-5 py-4 flex items-center justify-between">
+            <div className="flex items-center gap-4">
+              <span className={`inline-flex items-center gap-1.5 text-xs font-medium ${
+                gbp.open_status === 'OPEN' ? 'text-emerald-600' : 'text-amber-600'
+              }`}>
+                <span className={`w-1.5 h-1.5 rounded-full ${
+                  gbp.open_status === 'OPEN' ? 'bg-emerald-500' : 'bg-amber-500'
+                }`} />
+                {gbp.open_status === 'OPEN' ? 'Open' : gbp.open_status === 'CLOSED_TEMPORARILY' ? 'Temporarily Closed' : gbp.open_status || 'Unknown'}
+              </span>
+              {gbp.primary_category_name && (
+                <>
+                  <span className="text-warm-border">·</span>
+                  <span className="text-xs text-warm-gray">{gbp.primary_category_name}</span>
+                </>
+              )}
+              {gbp.last_synced_at && (
+                <>
+                  <span className="text-warm-border">·</span>
+                  <span className="text-xs text-warm-gray">
+                    Synced {new Date(gbp.last_synced_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+                  </span>
+                </>
+              )}
+            </div>
+            {gbp.maps_uri && (
+              <a
+                href={gbp.maps_uri}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-xs text-warm-gray hover:text-ink no-underline transition-colors"
+              >
+                Maps →
+              </a>
+            )}
+          </div>
+        ) : (
+          <div className="p-12 text-center text-warm-gray text-sm">
+            No GBP profile linked.{' '}
+            <a href="/agency/integrations" className="text-ink underline hover:no-underline">
+              Connect via integrations
+            </a>
+          </div>
+        )}
+      </div>
+
+      {/* Reviews */}
+      <div className="border border-warm-border rounded-xl overflow-hidden mb-8">
+        <div className="px-5 py-4 border-b border-warm-border flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <h2 className="text-sm font-semibold text-ink">Reviews</h2>
+            {(unreadReviewCount || 0) > 0 && (
+              <span className="text-[10px] font-medium text-amber-600 bg-amber-50 px-2 py-0.5 rounded-full">
+                {unreadReviewCount} new
+              </span>
+            )}
+          </div>
+          <span className="text-xs text-warm-gray">{reviewCount || 0} total</span>
+        </div>
+        {reviewList.length === 0 ? (
+          <div className="p-12 text-center text-warm-gray text-sm">
+            No reviews yet. Reviews sync automatically from Google.
+          </div>
+        ) : (
+          <div className="divide-y divide-warm-border/50">
+            {reviewList.map((r) => (
+              <div key={r.id} className="px-5 py-3.5 hover:bg-warm-light/50">
+                <div className="flex items-center justify-between mb-1">
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs font-medium text-ink">{r.reviewer_name || 'Anonymous'}</span>
+                    <span className="text-xs text-amber-500">{'★'.repeat(r.rating || 0)}<span className="text-warm-border">{'★'.repeat(5 - (r.rating || 0))}</span></span>
+                  </div>
+                  <span className="text-[10px] text-warm-gray">
+                    {r.published_at ? new Date(r.published_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : ''}
+                  </span>
+                </div>
+                {r.body && (
+                  <p className="text-xs text-warm-gray line-clamp-2">{r.body}</p>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
       </div>
 
       {/* Forms section */}
