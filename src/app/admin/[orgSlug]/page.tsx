@@ -1,50 +1,80 @@
-import { createServerSupabase } from '@/lib/supabase/server'
+import { createAdminClient } from '@/lib/supabase/admin'
 import { getOrgBySlug } from '@/lib/org'
 import { getOrgLocations } from '@/lib/locations'
 import Link from 'next/link'
-import type { ProfileStats } from '@/lib/types'
 
 export const dynamic = 'force-dynamic'
 
 export default async function OrgDashboard({ params }: { params: { orgSlug: string } }) {
   const org = await getOrgBySlug(params.orgSlug)
-  const supabase = createServerSupabase()
   const locations = await getOrgLocations(org.id)
+  const adminClient = createAdminClient()
 
-  const { data: stats } = await supabase
-    .from('profile_stats')
-    .select('*')
-    .eq('org_id', org.id)
-    .returns<ProfileStats[]>()
+  const locationIds = locations.map((l) => l.id)
 
-  const profiles = stats || []
+  // Get real review data from review_sources
+  const { data: reviewSources } = locationIds.length > 0
+    ? await adminClient
+        .from('review_sources')
+        .select('location_id, total_review_count, average_rating, sync_status, last_synced_at')
+        .in('location_id', locationIds)
+        .eq('platform', 'google')
+    : { data: [] }
 
-  const totals = profiles.reduce(
-    (acc, p) => ({
-      views: acc.views + (p.total_views || 0),
-      ratings: acc.ratings + (p.total_ratings || 0),
-      google: acc.google + (p.google_clicks || 0),
-      email: acc.email + (p.email_clicks || 0),
-    }),
-    { views: 0, ratings: 0, google: 0, email: 0 }
-  )
+  // Get GBP profiles for sync status
+  const { data: gbpProfiles } = locationIds.length > 0
+    ? await adminClient
+        .from('gbp_profiles')
+        .select('location_id, primary_category_name, open_status, sync_status')
+        .in('location_id', locationIds)
+    : { data: [] }
+
+  // Get review counts
+  const { count: totalReviews } = locationIds.length > 0
+    ? await adminClient
+        .from('reviews')
+        .select('*', { count: 'exact', head: true })
+        .in('location_id', locationIds)
+    : { count: 0 }
+
+  const { count: unreadReviews } = locationIds.length > 0
+    ? await adminClient
+        .from('reviews')
+        .select('*', { count: 'exact', head: true })
+        .in('location_id', locationIds)
+        .eq('status', 'new')
+    : { count: 0 }
+
+  const sources = reviewSources || []
+  const profiles = gbpProfiles || []
+
+  // Compute avg rating across all locations
+  const ratingsWithData = sources.filter((s) => s.average_rating != null)
+  const avgRating = ratingsWithData.length > 0
+    ? ratingsWithData.reduce((sum, s) => sum + Number(s.average_rating), 0) / ratingsWithData.length
+    : null
 
   const statCards = [
-    { label: 'Total Page Views', value: totals.views },
-    { label: 'Ratings Submitted', value: totals.ratings },
-    { label: 'Google Reviews', value: totals.google },
-    { label: 'Manager Emails', value: totals.email },
+    { label: 'Reviews', value: totalReviews || 0 },
+    { label: 'Avg Rating', value: avgRating ? avgRating.toFixed(1) : '—' },
+    { label: 'Unread', value: unreadReviews || 0 },
+    { label: 'Locations', value: locations.length },
   ]
 
-  // Group stats by location for the breakdown
-  const locationStats = locations.map((loc) => {
-    const locProfiles = profiles.filter((p) => p.location_id === loc.id)
+  // Build per-location stats
+  const sourceByLocation = new Map(sources.map((s) => [s.location_id, s]))
+  const profileByLocation = new Map(profiles.map((p) => [p.location_id, p]))
+
+  const locationRows = locations.map((loc) => {
+    const source = sourceByLocation.get(loc.id)
+    const profile = profileByLocation.get(loc.id)
     return {
       location: loc,
-      views7d: locProfiles.reduce((sum, p) => sum + (p.views_7d || 0), 0),
-      google7d: locProfiles.reduce((sum, p) => sum + (p.google_clicks_7d || 0), 0),
-      emails7d: locProfiles.reduce((sum, p) => sum + (p.email_clicks_7d || 0), 0),
-      funnelCount: locProfiles.length,
+      reviews: source?.total_review_count || 0,
+      avgRating: source?.average_rating ? Number(source.average_rating).toFixed(1) : '—',
+      synced: source?.sync_status === 'active',
+      category: profile?.primary_category_name || null,
+      gbpStatus: profile?.open_status || null,
     }
   })
 
@@ -77,7 +107,7 @@ export default async function OrgDashboard({ params }: { params: { orgSlug: stri
         <div className="px-5 py-4 border-b border-warm-border">
           <h2 className="text-sm font-semibold text-ink">Locations</h2>
         </div>
-        {locationStats.length === 0 ? (
+        {locationRows.length === 0 ? (
           <div className="p-12 text-center text-warm-gray text-sm">
             No locations yet.{' '}
             <Link href={`${basePath}/locations/new`} className="text-ink underline hover:no-underline">
@@ -88,7 +118,7 @@ export default async function OrgDashboard({ params }: { params: { orgSlug: stri
           <table className="w-full">
             <thead>
               <tr className="border-b border-warm-border">
-                {['Location', 'Type', 'Funnels', 'Views (7d)', 'Google (7d)', 'Emails (7d)', ''].map((h) => (
+                {['Location', 'Category', 'Reviews', 'Avg Rating', 'Status', ''].map((h) => (
                   <th key={h} className="text-left px-5 py-3 text-[11px] text-warm-gray uppercase tracking-wider font-medium">
                     {h}
                   </th>
@@ -96,7 +126,7 @@ export default async function OrgDashboard({ params }: { params: { orgSlug: stri
               </tr>
             </thead>
             <tbody>
-              {locationStats.map(({ location: loc, views7d, google7d, emails7d, funnelCount }) => (
+              {locationRows.map(({ location: loc, reviews, avgRating: rating, synced, category, gbpStatus }) => (
                 <tr key={loc.id} className="border-b border-warm-border/50 hover:bg-warm-light/50">
                   <td className="px-5 py-3.5">
                     <div className="text-sm font-medium text-ink">{loc.name}</div>
@@ -104,11 +134,27 @@ export default async function OrgDashboard({ params }: { params: { orgSlug: stri
                       <div className="text-xs text-warm-gray mt-0.5">{loc.city}, {loc.state}</div>
                     )}
                   </td>
-                  <td className="px-5 py-3.5 text-xs text-warm-gray capitalize">{loc.type.replace('_', ' ')}</td>
-                  <td className="px-5 py-3.5 font-mono text-sm text-ink">{funnelCount}</td>
-                  <td className="px-5 py-3.5 font-mono text-sm text-ink">{views7d}</td>
-                  <td className="px-5 py-3.5 font-mono text-sm text-ink">{google7d}</td>
-                  <td className="px-5 py-3.5 font-mono text-sm text-ink">{emails7d}</td>
+                  <td className="px-5 py-3.5 text-xs text-warm-gray">{category || '—'}</td>
+                  <td className="px-5 py-3.5 font-mono text-sm text-ink">{reviews}</td>
+                  <td className="px-5 py-3.5 font-mono text-sm text-ink">{rating}</td>
+                  <td className="px-5 py-3.5">
+                    {synced ? (
+                      <span className="inline-flex items-center gap-1.5 text-[10px] font-medium text-emerald-600">
+                        <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
+                        Synced
+                      </span>
+                    ) : gbpStatus ? (
+                      <span className="inline-flex items-center gap-1.5 text-[10px] font-medium text-amber-600">
+                        <span className="w-1.5 h-1.5 rounded-full bg-amber-500" />
+                        Pending
+                      </span>
+                    ) : (
+                      <span className="inline-flex items-center gap-1.5 text-[10px] text-warm-gray">
+                        <span className="w-1.5 h-1.5 rounded-full bg-warm-border" />
+                        Not connected
+                      </span>
+                    )}
+                  </td>
                   <td className="px-5 py-3.5">
                     <Link
                       href={`${basePath}/locations/${loc.id}`}
