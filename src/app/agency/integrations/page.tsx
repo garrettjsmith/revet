@@ -4,6 +4,7 @@ import { Suspense } from 'react'
 import type { AgencyIntegration, AgencyIntegrationMapping } from '@/lib/types'
 import { IntegrationStatusBanner } from './status-banner'
 import { MappingsTable } from './mappings-table'
+import { SyncButton } from './sync-button'
 
 export const dynamic = 'force-dynamic'
 
@@ -153,15 +154,19 @@ export default async function AgencyIntegrationsPage() {
                 </div>
                 <div className="flex items-center gap-2">
                   {isConnected ? (
-                    /* Connected state — manage mappings + disconnect */
+                    /* Connected state — sync + manage mappings + disconnect */
                     <>
                       {provider.id === 'google' && (
-                        <Link
-                          href="/agency/integrations/google/setup"
-                          className="px-4 py-2 border border-warm-border text-ink text-xs rounded-full hover:bg-warm-light transition-colors"
-                        >
-                          Manage Mappings
-                        </Link>
+                        <>
+                          <SyncButton endpoint="/api/google/profiles/sync" label="Sync Profiles" />
+                          <SyncButton endpoint="/api/google/reviews/sync" label="Sync Reviews" />
+                          <Link
+                            href="/agency/integrations/google/setup"
+                            className="px-4 py-2 border border-warm-border text-ink text-xs rounded-full hover:bg-warm-light transition-colors"
+                          >
+                            Manage Mappings
+                          </Link>
+                        </>
                       )}
                       {provider.id === 'google' ? (
                         <form action="/api/integrations/google/disconnect" method="POST">
