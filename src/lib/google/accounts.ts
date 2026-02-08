@@ -88,32 +88,40 @@ export async function listGBPLocations(accountName: string): Promise<GBPLocation
 /**
  * Discover all GBP accounts and their locations.
  * Returns a flat list of locations with their parent account info.
+ * Fetches accounts in parallel for speed (important for 600+ location accounts).
  */
 export async function discoverAllLocations(): Promise<{
   accounts: GBPAccount[]
   locations: Array<GBPLocation & { accountName: string; accountDisplayName: string }>
 }> {
   const accounts = await listGBPAccounts()
-  const allLocations: Array<GBPLocation & { accountName: string; accountDisplayName: string }> = []
+  console.log(`[google/accounts] Found ${accounts.length} accounts, fetching locations...`)
 
-  for (const account of accounts) {
-    // Skip USER_GROUP accounts — they don't have locations
-    if (account.type === 'USER_GROUP') continue
+  const fetchable = accounts.filter((a) => a.type !== 'USER_GROUP')
 
-    try {
+  // Fetch locations for all accounts in parallel
+  const results = await Promise.allSettled(
+    fetchable.map(async (account) => {
       const locations = await listGBPLocations(account.name)
-      for (const loc of locations) {
-        allLocations.push({
-          ...loc,
-          accountName: account.name,
-          accountDisplayName: account.accountName,
-        })
-      }
-    } catch (err) {
-      // Some accounts may not have location access — continue with others
-      console.error(`[google/accounts] Failed to list locations for ${account.name}:`, err)
+      console.log(`[google/accounts] ${account.accountName}: ${locations.length} locations`)
+      return locations.map((loc) => ({
+        ...loc,
+        accountName: account.name,
+        accountDisplayName: account.accountName,
+      }))
+    })
+  )
+
+  const allLocations: Array<GBPLocation & { accountName: string; accountDisplayName: string }> = []
+  for (let i = 0; i < results.length; i++) {
+    const result = results[i]
+    if (result.status === 'fulfilled') {
+      allLocations.push(...result.value)
+    } else {
+      console.error(`[google/accounts] Failed to list locations for ${fetchable[i].name}:`, result.reason)
     }
   }
 
+  console.log(`[google/accounts] Total: ${allLocations.length} locations across ${fetchable.length} accounts`)
   return { accounts, locations: allLocations }
 }
