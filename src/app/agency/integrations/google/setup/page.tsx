@@ -38,7 +38,6 @@ export default function GoogleSetupPage() {
   const [stateFilter, setStateFilter] = useState<string>('all')
   const [cityFilter, setCityFilter] = useState<string>('all')
   const [errorMsg, setErrorMsg] = useState('')
-  const [debugInfo, setDebugInfo] = useState<Record<string, unknown> | null>(null)
   const [saveResults, setSaveResults] = useState<{ mapped: number; errors: number } | null>(null)
   const [savingProgress, setSavingProgress] = useState({ current: 0, total: 0 })
 
@@ -61,7 +60,6 @@ export default function GoogleSetupPage() {
           const status = await statusRes.json()
           if (!status.connected) {
             setErrorMsg(status.error || 'Google is not connected. Please connect first.')
-            setDebugInfo(status.debug || null)
             setStep('disconnected')
             return
           }
@@ -287,18 +285,13 @@ export default function GoogleSetupPage() {
       {/* Disconnected — needs reconnect */}
       {step === 'disconnected' && (
         <div className="border border-amber-200 bg-amber-50 rounded-xl p-6">
-          <p className="text-sm text-amber-800 mb-2 font-medium">Google connection unavailable</p>
+          <p className="text-sm text-amber-800 mb-2 font-medium">Google connection expired</p>
           <p className="text-xs text-amber-700 mb-4">
             {errorMsg || 'Your Google connection needs to be re-established.'}
           </p>
-          {debugInfo && (
-            <details className="mb-4">
-              <summary className="text-[10px] text-amber-600 cursor-pointer">Debug info</summary>
-              <pre className="text-[10px] text-amber-600 font-mono mt-1 whitespace-pre-wrap break-all">
-                {JSON.stringify(debugInfo, null, 2)}
-              </pre>
-            </details>
-          )}
+          <p className="text-xs text-amber-600 mb-4">
+            If your Google Cloud app is in &quot;Testing&quot; mode, tokens expire after 7 days. Publish it to &quot;Production&quot; in the Google Cloud Console for long-lived tokens.
+          </p>
           <div className="flex items-center justify-center gap-3">
             <a href="/api/integrations/google/connect" className="px-5 py-2 bg-amber-600 hover:bg-amber-700 text-white text-xs font-medium rounded-full transition-colors">
               Reconnect Google
