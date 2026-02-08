@@ -80,11 +80,19 @@ export default async function LocationDetailPage({
   const gbp = gbpProfile as Pick<GBPProfile, 'business_name' | 'primary_category_name' | 'open_status' | 'sync_status' | 'last_synced_at' | 'maps_uri'> | null
   const profiles = stats || []
 
+  // Determine GBP connection status: profile row > review source > not connected
+  const isGbpConnected = !!(gbp || reviewSource)
+  const gbpStatusValue = gbp
+    ? (gbp.open_status === 'OPEN' ? 'Open' : gbp.open_status || 'Connected')
+    : reviewSource
+    ? (reviewSource.sync_status === 'active' ? 'Synced' : 'Syncing')
+    : 'Not linked'
+
   const statCards = [
     { label: 'Reviews', value: reviewCount || 0 },
     { label: 'Avg Rating', value: reviewSource?.average_rating ? Number(reviewSource.average_rating).toFixed(1) : '—' },
     { label: 'Unread', value: unreadReviewCount || 0 },
-    { label: 'GBP Status', value: gbp ? (gbp.open_status === 'OPEN' ? 'Open' : gbp.open_status || '—') : 'Not linked' },
+    { label: 'GBP Status', value: gbpStatusValue },
   ]
 
   return (
@@ -183,6 +191,30 @@ export default async function LocationDetailPage({
                 Maps →
               </a>
             )}
+          </div>
+        ) : reviewSource ? (
+          <div className="px-5 py-4 flex items-center justify-between">
+            <div className="flex items-center gap-4">
+              <span className="inline-flex items-center gap-1.5 text-xs font-medium text-emerald-600">
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
+                Connected
+              </span>
+              <span className="text-warm-border">&middot;</span>
+              <span className="text-xs text-warm-gray">
+                {reviewSource.total_review_count || 0} reviews synced
+              </span>
+              {reviewSource.last_synced_at && (
+                <>
+                  <span className="text-warm-border">&middot;</span>
+                  <span className="text-xs text-warm-gray">
+                    Last sync {new Date(reviewSource.last_synced_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+                  </span>
+                </>
+              )}
+            </div>
+            <span className="text-[10px] text-warm-gray">
+              Profile data syncs on next cycle
+            </span>
           </div>
         ) : (
           <div className="p-12 text-center text-warm-gray text-sm">
