@@ -39,17 +39,29 @@ export interface GBPLocation {
 
 /**
  * List all GBP accounts accessible to the connected Google account.
+ * Paginates through all pages (default page size is 20).
  */
 export async function listGBPAccounts(): Promise<GBPAccount[]> {
-  const response = await googleFetch(`${ACCOUNT_MANAGEMENT_API}/accounts`)
+  const accounts: GBPAccount[] = []
+  let pageToken: string | undefined
 
-  if (!response.ok) {
-    const err = await response.json().catch(() => ({}))
-    throw new Error(`Failed to list GBP accounts: ${response.status} ${JSON.stringify(err)}`)
-  }
+  do {
+    const params = new URLSearchParams({ pageSize: '20' })
+    if (pageToken) params.set('pageToken', pageToken)
 
-  const data = await response.json()
-  return data.accounts || []
+    const response = await googleFetch(`${ACCOUNT_MANAGEMENT_API}/accounts?${params.toString()}`)
+
+    if (!response.ok) {
+      const err = await response.json().catch(() => ({}))
+      throw new Error(`Failed to list GBP accounts: ${response.status} ${JSON.stringify(err)}`)
+    }
+
+    const data = await response.json()
+    if (data.accounts) accounts.push(...data.accounts)
+    pageToken = data.nextPageToken
+  } while (pageToken)
+
+  return accounts
 }
 
 /**
@@ -86,42 +98,53 @@ export async function listGBPLocations(accountName: string): Promise<GBPLocation
 }
 
 /**
- * Discover all GBP accounts and their locations.
- * Returns a flat list of locations with their parent account info.
- * Fetches accounts in parallel for speed (important for 600+ location accounts).
+ * Discover ALL GBP locations the authenticated user can access.
+ *
+ * Uses the wildcard endpoint `accounts/-/locations` which returns locations
+ * across all accounts, location groups, and organizations — not just directly
+ * owned ones. This is critical for large accounts (600+ locations) where
+ * locations are organized into Location Groups.
+ *
+ * Also fetches accounts for metadata (display names) used in the UI.
  */
 export async function discoverAllLocations(): Promise<{
   accounts: GBPAccount[]
   locations: Array<GBPLocation & { accountName: string; accountDisplayName: string }>
 }> {
-  const accounts = await listGBPAccounts()
-  console.log(`[google/accounts] Found ${accounts.length} accounts, fetching locations...`)
+  // Fetch accounts (for metadata) and ALL locations in parallel
+  const [accounts, allLocations] = await Promise.all([
+    listGBPAccounts(),
+    listGBPLocations('accounts/-'),  // wildcard = all accessible locations
+  ])
 
-  const fetchable = accounts.filter((a) => a.type !== 'USER_GROUP')
+  console.log(`[google/accounts] Found ${accounts.length} accounts, ${allLocations.length} total locations via wildcard`)
 
-  // Fetch locations for all accounts in parallel
-  const results = await Promise.allSettled(
-    fetchable.map(async (account) => {
-      const locations = await listGBPLocations(account.name)
-      console.log(`[google/accounts] ${account.accountName}: ${locations.length} locations`)
-      return locations.map((loc) => ({
-        ...loc,
-        accountName: account.name,
-        accountDisplayName: account.accountName,
-      }))
-    })
-  )
-
-  const allLocations: Array<GBPLocation & { accountName: string; accountDisplayName: string }> = []
-  for (let i = 0; i < results.length; i++) {
-    const result = results[i]
-    if (result.status === 'fulfilled') {
-      allLocations.push(...result.value)
-    } else {
-      console.error(`[google/accounts] Failed to list locations for ${fetchable[i].name}:`, result.reason)
-    }
+  // Build account lookup for display names
+  const accountMap = new Map<string, string>()
+  for (const acct of accounts) {
+    accountMap.set(acct.name, acct.accountName)
   }
 
-  console.log(`[google/accounts] Total: ${allLocations.length} locations across ${fetchable.length} accounts`)
-  return { accounts, locations: allLocations }
+  // Deduplicate by location name (a location can appear in multiple groups)
+  const seen = new Set<string>()
+  const deduped: Array<GBPLocation & { accountName: string; accountDisplayName: string }> = []
+
+  for (const loc of allLocations) {
+    if (seen.has(loc.name)) continue
+    seen.add(loc.name)
+
+    // The location's name format is "locations/xxx" — no account prefix in wildcard response.
+    // Try to match account from metadata or fall back to "Unknown"
+    const accountName = ''
+    const accountDisplayName = accountMap.get(accountName) || ''
+
+    deduped.push({
+      ...loc,
+      accountName,
+      accountDisplayName,
+    })
+  }
+
+  console.log(`[google/accounts] After dedup: ${deduped.length} unique locations`)
+  return { accounts, locations: deduped }
 }

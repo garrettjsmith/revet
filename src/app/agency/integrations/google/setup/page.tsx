@@ -35,8 +35,8 @@ export default function GoogleSetupPage() {
   const [selected, setSelected] = useState<Set<string>>(new Set())
   const [targetOrgId, setTargetOrgId] = useState('')
   const [search, setSearch] = useState('')
-  const [accountFilter, setAccountFilter] = useState<string>('all')
   const [stateFilter, setStateFilter] = useState<string>('all')
+  const [cityFilter, setCityFilter] = useState<string>('all')
   const [errorMsg, setErrorMsg] = useState('')
   const [saveResults, setSaveResults] = useState<{ mapped: number; errors: number } | null>(null)
   const [savingProgress, setSavingProgress] = useState({ current: 0, total: 0 })
@@ -92,17 +92,20 @@ export default function GoogleSetupPage() {
     [gbpLocations, existingMappedIds]
   )
 
-  const accounts = useMemo(() => {
-    const map = new Map<string, string>()
-    unmapped.forEach((l) => map.set(l.accountName, l.accountDisplayName))
-    return Array.from(map.entries()).sort((a, b) => a[1].localeCompare(b[1]))
-  }, [unmapped])
-
   const states = useMemo(() => {
     const set = new Set<string>()
     unmapped.forEach((l) => {
       const s = l.storefrontAddress?.administrativeArea
       if (s) set.add(s)
+    })
+    return Array.from(set).sort()
+  }, [unmapped])
+
+  const cities = useMemo(() => {
+    const set = new Set<string>()
+    unmapped.forEach((l) => {
+      const c = l.storefrontAddress?.locality
+      if (c) set.add(c)
     })
     return Array.from(set).sort()
   }, [unmapped])
@@ -118,14 +121,14 @@ export default function GoogleSetupPage() {
         l.metadata?.placeId?.toLowerCase().includes(q)
       )
     }
-    if (accountFilter !== 'all') {
-      list = list.filter((l) => l.accountName === accountFilter)
-    }
     if (stateFilter !== 'all') {
       list = list.filter((l) => l.storefrontAddress?.administrativeArea === stateFilter)
     }
+    if (cityFilter !== 'all') {
+      list = list.filter((l) => l.storefrontAddress?.locality === cityFilter)
+    }
     return list
-  }, [unmapped, search, accountFilter, stateFilter])
+  }, [unmapped, search, stateFilter, cityFilter])
 
   // Selection helpers
   function toggleOne(name: string) {
@@ -209,7 +212,9 @@ export default function GoogleSetupPage() {
   function formatAddress(gbp: GBPLocation): string {
     const a = gbp.storefrontAddress
     if (!a) return ''
-    return [a.locality, a.administrativeArea].filter(Boolean).join(', ')
+    const street = a.addressLines?.[0] || ''
+    const cityState = [a.locality, a.administrativeArea].filter(Boolean).join(', ')
+    return [street, cityState].filter(Boolean).join(', ')
   }
 
   return (
@@ -298,19 +303,19 @@ export default function GoogleSetupPage() {
                     <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-5.197-5.197m0 0A7.5 7.5 0 105.196 5.196a7.5 7.5 0 0010.607 10.607z" />
                   </svg>
                 </div>
-                {accounts.length > 1 && (
-                  <select value={accountFilter} onChange={(e) => setAccountFilter(e.target.value)} className="text-xs border border-warm-border rounded-lg px-3 py-2 bg-white text-ink">
-                    <option value="all">All accounts ({accounts.length})</option>
-                    {accounts.map(([name, display]) => (
-                      <option key={name} value={name}>{display}</option>
-                    ))}
-                  </select>
-                )}
                 {states.length > 1 && (
                   <select value={stateFilter} onChange={(e) => setStateFilter(e.target.value)} className="text-xs border border-warm-border rounded-lg px-3 py-2 bg-white text-ink">
                     <option value="all">All states</option>
                     {states.map((s) => (
                       <option key={s} value={s}>{s}</option>
+                    ))}
+                  </select>
+                )}
+                {cities.length > 1 && (
+                  <select value={cityFilter} onChange={(e) => setCityFilter(e.target.value)} className="text-xs border border-warm-border rounded-lg px-3 py-2 bg-white text-ink">
+                    <option value="all">All cities</option>
+                    {cities.map((c) => (
+                      <option key={c} value={c}>{c}</option>
                     ))}
                   </select>
                 )}
@@ -357,15 +362,13 @@ export default function GoogleSetupPage() {
                       <tr>
                         <th className="w-10 px-4 py-2" />
                         <th className="text-left px-3 py-2 text-[10px] text-warm-gray uppercase tracking-wider font-medium">Business Name</th>
-                        <th className="text-left px-3 py-2 text-[10px] text-warm-gray uppercase tracking-wider font-medium">Location</th>
-                        <th className="text-left px-3 py-2 text-[10px] text-warm-gray uppercase tracking-wider font-medium hidden md:table-cell">Account</th>
+                        <th className="text-left px-3 py-2 text-[10px] text-warm-gray uppercase tracking-wider font-medium">Address</th>
                         <th className="text-left px-3 py-2 text-[10px] text-warm-gray uppercase tracking-wider font-medium hidden lg:table-cell">Place ID</th>
                       </tr>
                     </thead>
                     <tbody>
                       {filtered.map((gbp) => {
                         const isSelected = selected.has(gbp.name)
-                        const addr = formatAddress(gbp)
                         return (
                           <tr
                             key={gbp.name}
@@ -381,10 +384,7 @@ export default function GoogleSetupPage() {
                               <span className="text-xs text-ink font-medium">{gbp.title}</span>
                             </td>
                             <td className="px-3 py-2.5">
-                              <span className="text-xs text-warm-gray">{addr || '—'}</span>
-                            </td>
-                            <td className="px-3 py-2.5 hidden md:table-cell">
-                              <span className="text-[10px] text-warm-gray">{gbp.accountDisplayName}</span>
+                              <span className="text-xs text-warm-gray">{formatAddress(gbp) || '—'}</span>
                             </td>
                             <td className="px-3 py-2.5 hidden lg:table-cell">
                               <span className="text-[10px] text-warm-gray font-mono">{gbp.metadata?.placeId ? gbp.metadata.placeId.slice(0, 16) + '...' : '—'}</span>
@@ -394,7 +394,7 @@ export default function GoogleSetupPage() {
                       })}
                       {filtered.length === 0 && (
                         <tr>
-                          <td colSpan={5} className="px-4 py-8 text-center text-xs text-warm-gray">
+                          <td colSpan={4} className="px-4 py-8 text-center text-xs text-warm-gray">
                             No locations match your search.
                           </td>
                         </tr>
