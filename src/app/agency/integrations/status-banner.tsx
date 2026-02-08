@@ -13,6 +13,7 @@ const ERROR_MESSAGES: Record<string, string> = {
 export function IntegrationStatusBanner() {
   const searchParams = useSearchParams()
   const error = searchParams.get('error')
+  const detail = searchParams.get('detail')
   const connected = searchParams.get('connected')
 
   if (connected === 'google') {
@@ -26,7 +27,10 @@ export function IntegrationStatusBanner() {
   if (error) {
     return (
       <div className="text-sm text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-4 py-3 mb-6">
-        {ERROR_MESSAGES[error] || `Authorization error: ${error}`}
+        <p>{ERROR_MESSAGES[error] || `Authorization error: ${error}`}</p>
+        {detail && (
+          <p className="text-xs text-amber-600 mt-1 font-mono">{detail}</p>
+        )}
       </div>
     )
   }
