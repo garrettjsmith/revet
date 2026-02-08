@@ -69,6 +69,7 @@ export default async function OrgDashboard({ params }: { params: { orgSlug: stri
       reviews: source?.total_review_count || 0,
       avgRating: source?.average_rating ? Number(source.average_rating).toFixed(1) : '—',
       synced: source?.sync_status === 'active',
+      hasSource: !!source,
       category: profile?.primary_category_name || null,
       gbpStatus: profile?.open_status || null,
     }
@@ -122,7 +123,7 @@ export default async function OrgDashboard({ params }: { params: { orgSlug: stri
               </tr>
             </thead>
             <tbody>
-              {locationRows.map(({ location: loc, reviews, avgRating: rating, synced, category, gbpStatus }) => (
+              {locationRows.map(({ location: loc, reviews, avgRating: rating, synced, hasSource, category, gbpStatus }) => (
                 <tr key={loc.id} className="border-b border-warm-border/50 hover:bg-warm-light/50">
                   <td className="px-5 py-3.5">
                     <div className="text-sm font-medium text-ink">{loc.name}</div>
@@ -139,10 +140,10 @@ export default async function OrgDashboard({ params }: { params: { orgSlug: stri
                         <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
                         Synced
                       </span>
-                    ) : gbpStatus ? (
+                    ) : (gbpStatus || hasSource) ? (
                       <span className="inline-flex items-center gap-1.5 text-[10px] font-medium text-amber-600">
                         <span className="w-1.5 h-1.5 rounded-full bg-amber-500" />
-                        Pending
+                        Syncing
                       </span>
                     ) : (
                       <span className="inline-flex items-center gap-1.5 text-[10px] text-warm-gray">
