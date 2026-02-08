@@ -3,7 +3,7 @@ import { getLocation } from '@/lib/locations'
 import { getLocationReviews, getLocationReviewStats } from '@/lib/reviews'
 import { notFound } from 'next/navigation'
 import Link from 'next/link'
-import { ReviewCard } from '@/components/review-card'
+import { ReviewList } from '@/components/review-list'
 
 export const dynamic = 'force-dynamic'
 
@@ -34,7 +34,7 @@ export default async function LocationReviewsPage({
     platform: searchParams.platform,
     status: searchParams.status,
     maxRating,
-    limit: 50,
+    limit: 10,
   })
 
   const statCards = [
@@ -151,11 +151,13 @@ export default async function LocationReviewsPage({
             : 'No reviews match the current filters.'}
         </div>
       ) : (
-        <div className="space-y-4">
-          {reviews.map((review) => (
-            <ReviewCard key={review.id} review={review} canReply />
-          ))}
-        </div>
+        <ReviewList
+          initialReviews={reviews}
+          totalCount={count}
+          locationIds={[location.id]}
+          filters={{ platform: searchParams.platform, status: searchParams.status, maxRating }}
+          canReply
+        />
       )}
     </div>
   )

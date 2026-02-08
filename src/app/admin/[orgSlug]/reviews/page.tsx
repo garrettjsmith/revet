@@ -2,7 +2,7 @@ import { getOrgBySlug } from '@/lib/org'
 import { getOrgReviews } from '@/lib/reviews'
 import { createServerSupabase } from '@/lib/supabase/server'
 import Link from 'next/link'
-import { ReviewCard } from '@/components/review-card'
+import { ReviewList } from '@/components/review-list'
 
 export const dynamic = 'force-dynamic'
 
@@ -46,7 +46,7 @@ export default async function OrgReviewsPage({
   const { reviews, count } = await getOrgReviews(org.id, {
     platform: searchParams.platform,
     status: searchParams.status,
-    limit: 50,
+    limit: 10,
   })
 
   const basePath = `/admin/${params.orgSlug}`
@@ -114,11 +114,14 @@ export default async function OrgReviewsPage({
           No reviews yet. Connect Google Business Profile from Agency Integrations to start syncing.
         </div>
       ) : (
-        <div className="space-y-4">
-          {reviews.map((review) => (
-            <ReviewCard key={review.id} review={review} showLocation canReply />
-          ))}
-        </div>
+        <ReviewList
+          initialReviews={reviews}
+          totalCount={count}
+          locationIds={locationIds}
+          filters={{ platform: searchParams.platform, status: searchParams.status }}
+          showLocation
+          canReply
+        />
       )}
     </div>
   )
