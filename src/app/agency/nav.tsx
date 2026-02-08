@@ -1,6 +1,5 @@
 'use client'
 
-import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 
 const NAV_ITEMS = [
@@ -21,7 +20,7 @@ export function AgencyNav() {
   return (
     <nav className="flex items-center gap-4">
       {NAV_ITEMS.map((item) => (
-        <Link
+        <a
           key={item.href}
           href={item.href}
           className={`text-sm no-underline transition-colors ${
@@ -31,7 +30,7 @@ export function AgencyNav() {
           }`}
         >
           {item.label}
-        </Link>
+        </a>
       ))}
     </nav>
   )
