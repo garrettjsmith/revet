@@ -85,8 +85,15 @@ export default function GoogleSetupPage() {
     try {
       const res = await fetch('/api/integrations/google/discover', { method: 'POST' })
       if (!res.ok) {
-        const data = await res.json()
-        setErrorMsg(data.error || 'Discovery failed')
+        const text = await res.text()
+        let errorDetail = `Discovery failed (${res.status})`
+        try {
+          const data = JSON.parse(text)
+          errorDetail = data.error || errorDetail
+        } catch {
+          errorDetail = text || errorDetail
+        }
+        setErrorMsg(errorDetail)
         setStep('error')
         return
       }
@@ -228,14 +235,27 @@ export default function GoogleSetupPage() {
 
       {/* Error */}
       {step === 'error' && (
-        <div className="border border-red-200 bg-red-50 rounded-xl p-6 text-center">
-          <p className="text-sm text-red-700 mb-4">{errorMsg}</p>
-          <button
-            onClick={() => router.push('/agency/integrations')}
-            className="px-5 py-2 bg-ink text-cream text-xs font-medium rounded-full"
-          >
-            Back to Integrations
-          </button>
+        <div className="border border-red-200 bg-red-50 rounded-xl p-6">
+          <p className="text-sm text-red-700 mb-2 font-medium">Discovery failed</p>
+          <p className="text-xs text-red-600 font-mono mb-4 break-all">{errorMsg}</p>
+          <p className="text-xs text-red-500 mb-6">
+            This usually means the Google Business Profile API hasn&apos;t been enabled or approved in your Google Cloud project.
+            Ensure all GBP APIs are enabled and you&apos;ve submitted the <a href="https://developers.google.com/my-business/content/prereqs" target="_blank" rel="noopener noreferrer" className="underline">API access request</a>.
+          </p>
+          <div className="flex items-center justify-center gap-3">
+            <button
+              onClick={() => { setStep('discovering'); discover() }}
+              className="px-5 py-2 border border-red-300 text-red-700 text-xs font-medium rounded-full hover:bg-red-100 transition-colors"
+            >
+              Retry
+            </button>
+            <button
+              onClick={() => router.push('/agency/integrations')}
+              className="px-5 py-2 bg-ink text-cream text-xs font-medium rounded-full"
+            >
+              Back to Integrations
+            </button>
+          </div>
         </div>
       )}
 

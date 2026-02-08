@@ -53,9 +53,10 @@ export async function POST(request: NextRequest) {
         { status: 401 }
       )
     }
-    console.error('[google/discover] Error:', err)
+    const message = err instanceof Error ? err.message : 'Unknown error'
+    console.error('[google/discover] Error:', message)
     return NextResponse.json(
-      { error: 'Failed to discover GBP locations' },
+      { error: message },
       { status: 500 }
     )
   }
