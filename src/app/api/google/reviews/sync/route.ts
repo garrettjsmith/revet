@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { fetchGoogleReviews, normalizeGoogleReview } from '@/lib/google/reviews'
+import { fetchGBPProfile, normalizeGBPProfile } from '@/lib/google/profiles'
 import { getValidAccessToken, GoogleAuthError } from '@/lib/google/auth'
 
 export const maxDuration = 120
@@ -156,10 +157,51 @@ export async function POST(request: NextRequest) {
 
   const totalSynced = results.reduce((sum, r) => sum + r.reviews_synced, 0)
 
+  // Backfill missing GBP profiles for synced locations
+  let profilesBackfilled = 0
+  const syncedLocationIds = sources.map((s) => s.location_id)
+  if (syncedLocationIds.length > 0) {
+    const { data: existingProfiles } = await supabase
+      .from('gbp_profiles')
+      .select('location_id')
+      .in('location_id', syncedLocationIds)
+
+    const hasProfile = new Set((existingProfiles || []).map((p) => p.location_id))
+    const missing = sources.filter((s) => !hasProfile.has(s.location_id))
+
+    for (const source of missing) {
+      const gbpLocationName = (source.metadata as any)?.gbp_location_name
+      if (!gbpLocationName) continue
+
+      try {
+        const raw = await fetchGBPProfile(gbpLocationName)
+        const normalized = normalizeGBPProfile(raw)
+
+        await supabase
+          .from('gbp_profiles')
+          .upsert(
+            {
+              location_id: source.location_id,
+              gbp_location_name: gbpLocationName,
+              ...normalized,
+              sync_status: 'active',
+              last_synced_at: new Date().toISOString(),
+              sync_error: null,
+            },
+            { onConflict: 'location_id' }
+          )
+        profilesBackfilled++
+      } catch (err) {
+        console.error(`[google/reviews/sync] Profile backfill failed for ${source.location_id}:`, err instanceof Error ? err.message : err)
+      }
+    }
+  }
+
   return NextResponse.json({
     ok: true,
     sources_processed: results.length,
     total_reviews_synced: totalSynced,
+    profiles_backfilled: profilesBackfilled,
     results,
   })
 }

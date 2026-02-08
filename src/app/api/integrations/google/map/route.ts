@@ -1,6 +1,10 @@
 import { NextResponse, type NextRequest } from 'next/server'
 import { createServerSupabase } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
+import { fetchGBPProfile, normalizeGBPProfile } from '@/lib/google/profiles'
+import { getValidAccessToken } from '@/lib/google/auth'
+
+export const maxDuration = 120
 
 /**
  * POST /api/integrations/google/map
@@ -193,59 +197,63 @@ export async function POST(request: NextRequest) {
 
   const mappedCount = results.filter((r) => r.status === 'mapped').length
 
-  // Fire-and-forget: kick off review backfill for newly mapped locations
+  // Sync GBP profiles inline for mapped locations (not fire-and-forget)
   if (mappedCount > 0) {
-    const mappedLocationIds = results
-      .filter((r) => r.status === 'mapped' && r.location_id)
-      .map((r) => r.location_id)
+    const mappedResults = results.filter((r) => r.status === 'mapped' && r.location_id)
 
-    const apiKey = process.env.REVIEW_SYNC_API_KEY
-
-    // Get the review source IDs we just created
-    const { data: newSources } = await adminClient
-      .from('review_sources')
-      .select('id')
-      .in('location_id', mappedLocationIds)
-      .eq('platform', 'google')
-
-    if (newSources && newSources.length > 0) {
-      const backfillUrl = `${process.env.NEXT_PUBLIC_APP_URL}/api/google/reviews/backfill`
-      fetch(backfillUrl, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          ...(apiKey ? { Authorization: `Bearer ${apiKey}` } : {}),
-        },
-        body: JSON.stringify({
-          source_ids: newSources.map((s) => s.id),
-          limit: newSources.length,
-        }),
-      }).catch((err) => {
-        console.error('[google/map] Failed to trigger review backfill:', err)
-      })
+    let hasValidToken = false
+    try {
+      await getValidAccessToken()
+      hasValidToken = true
+    } catch {
+      console.warn('[google/map] Could not get access token for profile sync')
     }
 
-    // Also kick off GBP profile sync for the mapped locations
-    const profileSyncUrl = `${process.env.NEXT_PUBLIC_APP_URL}/api/google/profiles/sync`
-    fetch(profileSyncUrl, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        ...(apiKey ? { Authorization: `Bearer ${apiKey}` } : {}),
-      },
-      body: JSON.stringify({
-        location_ids: mappedLocationIds,
-        limit: mappedLocationIds.length,
-      }),
-    }).catch((err) => {
-      console.error('[google/map] Failed to trigger profile sync:', err)
-    })
+    if (hasValidToken) {
+      // Build a lookup from location_id → gbp_location_name from the input mappings
+      const gbpNameByLocationId = new Map<string, string>()
+      for (const m of mappings) {
+        if (m.location_id || m.action === 'create') {
+          // For creates, find the result to get the new location_id
+          const result = results.find((r) => r.gbp_location_name === m.gbp_location_name)
+          if (result?.location_id) {
+            gbpNameByLocationId.set(result.location_id, m.gbp_location_name)
+          }
+        }
+      }
+
+      for (const result of mappedResults) {
+        const gbpLocationName = gbpNameByLocationId.get(result.location_id)
+        if (!gbpLocationName) continue
+
+        try {
+          const raw = await fetchGBPProfile(gbpLocationName)
+          const normalized = normalizeGBPProfile(raw)
+
+          await adminClient
+            .from('gbp_profiles')
+            .upsert(
+              {
+                location_id: result.location_id,
+                gbp_location_name: gbpLocationName,
+                ...normalized,
+                sync_status: 'active',
+                last_synced_at: new Date().toISOString(),
+                sync_error: null,
+              },
+              { onConflict: 'location_id' }
+            )
+        } catch (err) {
+          console.error(`[google/map] Profile sync failed for ${result.location_id}:`, err instanceof Error ? err.message : err)
+        }
+      }
+    }
   }
 
   return NextResponse.json({
     ok: true,
     results,
-    mapped: results.filter((r) => r.status === 'mapped').length,
+    mapped: mappedCount,
     errors: results.filter((r) => r.status !== 'mapped').length,
   })
 }
