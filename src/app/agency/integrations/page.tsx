@@ -3,6 +3,7 @@ import Link from 'next/link'
 import { Suspense } from 'react'
 import type { AgencyIntegration, AgencyIntegrationMapping } from '@/lib/types'
 import { IntegrationStatusBanner } from './status-banner'
+import { MappingsTable } from './mappings-table'
 
 export const dynamic = 'force-dynamic'
 
@@ -233,37 +234,7 @@ export default async function AgencyIntegrationsPage() {
                           </div>
 
                           {rtMappings.length > 0 ? (
-                            <div className="border border-warm-border/50 rounded-lg overflow-hidden">
-                              <table className="w-full">
-                                <thead>
-                                  <tr className="border-b border-warm-border/50">
-                                    <th className="text-left px-4 py-2 text-[10px] text-warm-gray uppercase tracking-wider font-medium">Resource</th>
-                                    <th className="text-left px-4 py-2 text-[10px] text-warm-gray uppercase tracking-wider font-medium">
-                                      {rt.scope === 'org' ? 'Organization' : 'Location'}
-                                    </th>
-                                    <th className="text-left px-4 py-2 text-[10px] text-warm-gray uppercase tracking-wider font-medium">ID</th>
-                                  </tr>
-                                </thead>
-                                <tbody>
-                                  {rtMappings.map((m: any) => (
-                                    <tr key={m.id} className="border-b border-warm-border/30 last:border-0">
-                                      <td className="px-4 py-2 text-xs text-ink">
-                                        {m.external_resource_name || m.external_resource_id}
-                                      </td>
-                                      <td className="px-4 py-2 text-xs text-warm-gray">
-                                        {rt.scope === 'org'
-                                          ? (m.organizations?.name || '—')
-                                          : (m.locations?.name || '—')
-                                        }
-                                      </td>
-                                      <td className="px-4 py-2 text-[10px] text-warm-gray font-mono truncate max-w-[200px]">
-                                        {m.external_resource_id}
-                                      </td>
-                                    </tr>
-                                  ))}
-                                </tbody>
-                              </table>
-                            </div>
+                            <MappingsTable mappings={rtMappings} scope={rt.scope} />
                           ) : (
                             <div className="text-xs text-warm-gray py-2 px-3 border border-dashed border-warm-border rounded-lg text-center">
                               No {rt.label.toLowerCase()} mapped yet. Connect resources after setting up organizations and locations.

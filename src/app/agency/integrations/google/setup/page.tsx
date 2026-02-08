@@ -1,7 +1,6 @@
 'use client'
 
 import { useEffect, useMemo, useState } from 'react'
-import { useRouter } from 'next/navigation'
 
 interface GBPLocation {
   name: string
@@ -27,7 +26,6 @@ interface RvetOrg {
 }
 
 export default function GoogleSetupPage() {
-  const router = useRouter()
   const [step, setStep] = useState<'loading' | 'discovering' | 'mapping' | 'saving' | 'done' | 'error' | 'disconnected'>('loading')
   const [gbpLocations, setGbpLocations] = useState<GBPLocation[]>([])
   const [rvetOrgs, setRvetOrgs] = useState<RvetOrg[]>([])
@@ -277,7 +275,7 @@ export default function GoogleSetupPage() {
           <p className="text-xs text-red-600 font-mono mb-4 break-all">{errorMsg}</p>
           <div className="flex items-center justify-center gap-3">
             <button onClick={() => { setStep('discovering'); discover() }} className="px-5 py-2 border border-red-300 text-red-700 text-xs font-medium rounded-full hover:bg-red-100 transition-colors">Retry</button>
-            <button onClick={() => router.push('/agency/integrations')} className="px-5 py-2 bg-ink text-cream text-xs font-medium rounded-full">Back</button>
+            <button onClick={() => window.location.href = '/agency/integrations'} className="px-5 py-2 bg-ink text-cream text-xs font-medium rounded-full">Back</button>
           </div>
         </div>
       )}
@@ -289,14 +287,11 @@ export default function GoogleSetupPage() {
           <p className="text-xs text-amber-700 mb-4">
             {errorMsg || 'Your Google connection needs to be re-established.'}
           </p>
-          <p className="text-xs text-amber-600 mb-4">
-            If your Google Cloud app is in &quot;Testing&quot; mode, tokens expire after 7 days. Publish it to &quot;Production&quot; in the Google Cloud Console for long-lived tokens.
-          </p>
           <div className="flex items-center justify-center gap-3">
             <a href="/api/integrations/google/connect" className="px-5 py-2 bg-amber-600 hover:bg-amber-700 text-white text-xs font-medium rounded-full transition-colors">
               Reconnect Google
             </a>
-            <button onClick={() => router.push('/agency/integrations')} className="px-5 py-2 border border-amber-300 text-amber-700 text-xs font-medium rounded-full hover:bg-amber-100 transition-colors">
+            <button onClick={() => window.location.href = '/agency/integrations'} className="px-5 py-2 border border-amber-300 text-amber-700 text-xs font-medium rounded-full hover:bg-amber-100 transition-colors">
               Back
             </button>
           </div>
@@ -322,7 +317,7 @@ export default function GoogleSetupPage() {
           {unmapped.length === 0 ? (
             <div className="border border-warm-border rounded-xl p-8 text-center">
               <p className="text-sm text-ink font-medium mb-2">All locations are already imported!</p>
-              <button onClick={() => router.push('/agency/integrations')} className="px-5 py-2 bg-ink text-cream text-xs font-medium rounded-full mt-2">Done</button>
+              <button onClick={() => window.location.href = '/agency/integrations'} className="px-5 py-2 bg-ink text-cream text-xs font-medium rounded-full mt-2">Done</button>
             </div>
           ) : (
             <>
@@ -444,7 +439,7 @@ export default function GoogleSetupPage() {
               {/* Footer action bar */}
               <div className="flex items-center justify-between mt-6">
                 <button
-                  onClick={() => router.push('/agency/integrations')}
+                  onClick={() => window.location.href = '/agency/integrations'}
                   className="px-5 py-2 border border-warm-border text-warm-gray text-xs rounded-full hover:text-ink hover:border-ink transition-colors"
                 >
                   Skip for now
@@ -501,7 +496,7 @@ export default function GoogleSetupPage() {
           <p className="text-xs text-warm-gray mb-6">
             Review sync will begin automatically. Check the Reviews dashboard for incoming reviews.
           </p>
-          <button onClick={() => router.push('/agency/integrations')} className="px-6 py-2 bg-ink text-cream text-xs font-medium rounded-full hover:bg-ink/90 transition-colors">
+          <button onClick={() => window.location.href = '/agency/integrations'} className="px-6 py-2 bg-ink text-cream text-xs font-medium rounded-full hover:bg-ink/90 transition-colors">
             View Integrations
           </button>
         </div>
