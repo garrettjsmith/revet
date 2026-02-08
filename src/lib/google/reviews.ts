@@ -2,6 +2,16 @@ import { googleFetch } from './auth'
 
 const GBP_V4_API = 'https://mybusiness.googleapis.com/v4'
 
+/** Ensure a location name has an account prefix for the v4 API. */
+function toV4ResourceName(locationName: string): string {
+  // v1 wildcard discovery returns "locations/xxx" without account prefix
+  // v4 API needs "accounts/{id}/locations/{id}" — use wildcard "accounts/-"
+  if (locationName.startsWith('locations/')) {
+    return `accounts/-/${locationName}`
+  }
+  return locationName
+}
+
 /** Star rating enum from Google → numeric */
 const STAR_RATING_MAP: Record<string, number> = {
   ONE: 1,
@@ -52,8 +62,9 @@ export async function fetchGoogleReviews(
   })
   if (opts?.pageToken) params.set('pageToken', opts.pageToken)
 
+  const v4Name = toV4ResourceName(locationResourceName)
   const response = await googleFetch(
-    `${GBP_V4_API}/${locationResourceName}/reviews?${params.toString()}`
+    `${GBP_V4_API}/${v4Name}/reviews?${params.toString()}`
   )
 
   if (!response.ok) {
@@ -89,7 +100,8 @@ export async function replyToGoogleReview(
   reviewResourceName: string,
   comment: string
 ): Promise<void> {
-  const response = await googleFetch(`${GBP_V4_API}/${reviewResourceName}/reply`, {
+  const v4Name = toV4ResourceName(reviewResourceName)
+  const response = await googleFetch(`${GBP_V4_API}/${v4Name}/reply`, {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ comment }),
@@ -105,7 +117,8 @@ export async function replyToGoogleReview(
  * Delete a reply from a Google review.
  */
 export async function deleteGoogleReviewReply(reviewResourceName: string): Promise<void> {
-  const response = await googleFetch(`${GBP_V4_API}/${reviewResourceName}/reply`, {
+  const v4Name = toV4ResourceName(reviewResourceName)
+  const response = await googleFetch(`${GBP_V4_API}/${v4Name}/reply`, {
     method: 'DELETE',
   })
 
