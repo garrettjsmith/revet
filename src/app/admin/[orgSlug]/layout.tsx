@@ -24,10 +24,12 @@ export default async function OrgLayout({
     .eq('user_id', user.id)
     .order('created_at')
 
-  const allMemberships = (memberships || []).map((m: any) => ({
-    ...m,
-    org: m.organizations as Organization,
-  })) as (OrgMember & { org: Organization })[]
+  const allMemberships = (memberships || [])
+    .filter((m: any) => m.organizations != null)
+    .map((m: any) => ({
+      ...m,
+      org: m.organizations as Organization,
+    })) as (OrgMember & { org: Organization })[]
 
   // Find the current org
   const currentMembership = allMemberships.find(
