@@ -2,6 +2,7 @@
 
 import { useState, useMemo } from 'react'
 import Link from 'next/link'
+import { useRouter } from 'next/navigation'
 import type { Location } from '@/lib/types'
 
 const TYPE_LABELS: Record<string, string> = {
@@ -22,13 +23,16 @@ interface LocationTableProps {
   }>
   orgSlug: string
   compact?: boolean
+  isAgencyAdmin?: boolean
+  allOrgs?: Array<{ id: string; name: string; slug: string }>
 }
 
 type SortField = 'name' | 'reviews' | 'rating'
 type SortDirection = 'asc' | 'desc'
 type SyncFilter = 'all' | 'synced' | 'syncing' | 'not_connected'
 
-export function LocationTable({ locations, orgSlug, compact = false }: LocationTableProps) {
+export function LocationTable({ locations, orgSlug, compact = false, isAgencyAdmin = false, allOrgs = [] }: LocationTableProps) {
+  const router = useRouter()
   const [searchQuery, setSearchQuery] = useState('')
   const [syncFilter, setSyncFilter] = useState<SyncFilter>('all')
   const [cityFilter, setCityFilter] = useState<string>('all')
@@ -38,6 +42,11 @@ export function LocationTable({ locations, orgSlug, compact = false }: LocationT
   const [groupByCity, setGroupByCity] = useState(false)
   const [currentPage, setCurrentPage] = useState(1)
   const [collapsedCities, setCollapsedCities] = useState<Set<string>>(new Set())
+  const [selected, setSelected] = useState<Set<string>>(new Set())
+  const [openKebab, setOpenKebab] = useState<string | null>(null)
+  const [bulkMoveTargetOrg, setBulkMoveTargetOrg] = useState<string>('')
+  const [bulkMoveProgress, setBulkMoveProgress] = useState<{ current: number; total: number } | null>(null)
+  const [moveMessage, setMoveMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
 
   const itemsPerPage = 15
   const basePath = `/admin/${orgSlug}`
@@ -164,6 +173,87 @@ export function LocationTable({ locations, orgSlug, compact = false }: LocationT
     setCollapsedCities(newCollapsed)
   }
 
+  // Bulk selection handlers
+  const toggleSelect = (locationId: string) => {
+    const newSelected = new Set(selected)
+    if (newSelected.has(locationId)) {
+      newSelected.delete(locationId)
+    } else {
+      newSelected.add(locationId)
+    }
+    setSelected(newSelected)
+  }
+
+  const toggleSelectAll = () => {
+    const pageLocationIds = paginatedLocations.map((loc) => loc.location.id)
+    const allSelectedOnPage = pageLocationIds.every((id) => selected.has(id))
+
+    if (allSelectedOnPage) {
+      // Deselect all on current page
+      const newSelected = new Set(selected)
+      pageLocationIds.forEach((id) => newSelected.delete(id))
+      setSelected(newSelected)
+    } else {
+      // Select all on current page
+      const newSelected = new Set(selected)
+      pageLocationIds.forEach((id) => newSelected.add(id))
+      setSelected(newSelected)
+    }
+  }
+
+  const clearSelection = () => {
+    setSelected(new Set())
+    setBulkMoveTargetOrg('')
+    setMoveMessage(null)
+  }
+
+  // Bulk move execution
+  const executeBulkMove = async () => {
+    if (!bulkMoveTargetOrg || selected.size === 0) return
+
+    setBulkMoveProgress({ current: 0, total: selected.size })
+    setMoveMessage(null)
+
+    const selectedIds = Array.from(selected)
+    let successCount = 0
+    let errorCount = 0
+
+    for (let i = 0; i < selectedIds.length; i++) {
+      const locationId = selectedIds[i]
+      setBulkMoveProgress({ current: i + 1, total: selected.size })
+
+      try {
+        const res = await fetch(`/api/locations/${locationId}/move`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ org_id: bulkMoveTargetOrg }),
+        })
+
+        if (res.ok) {
+          successCount++
+        } else {
+          errorCount++
+        }
+      } catch (err) {
+        errorCount++
+      }
+    }
+
+    setBulkMoveProgress(null)
+    clearSelection()
+
+    if (errorCount === 0) {
+      setMoveMessage({ type: 'success', text: `Successfully moved ${successCount} location${successCount === 1 ? '' : 's'}` })
+    } else {
+      setMoveMessage({ type: 'error', text: `Moved ${successCount} location${successCount === 1 ? '' : 's'}, ${errorCount} failed` })
+    }
+
+    router.refresh()
+
+    // Clear message after 5 seconds
+    setTimeout(() => setMoveMessage(null), 5000)
+  }
+
   const renderSyncStatus = (loc: LocationTableProps['locations'][0]) => {
     if (loc.synced) {
       return (
@@ -189,86 +279,183 @@ export function LocationTable({ locations, orgSlug, compact = false }: LocationT
     )
   }
 
-  const renderLocationRow = (loc: LocationTableProps['locations'][0], showType = true) => (
-    <tr key={loc.location.id} className="border-b border-warm-border/50 hover:bg-warm-light/50">
-      <td className="px-5 py-3.5">
-        <Link
-          href={`${basePath}/locations/${loc.location.id}`}
-          className="text-sm font-medium text-ink no-underline hover:underline"
-        >
-          {loc.location.name}
-        </Link>
-        <div className="text-xs text-warm-gray mt-0.5 flex items-center gap-2">
-          {loc.location.city && loc.location.state && (
-            <span>
-              {loc.location.city}, {loc.location.state}
-            </span>
-          )}
-        </div>
-      </td>
-      {showType ? (
-        <td className="px-5 py-3.5 text-xs text-warm-gray">{TYPE_LABELS[loc.location.type]}</td>
-      ) : (
-        <td className="px-5 py-3.5 text-xs text-warm-gray">{loc.category || '—'}</td>
-      )}
-      <td className="px-5 py-3.5 font-mono text-sm text-ink">{loc.reviews}</td>
-      <td className="px-5 py-3.5 font-mono text-sm text-ink">{loc.avgRating}</td>
-      <td className="px-5 py-3.5">{renderSyncStatus(loc)}</td>
-      <td className="px-5 py-3.5">
-        <Link
-          href={`${basePath}/locations/${loc.location.id}`}
-          className="text-xs text-warm-gray hover:text-ink no-underline"
-        >
-          View
-        </Link>
-      </td>
-    </tr>
-  )
+  const renderLocationRow = (loc: LocationTableProps['locations'][0], showType = true) => {
+    const isSelected = selected.has(loc.location.id)
+    const kebabOpen = openKebab === loc.location.id
 
-  const renderTable = (locs: typeof paginatedLocations, showType = true) => (
-    <table className="w-full">
-      <thead>
-        <tr className="border-b border-warm-border">
-          <th
-            className="text-left px-5 py-3 text-[11px] text-warm-gray uppercase tracking-wider font-medium cursor-pointer hover:text-ink"
-            onClick={() => handleSort('name')}
-          >
-            Location {sortField === 'name' && (sortDirection === 'asc' ? '▲' : '▼')}
-          </th>
-          <th className="text-left px-5 py-3 text-[11px] text-warm-gray uppercase tracking-wider font-medium">
-            {showType ? 'Type' : 'Category'}
-          </th>
-          <th
-            className="text-left px-5 py-3 text-[11px] text-warm-gray uppercase tracking-wider font-medium cursor-pointer hover:text-ink"
-            onClick={() => handleSort('reviews')}
-          >
-            Reviews {sortField === 'reviews' && (sortDirection === 'asc' ? '▲' : '▼')}
-          </th>
-          <th
-            className="text-left px-5 py-3 text-[11px] text-warm-gray uppercase tracking-wider font-medium cursor-pointer hover:text-ink"
-            onClick={() => handleSort('rating')}
-          >
-            {showType ? 'Rating' : 'Avg Rating'} {sortField === 'rating' && (sortDirection === 'asc' ? '▲' : '▼')}
-          </th>
-          <th className="text-left px-5 py-3 text-[11px] text-warm-gray uppercase tracking-wider font-medium">
-            {showType ? 'GBP' : 'Status'}
-          </th>
-          <th className="text-left px-5 py-3 text-[11px] text-warm-gray uppercase tracking-wider font-medium"></th>
-        </tr>
-      </thead>
-      <tbody>
-        {locs.length === 0 ? (
-          <tr>
-            <td colSpan={6} className="p-8 text-center text-warm-gray text-sm">
-              No locations found.
-            </td>
-          </tr>
-        ) : (
-          locs.map((loc) => renderLocationRow(loc, showType))
+    return (
+      <tr key={loc.location.id} className="border-b border-warm-border/50 hover:bg-warm-light/50">
+        {isAgencyAdmin && allOrgs.length > 0 && (
+          <td className="px-5 py-3.5 w-10">
+            <input
+              type="checkbox"
+              checked={isSelected}
+              onChange={() => toggleSelect(loc.location.id)}
+              className="w-4 h-4 cursor-pointer"
+            />
+          </td>
         )}
-      </tbody>
-    </table>
-  )
+        <td className="px-5 py-3.5">
+          <Link
+            href={`${basePath}/locations/${loc.location.id}`}
+            className="text-sm font-medium text-ink no-underline hover:underline"
+          >
+            {loc.location.name}
+          </Link>
+          <div className="text-xs text-warm-gray mt-0.5 flex items-center gap-2">
+            {loc.location.city && loc.location.state && (
+              <span>
+                {loc.location.city}, {loc.location.state}
+              </span>
+            )}
+          </div>
+        </td>
+        {showType ? (
+          <td className="px-5 py-3.5 text-xs text-warm-gray">{TYPE_LABELS[loc.location.type]}</td>
+        ) : (
+          <td className="px-5 py-3.5 text-xs text-warm-gray">{loc.category || '—'}</td>
+        )}
+        <td className="px-5 py-3.5 font-mono text-sm text-ink">{loc.reviews}</td>
+        <td className="px-5 py-3.5 font-mono text-sm text-ink">{loc.avgRating}</td>
+        <td className="px-5 py-3.5">{renderSyncStatus(loc)}</td>
+        <td className="px-5 py-3.5 relative">
+          <div className="flex items-center gap-2 justify-end">
+            <button
+              onClick={() => setOpenKebab(kebabOpen ? null : loc.location.id)}
+              className="text-warm-gray hover:text-ink w-6 h-6 flex items-center justify-center"
+            >
+              ⋮
+            </button>
+            {kebabOpen && (
+              <>
+                <div
+                  className="fixed inset-0 z-10"
+                  onClick={() => setOpenKebab(null)}
+                />
+                <div className="absolute right-0 top-full mt-1 bg-cream border border-warm-border rounded-lg shadow-lg py-1 z-20 min-w-[160px]">
+                  <Link
+                    href={`${basePath}/locations/${loc.location.id}`}
+                    className="block px-3 py-1.5 text-sm text-warm-gray hover:text-ink hover:bg-warm-light no-underline"
+                    onClick={() => setOpenKebab(null)}
+                  >
+                    View
+                  </Link>
+                  <Link
+                    href={`${basePath}/locations/${loc.location.id}/settings`}
+                    className="block px-3 py-1.5 text-sm text-warm-gray hover:text-ink hover:bg-warm-light no-underline"
+                    onClick={() => setOpenKebab(null)}
+                  >
+                    Edit
+                  </Link>
+                  {isAgencyAdmin && allOrgs.length > 0 && (
+                    <div className="border-t border-warm-border my-1">
+                      <div className="px-3 py-1.5 text-xs text-warm-gray">Move to...</div>
+                      <div className="max-h-48 overflow-y-auto">
+                        {allOrgs.map((org) => (
+                          <button
+                            key={org.id}
+                            onClick={async () => {
+                              setOpenKebab(null)
+                              try {
+                                const res = await fetch(`/api/locations/${loc.location.id}/move`, {
+                                  method: 'POST',
+                                  headers: { 'Content-Type': 'application/json' },
+                                  body: JSON.stringify({ org_id: org.id }),
+                                })
+                                if (res.ok) {
+                                  setMoveMessage({ type: 'success', text: `Moved to ${org.name}` })
+                                  router.refresh()
+                                  setTimeout(() => setMoveMessage(null), 5000)
+                                } else {
+                                  setMoveMessage({ type: 'error', text: 'Failed to move location' })
+                                  setTimeout(() => setMoveMessage(null), 5000)
+                                }
+                              } catch (err) {
+                                setMoveMessage({ type: 'error', text: 'Failed to move location' })
+                                setTimeout(() => setMoveMessage(null), 5000)
+                              }
+                            }}
+                            className="w-full text-left px-4 py-1.5 text-sm text-warm-gray hover:text-ink hover:bg-warm-light"
+                          >
+                            {org.name}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </>
+            )}
+          </div>
+        </td>
+      </tr>
+    )
+  }
+
+  const renderTable = (locs: typeof paginatedLocations, showType = true) => {
+    const pageLocationIds = locs.map((loc) => loc.location.id)
+    const allSelectedOnPage = pageLocationIds.length > 0 && pageLocationIds.every((id) => selected.has(id))
+    const someSelectedOnPage = pageLocationIds.some((id) => selected.has(id))
+    const colSpan = isAgencyAdmin && allOrgs.length > 0 ? 7 : 6
+
+    return (
+      <table className="w-full">
+        <thead>
+          <tr className="border-b border-warm-border">
+            {isAgencyAdmin && allOrgs.length > 0 && (
+              <th className="text-left px-5 py-3 text-[11px] text-warm-gray uppercase tracking-wider font-medium w-10">
+                <input
+                  type="checkbox"
+                  checked={allSelectedOnPage}
+                  ref={(el) => {
+                    if (el) el.indeterminate = someSelectedOnPage && !allSelectedOnPage
+                  }}
+                  onChange={toggleSelectAll}
+                  className="w-4 h-4 cursor-pointer"
+                />
+              </th>
+            )}
+            <th
+              className="text-left px-5 py-3 text-[11px] text-warm-gray uppercase tracking-wider font-medium cursor-pointer hover:text-ink"
+              onClick={() => handleSort('name')}
+            >
+              Location {sortField === 'name' && (sortDirection === 'asc' ? '▲' : '▼')}
+            </th>
+            <th className="text-left px-5 py-3 text-[11px] text-warm-gray uppercase tracking-wider font-medium">
+              {showType ? 'Type' : 'Category'}
+            </th>
+            <th
+              className="text-left px-5 py-3 text-[11px] text-warm-gray uppercase tracking-wider font-medium cursor-pointer hover:text-ink"
+              onClick={() => handleSort('reviews')}
+            >
+              Reviews {sortField === 'reviews' && (sortDirection === 'asc' ? '▲' : '▼')}
+            </th>
+            <th
+              className="text-left px-5 py-3 text-[11px] text-warm-gray uppercase tracking-wider font-medium cursor-pointer hover:text-ink"
+              onClick={() => handleSort('rating')}
+            >
+              {showType ? 'Rating' : 'Avg Rating'} {sortField === 'rating' && (sortDirection === 'asc' ? '▲' : '▼')}
+            </th>
+            <th className="text-left px-5 py-3 text-[11px] text-warm-gray uppercase tracking-wider font-medium">
+              {showType ? 'GBP' : 'Status'}
+            </th>
+            <th className="text-left px-5 py-3 text-[11px] text-warm-gray uppercase tracking-wider font-medium"></th>
+          </tr>
+        </thead>
+        <tbody>
+          {locs.length === 0 ? (
+            <tr>
+              <td colSpan={colSpan} className="p-8 text-center text-warm-gray text-sm">
+                No locations found.
+              </td>
+            </tr>
+          ) : (
+            locs.map((loc) => renderLocationRow(loc, showType))
+          )}
+        </tbody>
+      </table>
+    )
+  }
 
   return (
     <div>
