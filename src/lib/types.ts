@@ -259,6 +259,105 @@ export interface FormSubmission {
   created_at: string
 }
 
+// GBP Profiles
+
+export type GBPSyncStatus = 'pending' | 'active' | 'error' | 'paused'
+export type GBPOpenStatus = 'OPEN' | 'CLOSED_TEMPORARILY' | 'CLOSED_PERMANENTLY'
+export type GBPVerificationState = 'VERIFIED' | 'UNVERIFIED' | 'VERIFICATION_REQUESTED'
+
+export interface GBPCategory {
+  name: string
+  displayName: string
+}
+
+export interface GBPHoursPeriod {
+  openDay: string
+  openTime: string
+  closeDay: string
+  closeTime: string
+}
+
+export interface GBPProfile {
+  id: string
+  location_id: string
+  gbp_location_name: string
+  gbp_account_name: string | null
+  business_name: string | null
+  description: string | null
+  website_uri: string | null
+  phone_primary: string | null
+  primary_category_id: string | null
+  primary_category_name: string | null
+  open_status: GBPOpenStatus | null
+  verification_state: GBPVerificationState | null
+  latitude: number | null
+  longitude: number | null
+  maps_uri: string | null
+  new_review_uri: string | null
+  has_pending_edits: boolean
+  has_google_updated: boolean
+  additional_categories: GBPCategory[]
+  regular_hours: { periods?: GBPHoursPeriod[] }
+  special_hours: Array<Record<string, unknown>>
+  more_hours: Array<Record<string, unknown>>
+  additional_phones: string[]
+  address: Record<string, unknown>
+  service_area: Record<string, unknown>
+  attributes: Array<Record<string, unknown>>
+  labels: string[]
+  service_items: Array<Record<string, unknown>>
+  sync_status: GBPSyncStatus
+  last_synced_at: string | null
+  last_pushed_at: string | null
+  sync_error: string | null
+  raw_google_data: Record<string, unknown>
+  created_at: string
+  updated_at: string
+}
+
+export type GBPMediaFormat = 'PHOTO' | 'VIDEO'
+
+export interface GBPMedia {
+  id: string
+  location_id: string
+  gbp_media_name: string
+  media_format: GBPMediaFormat
+  category: string | null
+  description: string | null
+  google_url: string | null
+  thumbnail_url: string | null
+  width_px: number | null
+  height_px: number | null
+  source_account: string | null
+  create_time: string | null
+  created_at: string
+}
+
+export type GBPPostTopicType = 'STANDARD' | 'EVENT' | 'OFFER' | 'ALERT'
+export type GBPPostState = 'LIVE' | 'REJECTED' | 'PROCESSING'
+
+export interface GBPPost {
+  id: string
+  location_id: string
+  gbp_post_name: string
+  topic_type: GBPPostTopicType
+  summary: string | null
+  action_type: string | null
+  action_url: string | null
+  media_url: string | null
+  event_title: string | null
+  event_start: string | null
+  event_end: string | null
+  offer_coupon_code: string | null
+  offer_terms: string | null
+  state: GBPPostState
+  search_url: string | null
+  create_time: string | null
+  update_time: string | null
+  created_at: string
+  updated_at: string
+}
+
 // GBP Performance
 
 export interface GBPPerformanceMetric {

@@ -191,6 +191,57 @@ export async function POST(request: NextRequest) {
     })
   }
 
+  const mappedCount = results.filter((r) => r.status === 'mapped').length
+
+  // Fire-and-forget: kick off review backfill for newly mapped locations
+  if (mappedCount > 0) {
+    const mappedLocationIds = results
+      .filter((r) => r.status === 'mapped' && r.location_id)
+      .map((r) => r.location_id)
+
+    const apiKey = process.env.REVIEW_SYNC_API_KEY
+
+    // Get the review source IDs we just created
+    const { data: newSources } = await adminClient
+      .from('review_sources')
+      .select('id')
+      .in('location_id', mappedLocationIds)
+      .eq('platform', 'google')
+
+    if (newSources && newSources.length > 0) {
+      const backfillUrl = `${process.env.NEXT_PUBLIC_APP_URL}/api/google/reviews/backfill`
+      fetch(backfillUrl, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(apiKey ? { Authorization: `Bearer ${apiKey}` } : {}),
+        },
+        body: JSON.stringify({
+          source_ids: newSources.map((s) => s.id),
+          limit: newSources.length,
+        }),
+      }).catch((err) => {
+        console.error('[google/map] Failed to trigger review backfill:', err)
+      })
+    }
+
+    // Also kick off GBP profile sync for the mapped locations
+    const profileSyncUrl = `${process.env.NEXT_PUBLIC_APP_URL}/api/google/profiles/sync`
+    fetch(profileSyncUrl, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...(apiKey ? { Authorization: `Bearer ${apiKey}` } : {}),
+      },
+      body: JSON.stringify({
+        location_ids: mappedLocationIds,
+        limit: mappedLocationIds.length,
+      }),
+    }).catch((err) => {
+      console.error('[google/map] Failed to trigger profile sync:', err)
+    })
+  }
+
   return NextResponse.json({
     ok: true,
     results,
