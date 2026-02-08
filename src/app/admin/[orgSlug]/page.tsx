@@ -1,6 +1,6 @@
 import { createAdminClient } from '@/lib/supabase/admin'
 import { getOrgBySlug } from '@/lib/org'
-import { getOrgLocations } from '@/lib/locations'
+import { getOrgLocations, checkAgencyAdmin } from '@/lib/locations'
 import Link from 'next/link'
 import { LocationTable } from '@/components/location-table'
 
@@ -10,6 +10,18 @@ export default async function OrgDashboard({ params }: { params: { orgSlug: stri
   const org = await getOrgBySlug(params.orgSlug)
   const locations = await getOrgLocations(org.id)
   const adminClient = createAdminClient()
+
+  // Check if user is agency admin
+  const isAgencyAdmin = await checkAgencyAdmin()
+
+  // Fetch all organizations if agency admin
+  const allOrgs = isAgencyAdmin
+    ? await adminClient
+        .from('organizations')
+        .select('id, name, slug')
+        .order('name')
+        .then((res) => res.data || [])
+    : []
 
   const locationIds = locations.map((l) => l.id)
 
@@ -115,7 +127,13 @@ export default async function OrgDashboard({ params }: { params: { orgSlug: stri
             </div>
           </div>
         ) : (
-          <LocationTable locations={locationRows} orgSlug={params.orgSlug} compact />
+          <LocationTable
+            locations={locationRows}
+            orgSlug={params.orgSlug}
+            compact
+            isAgencyAdmin={isAgencyAdmin}
+            allOrgs={allOrgs}
+          />
         )}
       </div>
     </div>

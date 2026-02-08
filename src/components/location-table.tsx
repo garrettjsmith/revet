@@ -632,6 +632,62 @@ export function LocationTable({ locations, orgSlug, compact = false, isAgencyAdm
           </button>
         </div>
       )}
+
+      {/* Move message */}
+      {moveMessage && (
+        <div className="mt-4">
+          <div
+            className={`px-4 py-2 rounded-lg text-sm ${
+              moveMessage.type === 'success'
+                ? 'bg-emerald-50 text-emerald-800 border border-emerald-200'
+                : 'bg-red-50 text-red-800 border border-red-200'
+            }`}
+          >
+            {moveMessage.text}
+          </div>
+        </div>
+      )}
+
+      {/* Bulk action bar */}
+      {isAgencyAdmin && allOrgs.length > 0 && selected.size > 0 && (
+        <div className="sticky bottom-0 left-0 right-0 bg-ink text-cream px-5 py-3 rounded-t-xl flex items-center gap-4 mt-6 shadow-lg">
+          <span className="text-sm font-medium">
+            {selected.size} selected
+          </span>
+          <div className="flex items-center gap-2">
+            <span className="text-sm">Move to:</span>
+            <select
+              value={bulkMoveTargetOrg}
+              onChange={(e) => setBulkMoveTargetOrg(e.target.value)}
+              className="bg-ink border border-cream/20 text-cream text-sm rounded-lg px-3 py-1.5 outline-none focus:ring-2 focus:ring-cream/40"
+              disabled={bulkMoveProgress !== null}
+            >
+              <option value="">Select org...</option>
+              {allOrgs.map((org) => (
+                <option key={org.id} value={org.id}>
+                  {org.name}
+                </option>
+              ))}
+            </select>
+            <button
+              onClick={executeBulkMove}
+              disabled={!bulkMoveTargetOrg || bulkMoveProgress !== null}
+              className="px-4 py-1.5 bg-cream text-ink text-sm font-medium rounded-full hover:bg-cream/90 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+            >
+              {bulkMoveProgress
+                ? `Moving ${bulkMoveProgress.current} of ${bulkMoveProgress.total}...`
+                : 'Move'}
+            </button>
+          </div>
+          <button
+            onClick={clearSelection}
+            disabled={bulkMoveProgress !== null}
+            className="ml-auto text-sm text-cream/70 hover:text-cream disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            Clear
+          </button>
+        </div>
+      )}
     </div>
   )
 }

@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { createClientComponentClient } from '@supabase/auth-helpers-nextjs'
+import { createClient } from '@/lib/supabase/client'
 
 interface AuditLog {
   id: string
@@ -59,7 +59,7 @@ function getActionDetail(log: AuditLog): string | null {
 export default function AuditTrail({ resourceType, resourceId, limit = 10 }: AuditTrailProps) {
   const [logs, setLogs] = useState<AuditLog[]>([])
   const [loading, setLoading] = useState(true)
-  const supabase = createClientComponentClient()
+  const supabase = createClient()
 
   useEffect(() => {
     async function fetchLogs() {
