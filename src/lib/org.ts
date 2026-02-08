@@ -1,3 +1,4 @@
+import { cache } from 'react'
 import { createServerSupabase } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
 import type { Organization, OrgMember } from '@/lib/types'
@@ -5,27 +6,40 @@ import type { Organization, OrgMember } from '@/lib/types'
 /**
  * Get the current org from a slug, verifying the user has access.
  * Redirects to /admin if the org is not found or user lacks access.
+ *
+ * Wrapped in React.cache() so multiple calls with the same slug
+ * within a single server render share one Supabase round-trip.
  */
-export async function getOrgBySlug(slug: string): Promise<Organization> {
+export const getOrgBySlug = cache(async (slug: string): Promise<Organization> => {
   const supabase = createServerSupabase()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) redirect('/admin/login')
 
-  // Fetch org and verify membership in one query
-  const { data: membership } = await supabase
-    .from('org_members')
-    .select('org_id, role, organizations(*)')
-    .eq('user_id', user.id)
-    .filter('organizations.slug', 'eq', slug)
+  // Query org directly by slug, then verify membership.
+  // This avoids the PostgREST embedded-filter + .single() footgun
+  // that breaks when a user belongs to multiple orgs.
+  const { data: org } = await supabase
+    .from('organizations')
+    .select('*')
+    .eq('slug', slug)
     .single()
 
-  if (!membership?.organizations) {
-    // User doesn't have access to this org — try falling back
+  if (!org) redirect('/admin')
+
+  const { data: membership } = await supabase
+    .from('org_members')
+    .select('id')
+    .eq('user_id', user.id)
+    .eq('org_id', org.id)
+    .single()
+
+  if (!membership) {
+    // User doesn't have access to this org
     redirect('/admin')
   }
 
-  return membership.organizations as unknown as Organization
-}
+  return org as Organization
+})
 
 /**
  * Get all orgs the current user belongs to.
