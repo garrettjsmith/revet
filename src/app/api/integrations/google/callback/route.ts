@@ -49,34 +49,40 @@ export async function GET(request: NextRequest) {
     // Exchange code for tokens
     const tokens = await exchangeCodeForTokens(code)
 
+    console.log(`[google/callback] Token exchange success: has_access=${!!tokens.access_token}, has_refresh=${!!tokens.refresh_token}, expires_in=${tokens.expires_in}s, scope=${tokens.scope}`)
+
     // Get the connected account's email
     const userInfo = await fetchGoogleUserInfo(tokens.access_token)
+    console.log(`[google/callback] User info: ${userInfo.email}`)
 
     // Store encrypted tokens
     const supabase = createAdminClient()
 
+    // Build the upsert payload — always include refresh token if present
+    const upsertData: Record<string, unknown> = {
+      provider: 'google',
+      account_email: userInfo.email,
+      status: 'connected',
+      access_token_encrypted: encrypt(tokens.access_token),
+      token_expires_at: new Date(
+        Date.now() + tokens.expires_in * 1000
+      ).toISOString(),
+      scopes: tokens.scope.split(' '),
+      metadata: {
+        account_name: userInfo.name,
+        connected_at: new Date().toISOString(),
+      },
+    }
+
+    // Only include refresh_token if Google returned one
+    // (with prompt=consent it always should, but be safe)
+    if (tokens.refresh_token) {
+      upsertData.refresh_token_encrypted = encrypt(tokens.refresh_token)
+    }
+
     const { error: upsertError } = await supabase
       .from('agency_integrations')
-      .upsert(
-        {
-          provider: 'google',
-          account_email: userInfo.email,
-          status: 'connected',
-          access_token_encrypted: encrypt(tokens.access_token),
-          refresh_token_encrypted: tokens.refresh_token
-            ? encrypt(tokens.refresh_token)
-            : undefined,
-          token_expires_at: new Date(
-            Date.now() + tokens.expires_in * 1000
-          ).toISOString(),
-          scopes: tokens.scope.split(' '),
-          metadata: {
-            account_name: userInfo.name,
-            connected_at: new Date().toISOString(),
-          },
-        },
-        { onConflict: 'provider' }
-      )
+      .upsert(upsertData, { onConflict: 'provider' })
 
     if (upsertError) {
       console.error('[google/callback] Upsert failed:', upsertError.message, upsertError.details, upsertError.hint)
@@ -84,6 +90,15 @@ export async function GET(request: NextRequest) {
         `${APP_URL}/agency/integrations?error=save_failed&detail=${encodeURIComponent(upsertError.message)}`
       )
     }
+
+    // Verify the upsert actually stored the tokens
+    const { data: verify } = await supabase
+      .from('agency_integrations')
+      .select('id, status, access_token_encrypted, refresh_token_encrypted, token_expires_at')
+      .eq('provider', 'google')
+      .single()
+
+    console.log(`[google/callback] Verified stored: id=${verify?.id}, status=${verify?.status}, has_access=${!!verify?.access_token_encrypted}, has_refresh=${!!verify?.refresh_token_encrypted}, expires=${verify?.token_expires_at}`)
 
     // Clean up state cookie and redirect to setup wizard
     const response = NextResponse.redirect(

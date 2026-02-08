@@ -27,8 +27,11 @@ export async function getValidAccessToken(): Promise<string> {
     .single()
 
   if (error || !integration) {
+    console.error('[google/auth] No integration row found:', error?.message)
     throw new GoogleAuthError('Google integration not connected', 'not_connected')
   }
+
+  console.log(`[google/auth] Integration found: status=${integration.status}, has_access=${!!integration.access_token_encrypted}, has_refresh=${!!integration.refresh_token_encrypted}, expires=${integration.token_expires_at}`)
 
   if (!integration.refresh_token_encrypted) {
     console.error('[google/auth] No refresh token stored — reconnection required')
@@ -120,8 +123,8 @@ async function refreshAccessToken(integration: any): Promise<string> {
 
       if (err.error === 'invalid_grant') {
         // Refresh token is definitively revoked/expired — no point retrying
-        console.error('[google/auth] Refresh token revoked (invalid_grant). User must reconnect.')
-        console.error('[google/auth] This commonly happens when the Google Cloud app is in "Testing" mode (7-day token expiry).')
+        console.error('[google/auth] invalid_grant — refresh token revoked or expired. User must reconnect.')
+        console.error('[google/auth] Details:', JSON.stringify(err))
 
         await supabase
           .from('agency_integrations')
@@ -131,13 +134,13 @@ async function refreshAccessToken(integration: any): Promise<string> {
               ...integration.metadata,
               error: 'refresh_token_revoked',
               error_at: new Date().toISOString(),
-              error_detail: 'Google returned invalid_grant. If your app is in Testing mode, publish it to Production in Google Cloud Console to get long-lived tokens.',
+              error_detail: `Google returned invalid_grant: ${err.error_description || 'Token has been expired or revoked'}`,
             },
           })
           .eq('id', integration.id)
 
         throw new GoogleAuthError(
-          'Google refresh token expired — reconnection required. If your Google Cloud app is in "Testing" mode, publish it to get long-lived tokens.',
+          'Google refresh token revoked — reconnection required',
           'reconnect_required'
         )
       }
