@@ -28,7 +28,7 @@ interface RvetOrg {
 
 export default function GoogleSetupPage() {
   const router = useRouter()
-  const [step, setStep] = useState<'loading' | 'discovering' | 'mapping' | 'saving' | 'done' | 'error'>('loading')
+  const [step, setStep] = useState<'loading' | 'discovering' | 'mapping' | 'saving' | 'done' | 'error' | 'disconnected'>('loading')
   const [gbpLocations, setGbpLocations] = useState<GBPLocation[]>([])
   const [rvetOrgs, setRvetOrgs] = useState<RvetOrg[]>([])
   const [existingMappedIds, setExistingMappedIds] = useState<Set<string>>(new Set())
@@ -41,18 +41,28 @@ export default function GoogleSetupPage() {
   const [saveResults, setSaveResults] = useState<{ mapped: number; errors: number } | null>(null)
   const [savingProgress, setSavingProgress] = useState({ current: 0, total: 0 })
 
-  // Load data on mount
+  // Load data on mount — check connection status first
   useEffect(() => {
     async function loadData() {
       try {
-        const [orgsRes] = await Promise.all([
+        // Check connection status before attempting discovery
+        const [orgsRes, statusRes] = await Promise.all([
           fetch('/api/agency/organizations'),
+          fetch('/api/integrations/google/status'),
         ])
         if (orgsRes.ok) {
           const orgsData = await orgsRes.json()
           const orgs = orgsData.organizations || []
           setRvetOrgs(orgs)
           if (orgs.length > 0) setTargetOrgId(orgs[0].id)
+        }
+        if (statusRes.ok) {
+          const status = await statusRes.json()
+          if (!status.connected) {
+            setErrorMsg(status.error || 'Google is not connected. Please connect first.')
+            setStep('disconnected')
+            return
+          }
         }
         setStep('discovering')
         discover()
@@ -71,6 +81,12 @@ export default function GoogleSetupPage() {
         const text = await res.text()
         let errorDetail = `Discovery failed (${res.status})`
         try { errorDetail = JSON.parse(text).error || errorDetail } catch { /* */ }
+        // If 401, the connection is broken — show reconnect prompt
+        if (res.status === 401) {
+          setErrorMsg(errorDetail)
+          setStep('disconnected')
+          return
+        }
         setErrorMsg(errorDetail)
         setStep('error')
         return
@@ -229,7 +245,7 @@ export default function GoogleSetupPage() {
       {/* Steps */}
       <div className="flex items-center gap-3 mb-8">
         {['Connect', 'Discover', 'Import', 'Done'].map((label, i) => {
-          const stepIndex: Record<string, number> = { loading: 0, discovering: 1, mapping: 2, saving: 2, done: 3, error: -1 }
+          const stepIndex: Record<string, number> = { loading: 0, discovering: 1, mapping: 2, saving: 2, done: 3, error: -1, disconnected: 0 }
           const current = stepIndex[step] ?? -1
           const isActive = i <= current
           return (
@@ -262,6 +278,27 @@ export default function GoogleSetupPage() {
           <div className="flex items-center justify-center gap-3">
             <button onClick={() => { setStep('discovering'); discover() }} className="px-5 py-2 border border-red-300 text-red-700 text-xs font-medium rounded-full hover:bg-red-100 transition-colors">Retry</button>
             <button onClick={() => router.push('/agency/integrations')} className="px-5 py-2 bg-ink text-cream text-xs font-medium rounded-full">Back</button>
+          </div>
+        </div>
+      )}
+
+      {/* Disconnected — needs reconnect */}
+      {step === 'disconnected' && (
+        <div className="border border-amber-200 bg-amber-50 rounded-xl p-6">
+          <p className="text-sm text-amber-800 mb-2 font-medium">Google connection expired</p>
+          <p className="text-xs text-amber-700 mb-4">
+            {errorMsg || 'Your Google connection needs to be re-established.'}
+          </p>
+          <p className="text-xs text-amber-600 mb-4">
+            If your Google Cloud app is in &quot;Testing&quot; mode, tokens expire after 7 days. Publish it to &quot;Production&quot; in the Google Cloud Console for long-lived tokens.
+          </p>
+          <div className="flex items-center justify-center gap-3">
+            <a href="/api/integrations/google/connect" className="px-5 py-2 bg-amber-600 hover:bg-amber-700 text-white text-xs font-medium rounded-full transition-colors">
+              Reconnect Google
+            </a>
+            <button onClick={() => router.push('/agency/integrations')} className="px-5 py-2 border border-amber-300 text-amber-700 text-xs font-medium rounded-full hover:bg-amber-100 transition-colors">
+              Back
+            </button>
           </div>
         </div>
       )}
