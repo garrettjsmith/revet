@@ -77,7 +77,8 @@ export async function POST(
   }
 
   // Call the RPC function to move the location
-  const { error: rpcError } = await adminClient.rpc('move_location_to_org', {
+  // Use authenticated client so auth.uid() is available inside SECURITY DEFINER function
+  const { error: rpcError } = await supabase.rpc('move_location_to_org', {
     p_location_id: locationId,
     p_new_org_id: orgId,
   })
