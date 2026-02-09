@@ -37,9 +37,9 @@ export default function LoginPage() {
         <div className="text-center mb-8">
           <div className="inline-flex items-center gap-2 mb-4">
             <div className="w-9 h-9 rounded-lg bg-ink flex items-center justify-center font-bold text-xs text-cream font-mono">
-              LS
+              R
             </div>
-            <span className="text-xl font-serif text-ink tracking-tight">lseo.app</span>
+            <span className="text-xl font-serif text-ink tracking-tight">revet.app</span>
           </div>
           <p className="text-warm-gray text-sm">Admin access</p>
         </div>
