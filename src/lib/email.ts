@@ -111,6 +111,59 @@ export function buildReviewAlertEmail({
 }
 
 /**
+ * Build an HTML email for negative review funnel feedback.
+ */
+export function buildFeedbackEmail({
+  profileName,
+  managerName,
+  rating,
+  feedback,
+}: {
+  profileName: string
+  managerName: string
+  rating: number | null
+  feedback: string | null
+}) {
+  const stars = rating
+    ? Array.from({ length: 5 }, (_, i) =>
+        `<span style="color:${i < rating ? '#FBBF24' : '#D5CFC5'};font-size:18px;">★</span>`
+      ).join('')
+    : ''
+
+  const escapedFeedback = (feedback || 'No feedback provided').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/\n/g, '<br>')
+
+  return `
+<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8"></head>
+<body style="margin:0;padding:0;background:#f9fafb;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;">
+  <div style="max-width:560px;margin:0 auto;padding:32px 16px;">
+    <div style="background:#ffffff;border:1px solid #fca5a5;border-radius:12px;overflow:hidden;">
+      <div style="background:#991b1b;padding:20px 24px;">
+        <h1 style="margin:0;color:#ffffff;font-size:16px;font-weight:600;">
+          Patient Feedback
+        </h1>
+        <p style="margin:4px 0 0;color:#fca5a5;font-size:12px;">${profileName}</p>
+      </div>
+      <div style="padding:20px 24px;">
+        ${stars ? `<div style="margin-bottom:12px;">${stars}</div>` : ''}
+        <p style="margin:0 0 16px;color:#111827;font-size:14px;line-height:1.6;">
+          ${escapedFeedback}
+        </p>
+        <p style="margin:0;color:#9ca3af;font-size:11px;">
+          Sent to ${managerName}
+        </p>
+      </div>
+    </div>
+    <p style="text-align:center;margin:16px 0 0;color:#d1d5db;font-size:10px;">
+      Sent by revet.app
+    </p>
+  </div>
+</body>
+</html>`
+}
+
+/**
  * Build an HTML email for a new form submission alert.
  */
 export function buildFormSubmissionEmail({
