@@ -293,7 +293,7 @@ export function ProfileForm({ profile, orgId, orgSlug, locationId, defaultPlaceI
             Notable Integration URL
           </div>
           <code className="text-xs text-cream font-mono">
-            {process.env.NEXT_PUBLIC_APP_URL || 'https://lseo.app'}/r/{form.slug || '{slug}'}
+            {process.env.NEXT_PUBLIC_APP_URL || 'https://revet.app'}/r/{form.slug || '{slug}'}
           </code>
           <p className="text-xs text-warm-gray mt-2">
             Configure Notable to send this URL in the post-appointment message.

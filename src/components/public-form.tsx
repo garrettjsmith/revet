@@ -174,7 +174,7 @@ export function PublicForm({ form }: { form: FormTemplate }) {
 
       {/* Footer */}
       <div className="fixed bottom-0 left-0 right-0 text-center py-3 bg-gradient-to-t from-cream via-cream to-transparent relative z-10">
-        <span className="text-[11px] text-warm-border">Powered by lseo.app</span>
+        <span className="text-[11px] text-warm-border">Powered by revet.app</span>
       </div>
     </div>
   )

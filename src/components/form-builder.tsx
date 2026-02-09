@@ -473,7 +473,7 @@ export function FormBuilder({ form: existingForm, orgId, orgSlug, locationId, or
             Public Form URL
           </div>
           <code className="text-xs text-cream font-mono">
-            {process.env.NEXT_PUBLIC_APP_URL || 'https://lseo.app'}/f/{formData.slug || '{slug}'}
+            {process.env.NEXT_PUBLIC_APP_URL || 'https://revet.app'}/f/{formData.slug || '{slug}'}
           </code>
         </div>
 

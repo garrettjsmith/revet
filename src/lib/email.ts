@@ -8,8 +8,8 @@ function getResend() {
   return _resend
 }
 
-const FROM_EMAIL = process.env.EMAIL_FROM || 'notifications@lseo.app'
-const FROM_NAME = process.env.EMAIL_FROM_NAME || 'LSEO'
+const FROM_EMAIL = process.env.EMAIL_FROM || 'notifications@revet.app'
+const FROM_NAME = process.env.EMAIL_FROM_NAME || 'Revet'
 
 interface SendEmailOptions {
   to: string | string[]
@@ -103,7 +103,7 @@ export function buildReviewAlertEmail({
       </div>
     </div>
     <p style="text-align:center;margin:16px 0 0;color:#c4bfb8;font-size:10px;">
-      Sent by lseo.app
+      Sent by revet.app
     </p>
   </div>
 </body>
@@ -210,7 +210,7 @@ export function buildFormSubmissionEmail({
       </div>
     </div>
     <p style="text-align:center;margin:16px 0 0;color:#c4bfb8;font-size:10px;">
-      Sent by lseo.app
+      Sent by revet.app
     </p>
   </div>
 </body>

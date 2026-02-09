@@ -32,11 +32,11 @@ export default async function AdminIndexPage() {
       <div className="text-center relative z-10 max-w-md">
         <div className="inline-flex items-center gap-2 mb-6">
           <div className="w-10 h-10 rounded-lg bg-ink flex items-center justify-center font-bold text-sm text-cream font-mono">
-            LS
+            R
           </div>
-          <span className="text-2xl font-serif tracking-tight">lseo.app</span>
+          <span className="text-2xl font-serif tracking-tight">revet.app</span>
         </div>
-        <h1 className="text-3xl font-serif text-ink mb-3 text-balance">Welcome to lseo.app</h1>
+        <h1 className="text-3xl font-serif text-ink mb-3 text-balance">Welcome to Revet</h1>
         <p className="text-warm-gray text-sm mb-8 leading-relaxed">
           Create your first organization to get started. Organizations hold all your tools,
           review funnels, and team members.
