@@ -1,7 +1,7 @@
 import { createServerSupabase } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
 import { Sidebar } from '@/components/sidebar'
-import type { Organization, OrgMember } from '@/lib/types'
+import type { Organization, OrgMember, Location } from '@/lib/types'
 
 export const dynamic = 'force-dynamic'
 
@@ -44,6 +44,13 @@ export default async function OrgLayout({
   const currentOrg = currentMembership.org
   const isAgencyAdmin = allMemberships.some((m) => m.is_agency_admin)
 
+  // Fetch locations for the current org (for sidebar location selector)
+  const { data: orgLocations } = await supabase
+    .from('locations')
+    .select('id, name, city, state, type')
+    .eq('org_id', currentOrg.id)
+    .order('name')
+
   return (
     <div className="flex min-h-screen">
       <Sidebar
@@ -51,6 +58,7 @@ export default async function OrgLayout({
         memberships={allMemberships}
         userEmail={user.email || ''}
         isAgencyAdmin={isAgencyAdmin}
+        locations={(orgLocations || []) as Pick<Location, 'id' | 'name' | 'city' | 'state' | 'type'>[]}
       />
       <main className="flex-1 p-8 max-w-6xl">
         {children}

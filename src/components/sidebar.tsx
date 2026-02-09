@@ -6,20 +6,30 @@ import { useRouter, usePathname } from 'next/navigation'
 import Link from 'next/link'
 import type { Organization, OrgMember } from '@/lib/types'
 
+interface SidebarLocation {
+  id: string
+  name: string
+  city: string | null
+  state: string | null
+  type: string
+}
+
 interface SidebarProps {
   currentOrg: Organization
   memberships: (OrgMember & { org: Organization })[]
   userEmail: string
   isAgencyAdmin?: boolean
+  locations?: SidebarLocation[]
 }
 
 type Scope = 'agency' | string // 'agency' or org ID
 
-export function Sidebar({ currentOrg, memberships, userEmail, isAgencyAdmin }: SidebarProps) {
+export function Sidebar({ currentOrg, memberships, userEmail, isAgencyAdmin, locations = [] }: SidebarProps) {
   const router = useRouter()
   const pathname = usePathname()
   const supabase = createClient()
   const [scopeSelectorOpen, setScopeSelectorOpen] = useState(false)
+  const [locationSelectorOpen, setLocationSelectorOpen] = useState(false)
 
   const handleLogout = async () => {
     await supabase.auth.signOut()
@@ -32,6 +42,11 @@ export function Sidebar({ currentOrg, memberships, userEmail, isAgencyAdmin }: S
   const isAgencyScope = currentScope === 'agency'
 
   const basePath = `/admin/${currentOrg.slug}`
+
+  // Detect current location from pathname
+  const locationMatch = pathname.match(/\/locations\/([a-f0-9-]{36})/)
+  const currentLocationId = locationMatch ? locationMatch[1] : null
+  const currentLocation = currentLocationId ? locations.find((l) => l.id === currentLocationId) : null
 
   // Switch scope and navigate
   const handleScopeSwitch = (scope: Scope) => {
@@ -46,6 +61,16 @@ export function Sidebar({ currentOrg, memberships, userEmail, isAgencyAdmin }: S
     }
   }
 
+  // Switch location
+  const handleLocationSwitch = (locationId: string | null) => {
+    setLocationSelectorOpen(false)
+    if (locationId) {
+      router.push(`${basePath}/locations/${locationId}`)
+    } else {
+      router.push(basePath)
+    }
+  }
+
   // Nav items for agency scope
   const agencyNavGroups = [
     {
@@ -53,14 +78,32 @@ export function Sidebar({ currentOrg, memberships, userEmail, isAgencyAdmin }: S
       items: [
         { href: '/agency', label: 'Overview', icon: OverviewIcon },
         { href: '/agency/organizations', label: 'Organizations', icon: OrganizationsIcon },
-        { href: '/agency/organizations', label: 'All Locations', icon: LocationIcon }, // Future: /agency/locations
+        { href: '/agency/locations', label: 'All Locations', icon: LocationIcon },
         { href: '/agency/integrations', label: 'Integrations', icon: IntegrationsIcon },
       ],
     },
   ]
 
-  // Nav items for org scope
-  const orgNavGroups = [
+  const locationBasePath = currentLocationId ? `${basePath}/locations/${currentLocationId}` : null
+
+  // Nav items for org scope — with optional location scoping
+  const orgNavGroups = currentLocation && locationBasePath ? [
+    {
+      label: null,
+      items: [
+        { href: locationBasePath, label: 'Overview', icon: DashboardIcon },
+      ],
+    },
+    {
+      label: 'Manage',
+      items: [
+        { href: `${locationBasePath}/reviews`, label: 'Reviews', icon: ReviewIcon },
+        { href: `${locationBasePath}/review-funnels`, label: 'Review Funnels', icon: FunnelIcon },
+        { href: `${locationBasePath}/forms`, label: 'Forms', icon: FormIcon },
+        { href: `${locationBasePath}/gbp-profile`, label: 'GBP Profile', icon: IntegrationsIcon },
+      ],
+    },
+  ] : [
     {
       label: null,
       items: [
@@ -80,8 +123,9 @@ export function Sidebar({ currentOrg, memberships, userEmail, isAgencyAdmin }: S
   const navGroups = isAgencyScope ? agencyNavGroups : orgNavGroups
 
   const isActive = (href: string) => {
-    if (href === basePath) return pathname === basePath
+    if (href === basePath && !currentLocation) return pathname === basePath
     if (href === '/agency') return pathname === '/agency'
+    if (locationBasePath && href === locationBasePath) return pathname === locationBasePath
     return pathname.startsWith(href)
   }
 
@@ -170,6 +214,57 @@ export function Sidebar({ currentOrg, memberships, userEmail, isAgencyAdmin }: S
         )}
       </div>
 
+      {/* Location selector (org scope only, when locations exist) */}
+      {!isAgencyScope && locations.length > 0 && (
+        <div className="px-4 py-2 border-b border-warm-border">
+          <button
+            onClick={() => setLocationSelectorOpen(!locationSelectorOpen)}
+            className="w-full flex items-center gap-2.5 px-2 py-1.5 rounded-lg hover:bg-warm-light transition-colors text-left"
+          >
+            <LocationIcon className="w-4 h-4 text-warm-gray shrink-0" />
+            <div className="min-w-0 flex-1">
+              <div className="text-xs text-warm-gray truncate">
+                {currentLocation ? currentLocation.name : 'All locations'}
+              </div>
+            </div>
+            <ChevronIcon className={`w-3.5 h-3.5 text-warm-gray transition-transform ${locationSelectorOpen ? 'rotate-180' : ''}`} />
+          </button>
+
+          {locationSelectorOpen && (
+            <div className="mt-1.5 border border-warm-border rounded-lg bg-cream overflow-hidden max-h-64 overflow-y-auto">
+              {/* All locations option */}
+              <button
+                onClick={() => handleLocationSwitch(null)}
+                className={`w-full flex items-center gap-2.5 px-3 py-1.5 text-xs text-left transition-colors ${
+                  !currentLocationId
+                    ? 'bg-warm-light text-ink font-medium'
+                    : 'text-warm-gray hover:bg-warm-light hover:text-ink'
+                }`}
+              >
+                All locations
+              </button>
+              <div className="border-t border-warm-border" />
+              {locations.map((loc) => (
+                <button
+                  key={loc.id}
+                  onClick={() => handleLocationSwitch(loc.id)}
+                  className={`w-full flex items-center gap-2.5 px-3 py-1.5 text-xs text-left transition-colors ${
+                    loc.id === currentLocationId
+                      ? 'bg-warm-light text-ink font-medium'
+                      : 'text-warm-gray hover:bg-warm-light hover:text-ink'
+                  }`}
+                >
+                  <span className="truncate">{loc.name}</span>
+                  {loc.city && (
+                    <span className="text-[10px] text-warm-gray/60 shrink-0">{loc.city}</span>
+                  )}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
       {/* Navigation */}
       <nav className="flex-1 overflow-y-auto py-4 px-3">
         {navGroups.map((group, gi) => (
@@ -203,9 +298,9 @@ export function Sidebar({ currentOrg, memberships, userEmail, isAgencyAdmin }: S
       <div className="border-t border-warm-border p-3 space-y-1">
         {!isAgencyScope && (
           <Link
-            href={`${basePath}/settings`}
+            href={currentLocation && locationBasePath ? `${locationBasePath}/settings` : `${basePath}/settings`}
             className={`flex items-center gap-2.5 px-2 py-1.5 rounded-md text-sm no-underline transition-colors ${
-              pathname.startsWith(`${basePath}/settings`)
+              pathname.includes('/settings')
                 ? 'bg-warm-light text-ink font-medium'
                 : 'text-warm-gray hover:text-ink hover:bg-warm-light/50'
             }`}
@@ -271,6 +366,14 @@ function ReviewIcon({ className }: { className?: string }) {
   return (
     <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
       <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" />
+    </svg>
+  )
+}
+
+function FunnelIcon({ className }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M22 3H2l8 9.46V19l4 2v-8.54L22 3z" />
     </svg>
   )
 }
