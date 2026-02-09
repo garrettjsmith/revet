@@ -1,6 +1,7 @@
 import { createAdminClient } from '@/lib/supabase/admin'
 import { requireAgencyAdmin } from '@/lib/locations'
 import Link from 'next/link'
+import { SyncNowButton } from '@/components/sync-now-button'
 
 export const dynamic = 'force-dynamic'
 
@@ -123,8 +124,9 @@ export default async function AgencyOverview() {
 
       {/* Sync Health Card */}
       <div className="border border-warm-border rounded-xl overflow-hidden mb-8">
-        <div className="px-5 py-4 border-b border-warm-border">
+        <div className="px-5 py-4 border-b border-warm-border flex items-center justify-between">
           <h2 className="text-sm font-semibold text-ink">Sync Health</h2>
+          <SyncNowButton pendingCount={syncStatusCounts.pending + syncStatusCounts.error} />
         </div>
         <div className="px-5 py-4">
           {/* Status summary */}
