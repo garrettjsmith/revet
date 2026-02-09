@@ -30,10 +30,11 @@ async function trackEvent(
 }
 
 export function ReviewFunnel({ profile }: { profile: ReviewProfile }) {
-  const [step, setStep] = useState<'ask' | 'positive' | 'negative'>('ask')
+  const [step, setStep] = useState<'ask' | 'positive' | 'negative' | 'submitted'>('ask')
   const [hoverStar, setHoverStar] = useState(0)
   const [selectedRating, setSelectedRating] = useState(0)
   const [feedbackText, setFeedbackText] = useState('')
+  const [submitting, setSubmitting] = useState(false)
   const [sessionId] = useState(generateSessionId)
 
   const reviewUrl = `https://search.google.com/local/writereview?placeid=${profile.place_id}`
@@ -58,8 +59,23 @@ export function ReviewFunnel({ profile }: { profile: ReviewProfile }) {
     trackEvent(profile.id, 'google_click', sessionId, { routed_to: 'google' })
   }
 
-  const handleEmailClick = () => {
-    trackEvent(profile.id, 'email_click', sessionId, { routed_to: 'email' })
+  const handleFeedbackSubmit = async () => {
+    setSubmitting(true)
+    try {
+      await fetch('/api/feedback', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          profile_id: profile.id,
+          session_id: sessionId,
+          rating: selectedRating,
+          feedback: feedbackText,
+        }),
+      })
+    } catch {
+      // Non-blocking — still show confirmation
+    }
+    setStep('submitted')
   }
 
   const primary = profile.primary_color
@@ -173,38 +189,53 @@ export function ReviewFunnel({ profile }: { profile: ReviewProfile }) {
           </div>
         )}
 
-        {/* ── Step: Negative → Email Manager ── */}
+        {/* ── Step: Negative → Send Feedback ── */}
         {step === 'negative' && (
           <div className="animate-[fadeUp_0.4s_ease]">
             <h2 className="text-xl font-semibold text-gray-900 mb-3">
               We&apos;d like to make it right
             </h2>
             <p className="text-sm text-gray-500 mb-6 leading-relaxed">
-              We&apos;re sorry your experience didn&apos;t meet expectations. Please share
-              your feedback directly with our {profile.manager_name.toLowerCase()} so we can improve.
+              We&apos;re sorry your experience didn&apos;t meet expectations.
+              Please share your feedback so we can improve.
             </p>
             <textarea
               value={feedbackText}
               onChange={(e) => setFeedbackText(e.target.value)}
-              placeholder="Tell us what happened (optional)..."
+              placeholder="Tell us what happened..."
               rows={4}
               className="w-full p-3.5 bg-white border border-gray-200 rounded-xl text-sm text-gray-900 resize-y outline-none focus:ring-2 focus:ring-gray-300 focus:border-gray-300 leading-relaxed mb-5 placeholder:text-gray-400"
             />
-            <a
-              href={`mailto:${profile.manager_email}?subject=${encodeURIComponent('Feedback about my visit')}&body=${encodeURIComponent(feedbackText || "I'd like to share feedback about my recent visit.")}`}
-              onClick={handleEmailClick}
-              className="inline-flex items-center gap-3 text-white rounded-full px-8 py-3.5 text-base font-medium no-underline transition-opacity duration-200 hover:opacity-90"
+            <button
+              onClick={handleFeedbackSubmit}
+              disabled={submitting}
+              className="inline-flex items-center gap-3 text-white rounded-full px-8 py-3.5 text-base font-medium transition-opacity duration-200 hover:opacity-90 disabled:opacity-50"
               style={{ background: primary }}
             >
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <rect x="2" y="4" width="20" height="16" rx="2"/>
-                <path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7"/>
-              </svg>
-              Contact {profile.manager_name}
-            </a>
+              {submitting ? 'Sending...' : 'Send Feedback'}
+            </button>
             <p className="text-xs text-gray-400 mt-6 leading-relaxed">
               Your feedback goes directly to our team.<br />
               We appreciate you helping us improve.
+            </p>
+          </div>
+        )}
+
+        {/* ── Step: Feedback Submitted ── */}
+        {step === 'submitted' && (
+          <div className="animate-[fadeUp_0.4s_ease]">
+            <div className="mb-5" style={{ color: primary }}>
+              <svg className="mx-auto" width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14" />
+                <polyline points="22 4 12 14.01 9 11.01" />
+              </svg>
+            </div>
+            <h2 className="text-xl font-semibold text-gray-900 mb-3">
+              Thank you for your feedback
+            </h2>
+            <p className="text-sm text-gray-500 leading-relaxed">
+              We&apos;ve shared your feedback with our team.<br />
+              We take every response seriously and will work to improve.
             </p>
           </div>
         )}
