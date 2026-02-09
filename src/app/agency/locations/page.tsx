@@ -48,9 +48,9 @@ export default async function AgencyLocationsPage() {
     // Determine sync status
     let syncStatus: 'active' | 'pending' | 'error' | 'none' = 'none'
     if (reviewSource?.sync_status) {
-      if (reviewSource.sync_status === 'active' || reviewSource.sync_status === 'synced') {
+      if (reviewSource.sync_status === 'active') {
         syncStatus = 'active'
-      } else if (reviewSource.sync_status === 'syncing' || reviewSource.sync_status === 'pending') {
+      } else if (reviewSource.sync_status === 'pending') {
         syncStatus = 'pending'
       } else if (reviewSource.sync_status === 'error') {
         syncStatus = 'error'
