@@ -8,7 +8,7 @@ function getResend() {
   return _resend
 }
 
-const FROM_EMAIL = process.env.EMAIL_FROM || 'notifications@revet.app'
+const FROM_EMAIL = process.env.EMAIL_FROM || 'notifications@use.revet.app'
 const FROM_NAME = process.env.EMAIL_FROM_NAME || 'Revet'
 
 interface SendEmailOptions {
