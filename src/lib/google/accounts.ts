@@ -122,15 +122,28 @@ export async function discoverAllLocations(): Promise<{
     accountMap.set(acct.name, acct.accountName)
   }
 
-  // Phase 1: Fetch locations per-account to preserve ownership
+  // Phase 1: Fetch locations per-account in parallel batches to preserve ownership
+  const CONCURRENCY = 10
   const seen = new Set<string>()
   const deduped: Array<GBPLocation & { accountName: string; accountDisplayName: string }> = []
 
-  for (const acct of accounts) {
-    try {
-      const locations = await listGBPLocations(acct.name)
-      console.log(`[google/accounts] ${acct.name} (${acct.accountName}): ${locations.length} locations`)
+  for (let i = 0; i < accounts.length; i += CONCURRENCY) {
+    const batch = accounts.slice(i, i + CONCURRENCY)
+    const results = await Promise.allSettled(
+      batch.map(async (acct) => {
+        const locations = await listGBPLocations(acct.name)
+        console.log(`[google/accounts] ${acct.name} (${acct.accountName}): ${locations.length} locations`)
+        return { acct, locations }
+      })
+    )
 
+    for (const result of results) {
+      if (result.status === 'rejected') {
+        // Some account types (ORGANIZATION, USER_GROUP) may not support listing
+        console.warn(`[google/accounts] Could not list locations for an account:`, result.reason instanceof Error ? result.reason.message : result.reason)
+        continue
+      }
+      const { acct, locations } = result.value
       for (const loc of locations) {
         // Extract the location ID portion (e.g. "locations/abc123")
         const locKey = loc.name.startsWith('locations/') ? loc.name : loc.name.split('/').slice(-2).join('/')
@@ -143,9 +156,6 @@ export async function discoverAllLocations(): Promise<{
           accountDisplayName: acct.accountName,
         })
       }
-    } catch (err) {
-      // Some account types (ORGANIZATION, USER_GROUP) may not support listing
-      console.warn(`[google/accounts] Could not list locations for ${acct.name}:`, err instanceof Error ? err.message : err)
     }
   }
 
