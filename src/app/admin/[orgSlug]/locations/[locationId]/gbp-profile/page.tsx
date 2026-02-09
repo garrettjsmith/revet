@@ -14,12 +14,25 @@ const DAY_SHORT: Record<string, string> = {
   FRIDAY: 'Fri', SATURDAY: 'Sat', SUNDAY: 'Sun',
 }
 
-function formatTime(t: string): string {
+function formatTime(t: unknown): string {
   if (!t) return ''
-  const [h, m] = t.split(':').map(Number)
-  const ampm = h >= 12 ? 'PM' : 'AM'
-  const hour = h === 0 ? 12 : h > 12 ? h - 12 : h
-  return `${hour}:${String(m).padStart(2, '0')} ${ampm}`
+  // Handle object format from Google API: {hours: 9, minutes: 0}
+  if (typeof t === 'object' && t !== null) {
+    const obj = t as Record<string, number>
+    const h = obj.hours ?? 0
+    const m = obj.minutes ?? 0
+    const ampm = h >= 12 ? 'PM' : 'AM'
+    const hour = h === 0 ? 12 : h > 12 ? h - 12 : h
+    return `${hour}:${String(m).padStart(2, '0')} ${ampm}`
+  }
+  // Handle string format: "09:00"
+  if (typeof t === 'string') {
+    const [h, m] = t.split(':').map(Number)
+    const ampm = h >= 12 ? 'PM' : 'AM'
+    const hour = h === 0 ? 12 : h > 12 ? h - 12 : h
+    return `${hour}:${String(m).padStart(2, '0')} ${ampm}`
+  }
+  return ''
 }
 
 export default async function GBPProfilePage({
