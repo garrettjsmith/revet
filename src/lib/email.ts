@@ -8,7 +8,7 @@ function getResend() {
   return _resend
 }
 
-const FROM_EMAIL = process.env.EMAIL_FROM || 'notifications@use.revet.app'
+const FROM_EMAIL = process.env.EMAIL_FROM || 'noreply@use.revet.app'
 const FROM_NAME = process.env.EMAIL_FROM_NAME || 'Revet'
 
 interface SendEmailOptions {
@@ -136,27 +136,15 @@ export function buildFeedbackEmail({
 <!DOCTYPE html>
 <html>
 <head><meta charset="utf-8"></head>
-<body style="margin:0;padding:0;background:#f9fafb;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;">
+<body style="margin:0;padding:0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;color:#111827;">
   <div style="max-width:560px;margin:0 auto;padding:32px 16px;">
-    <div style="background:#ffffff;border:1px solid #fca5a5;border-radius:12px;overflow:hidden;">
-      <div style="background:#991b1b;padding:20px 24px;">
-        <h1 style="margin:0;color:#ffffff;font-size:16px;font-weight:600;">
-          Patient Feedback
-        </h1>
-        <p style="margin:4px 0 0;color:#fca5a5;font-size:12px;">${profileName}</p>
-      </div>
-      <div style="padding:20px 24px;">
-        ${stars ? `<div style="margin-bottom:12px;">${stars}</div>` : ''}
-        <p style="margin:0 0 16px;color:#111827;font-size:14px;line-height:1.6;">
-          ${escapedFeedback}
-        </p>
-        <p style="margin:0;color:#9ca3af;font-size:11px;">
-          Sent to ${managerName}
-        </p>
-      </div>
-    </div>
-    <p style="text-align:center;margin:16px 0 0;color:#d1d5db;font-size:10px;">
-      Sent by revet.app
+    <p style="margin:0 0 4px;font-size:14px;font-weight:600;">${profileName}</p>
+    ${stars ? `<p style="margin:0 0 16px;font-size:18px;line-height:1;">${stars}</p>` : ''}
+    <p style="margin:0 0 24px;font-size:14px;line-height:1.6;color:#374151;">
+      ${escapedFeedback}
+    </p>
+    <p style="margin:0;font-size:12px;color:#9ca3af;">
+      This feedback was submitted through your review page.
     </p>
   </div>
 </body>
