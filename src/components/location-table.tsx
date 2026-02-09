@@ -17,6 +17,7 @@ interface LocationTableProps {
     reviews: number
     avgRating: string
     synced: boolean
+    syncStatus: string | null
     hasSource: boolean
     category: string | null
     gbpStatus: string | null
@@ -29,7 +30,7 @@ interface LocationTableProps {
 
 type SortField = 'name' | 'reviews' | 'rating'
 type SortDirection = 'asc' | 'desc'
-type SyncFilter = 'all' | 'synced' | 'syncing' | 'not_connected'
+type SyncFilter = 'all' | 'synced' | 'pending' | 'error' | 'not_connected'
 
 export function LocationTable({ locations, orgSlug, compact = false, isAgencyAdmin = false, allOrgs = [] }: LocationTableProps) {
   const router = useRouter()
@@ -80,9 +81,10 @@ export function LocationTable({ locations, orgSlug, compact = false, isAgencyAdm
 
       // Sync status filter
       if (syncFilter !== 'all') {
-        if (syncFilter === 'synced' && !loc.synced) return false
-        if (syncFilter === 'syncing' && (loc.synced || !loc.hasSource)) return false
-        if (syncFilter === 'not_connected' && (loc.synced || loc.hasSource)) return false
+        if (syncFilter === 'synced' && loc.syncStatus !== 'active') return false
+        if (syncFilter === 'pending' && loc.syncStatus !== 'pending') return false
+        if (syncFilter === 'error' && loc.syncStatus !== 'error') return false
+        if (syncFilter === 'not_connected' && loc.hasSource) return false
       }
 
       // City filter
@@ -255,7 +257,7 @@ export function LocationTable({ locations, orgSlug, compact = false, isAgencyAdm
   }
 
   const renderSyncStatus = (loc: LocationTableProps['locations'][0]) => {
-    if (loc.synced) {
+    if (loc.syncStatus === 'active') {
       return (
         <span className="inline-flex items-center gap-1.5 text-[10px] font-medium text-emerald-600">
           <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
@@ -263,11 +265,27 @@ export function LocationTable({ locations, orgSlug, compact = false, isAgencyAdm
         </span>
       )
     }
-    if (loc.gbpStatus || loc.hasSource) {
+    if (loc.syncStatus === 'error') {
+      return (
+        <span className="inline-flex items-center gap-1.5 text-[10px] font-medium text-red-600">
+          <span className="w-1.5 h-1.5 rounded-full bg-red-500" />
+          Error
+        </span>
+      )
+    }
+    if (loc.syncStatus === 'paused') {
+      return (
+        <span className="inline-flex items-center gap-1.5 text-[10px] text-warm-gray">
+          <span className="w-1.5 h-1.5 rounded-full bg-warm-border" />
+          Paused
+        </span>
+      )
+    }
+    if (loc.syncStatus === 'pending' || loc.hasSource) {
       return (
         <span className="inline-flex items-center gap-1.5 text-[10px] font-medium text-amber-600">
           <span className="w-1.5 h-1.5 rounded-full bg-amber-500" />
-          Syncing
+          Pending
         </span>
       )
     }
@@ -478,7 +496,7 @@ export function LocationTable({ locations, orgSlug, compact = false, isAgencyAdm
         <div className="flex flex-wrap items-center gap-3 mb-4">
           <div className="flex items-center gap-2">
             <span className="text-xs text-warm-gray">Sync:</span>
-            {(['all', 'synced', 'syncing', 'not_connected'] as const).map((filter) => (
+            {(['all', 'synced', 'pending', 'error', 'not_connected'] as const).map((filter) => (
               <button
                 key={filter}
                 onClick={() => {
@@ -491,7 +509,7 @@ export function LocationTable({ locations, orgSlug, compact = false, isAgencyAdm
                     : 'border border-warm-border text-warm-gray hover:text-ink px-3 py-1 rounded-full text-xs'
                 }
               >
-                {filter === 'all' ? 'All' : filter === 'synced' ? 'Synced' : filter === 'syncing' ? 'Syncing' : 'Not connected'}
+                {filter === 'all' ? 'All' : filter === 'synced' ? 'Synced' : filter === 'pending' ? 'Pending' : filter === 'error' ? 'Error' : 'Not connected'}
               </button>
             ))}
           </div>

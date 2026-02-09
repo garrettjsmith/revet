@@ -250,6 +250,41 @@ export async function POST(request: NextRequest) {
     }
   }
 
+  // Trigger review backfill for newly mapped sources (fire-and-forget)
+  if (mappedCount > 0) {
+    const mappedLocationIds = results
+      .filter((r) => r.status === 'mapped' && r.location_id)
+      .map((r) => r.location_id)
+
+    if (mappedLocationIds.length > 0) {
+      const { data: newSources } = await adminClient
+        .from('review_sources')
+        .select('id')
+        .in('location_id', mappedLocationIds)
+        .eq('platform', 'google')
+        .eq('sync_status', 'pending')
+
+      if (newSources && newSources.length > 0) {
+        const backfillUrl = `${process.env.NEXT_PUBLIC_APP_URL}/api/google/reviews/backfill`
+        const apiKey = process.env.REVIEW_SYNC_API_KEY
+
+        fetch(backfillUrl, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            ...(apiKey ? { Authorization: `Bearer ${apiKey}` } : {}),
+          },
+          body: JSON.stringify({
+            source_ids: newSources.map((s) => s.id),
+            limit: newSources.length,
+          }),
+        }).catch((err) => {
+          console.error('[google/map] Failed to trigger review backfill:', err)
+        })
+      }
+    }
+  }
+
   return NextResponse.json({
     ok: true,
     results,

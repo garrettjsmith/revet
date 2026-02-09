@@ -87,7 +87,7 @@ export default async function LocationDetailPage({
   const gbpStatusValue = gbp
     ? (gbp.open_status === 'OPEN' ? 'Open' : gbp.open_status || 'Connected')
     : reviewSource
-    ? (reviewSource.sync_status === 'active' ? 'Synced' : 'Syncing')
+    ? ({ active: 'Synced', error: 'Sync error', paused: 'Paused', pending: 'Pending' }[reviewSource.sync_status as string] || 'Pending')
     : 'Not linked'
 
   const statCards = [

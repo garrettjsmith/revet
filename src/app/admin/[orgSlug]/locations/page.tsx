@@ -53,6 +53,7 @@ export default async function LocationsPage({ params }: { params: { orgSlug: str
       reviews: source?.total_review_count || 0,
       avgRating: source?.average_rating ? Number(source.average_rating).toFixed(1) : '—',
       synced: source?.sync_status === 'active',
+      syncStatus: source?.sync_status || null,
       hasSource: !!source,
       category: profile?.primary_category_name || null,
       gbpStatus: profile?.open_status || null,

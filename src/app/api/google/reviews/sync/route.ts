@@ -126,12 +126,14 @@ export async function POST(request: NextRequest) {
 
       const syncResult = await syncResponse.json()
 
-      // Update source stats from Google's response
+      // Update source stats and sync status from Google's response
       await supabase
         .from('review_sources')
         .update({
           total_review_count: data.totalReviewCount || source.total_review_count,
           average_rating: data.averageRating || source.average_rating,
+          sync_status: 'active',
+          last_synced_at: new Date().toISOString(),
         })
         .eq('id', source.id)
 
