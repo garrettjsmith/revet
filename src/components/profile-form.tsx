@@ -10,9 +10,10 @@ interface Props {
   orgId: string
   orgSlug: string
   locationId?: string
+  defaultPlaceId?: string
 }
 
-export function ProfileForm({ profile, orgId, orgSlug, locationId }: Props) {
+export function ProfileForm({ profile, orgId, orgSlug, locationId, defaultPlaceId }: Props) {
   const isEditing = !!profile
   const router = useRouter()
   const supabase = createClient()
@@ -30,7 +31,7 @@ export function ProfileForm({ profile, orgId, orgSlug, locationId }: Props) {
     slug: profile?.slug || '',
     heading: profile?.heading || 'Thank you for your visit',
     subtext: profile?.subtext || 'Your feedback helps us provide the best care possible.',
-    place_id: profile?.place_id || '',
+    place_id: profile?.place_id || defaultPlaceId || '',
     manager_email: profile?.manager_email || '',
     manager_name: profile?.manager_name || 'Practice Manager',
     primary_color: profile?.primary_color || '#1B4965',

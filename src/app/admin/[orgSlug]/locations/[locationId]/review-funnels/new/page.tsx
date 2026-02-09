@@ -24,6 +24,7 @@ export default async function NewLocationReviewFunnelPage({
         orgId={org.id}
         orgSlug={params.orgSlug}
         locationId={location.id}
+        defaultPlaceId={location.place_id || undefined}
       />
     </div>
   )
