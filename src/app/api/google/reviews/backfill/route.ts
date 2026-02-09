@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
+import { createServerSupabase } from '@/lib/supabase/server'
 import { fetchGoogleReviews, normalizeGoogleReview } from '@/lib/google/reviews'
 import { getValidAccessToken, GoogleAuthError } from '@/lib/google/auth'
 
@@ -11,6 +12,8 @@ export const maxDuration = 300
  * Full review backfill for newly mapped locations. Unlike the incremental cron sync
  * (which fetches only the latest page), this paginates through ALL reviews.
  *
+ * Auth: API key via Authorization header OR authenticated agency admin session.
+ *
  * Body: {
  *   source_ids?: string[]  // Specific review source IDs to backfill
  *   limit?: number         // Max sources to process (default 5)
@@ -20,7 +23,34 @@ export async function POST(request: NextRequest) {
   const authHeader = request.headers.get('authorization')
   const apiKey = process.env.REVIEW_SYNC_API_KEY
 
-  if (apiKey && authHeader !== `Bearer ${apiKey}`) {
+  // Allow API key auth OR authenticated agency admin
+  let authorized = false
+
+  if (apiKey && authHeader === `Bearer ${apiKey}`) {
+    authorized = true
+  }
+
+  if (!authorized) {
+    // Check for agency admin session
+    try {
+      const supabase = createServerSupabase()
+      const { data: { user } } = await supabase.auth.getUser()
+      if (user) {
+        const { data: membership } = await supabase
+          .from('org_members')
+          .select('is_agency_admin')
+          .eq('user_id', user.id)
+          .eq('is_agency_admin', true)
+          .limit(1)
+          .single()
+        if (membership) authorized = true
+      }
+    } catch {
+      // Auth check failed — fall through to unauthorized
+    }
+  }
+
+  if (!authorized) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
 
