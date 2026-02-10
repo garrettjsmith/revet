@@ -397,21 +397,23 @@ export interface GBPPerformanceMetric {
   created_at: string
 }
 
-// Notification Preferences
+// Notification Subscriptions
 
 export type NotificationAlertType = 'new_review' | 'negative_review' | 'review_response' | 'report'
+export type SubscriberType = 'all_members' | 'user' | 'email'
 
-export interface NotificationPreference {
+export interface NotificationSubscription {
   id: string
   org_id: string
-  user_id: string
-  location_id: string
+  location_id: string | null
   alert_type: NotificationAlertType
-  email_enabled: boolean
+  subscriber_type: SubscriberType
+  subscriber_value: string | null
   created_at: string
   updated_at: string
   // joined
   location_name?: string
+  subscriber_display?: string  // resolved display name (email or user name)
 }
 
 // Review Reply Queue

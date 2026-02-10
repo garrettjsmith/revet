@@ -136,14 +136,15 @@ async function processAlertRules(
 
   if (!rules || rules.length === 0) return
 
-  // Pre-fetch preference-based emails for this location
-  const prefEmailCache = new Map<string, string[]>()
+  // Pre-fetch subscription-based emails for this location
+  const subEmailCache = new Map<string, string[]>()
   for (const alertType of ['new_review', 'negative_review']) {
-    const { data: emails } = await supabase.rpc('get_notification_emails', {
+    const { data: emails } = await supabase.rpc('get_subscription_emails', {
+      p_org_id: orgId,
       p_location_id: locationId,
       p_alert_type: alertType,
     })
-    prefEmailCache.set(alertType, (emails || []).map((r: { email: string }) => r.email))
+    subEmailCache.set(alertType, (emails || []).map((r: { email: string }) => r.email))
   }
 
   for (const rule of rules) {
@@ -169,11 +170,11 @@ async function processAlertRules(
 
       if (!shouldAlert) continue
 
-      // Combine rule emails + preference-based emails
+      // Combine rule emails + subscription-based emails
       const ruleEmails = rule.notify_emails || []
-      const prefAlertType = rule.rule_type === 'keyword_match' ? 'new_review' : rule.rule_type
-      const prefEmails = prefEmailCache.get(prefAlertType) || []
-      const allEmails = Array.from(new Set([...ruleEmails, ...prefEmails]))
+      const subAlertType = rule.rule_type === 'keyword_match' ? 'new_review' : rule.rule_type
+      const subEmails = subEmailCache.get(subAlertType) || []
+      const allEmails = Array.from(new Set([...ruleEmails, ...subEmails]))
 
       if (allEmails.length > 0) {
         const publishedAt = new Date(review.published_at).toLocaleDateString('en-US', {
