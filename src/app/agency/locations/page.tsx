@@ -8,7 +8,7 @@ export default async function AgencyLocationsPage() {
   await requireAgencyAdmin()
   const adminClient = createAdminClient()
 
-  // Fetch all locations with org info and review source stats
+  // Fetch all locations with org info, review source stats, and lander status
   const { data: rawLocations, error: locationsError } = await adminClient
     .from('locations')
     .select(`
@@ -19,7 +19,8 @@ export default async function AgencyLocationsPage() {
       status,
       org_id,
       organizations!inner(id, name, slug),
-      review_sources(sync_status, total_review_count, average_rating)
+      review_sources(sync_status, total_review_count, average_rating),
+      local_landers(id)
     `)
     .neq('status', 'archived')
     .order('name')
@@ -57,6 +58,8 @@ export default async function AgencyLocationsPage() {
       }
     }
 
+    const landers = Array.isArray(loc.local_landers) ? loc.local_landers : []
+
     return {
       id: loc.id,
       name: loc.name,
@@ -67,7 +70,8 @@ export default async function AgencyLocationsPage() {
       orgSlug: org?.slug || '',
       reviews: reviewSource?.total_review_count || 0,
       avgRating: reviewSource?.average_rating?.toFixed(1) || null,
-      syncStatus
+      syncStatus,
+      hasLander: landers.length > 0,
     }
   })
 
