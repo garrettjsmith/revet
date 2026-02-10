@@ -207,3 +207,6 @@ export async function POST(request: NextRequest) {
     results,
   })
 }
+
+// Vercel cron sends GET — delegate to the same handler
+export const GET = POST
