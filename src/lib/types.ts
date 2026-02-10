@@ -397,6 +397,23 @@ export interface GBPPerformanceMetric {
   created_at: string
 }
 
+// Notification Preferences
+
+export type NotificationAlertType = 'new_review' | 'negative_review' | 'review_response' | 'report'
+
+export interface NotificationPreference {
+  id: string
+  org_id: string
+  user_id: string
+  location_id: string
+  alert_type: NotificationAlertType
+  email_enabled: boolean
+  created_at: string
+  updated_at: string
+  // joined
+  location_name?: string
+}
+
 // Review Reply Queue
 
 export type ReplyQueueStatus = 'pending' | 'sending' | 'confirmed' | 'failed'

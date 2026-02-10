@@ -296,8 +296,21 @@ export function Sidebar({ currentOrg, memberships, userEmail, isAgencyAdmin, loc
         ))}
       </nav>
 
-      {/* Settings + User (only for org scope) */}
+      {/* Notifications + Settings + User (only for org scope) */}
       <div className="border-t border-warm-border p-3 space-y-1">
+        {!isAgencyScope && (
+          <Link
+            href={`${basePath}/notifications`}
+            className={`flex items-center gap-2.5 px-2 py-1.5 rounded-md text-sm no-underline transition-colors ${
+              pathname.includes('/notifications')
+                ? 'bg-warm-light text-ink font-medium'
+                : 'text-warm-gray hover:text-ink hover:bg-warm-light/50'
+            }`}
+          >
+            <BellIcon className="w-4 h-4 shrink-0" />
+            Notifications
+          </Link>
+        )}
         {!isAgencyScope && (
           <Link
             href={currentLocation && locationBasePath ? `${locationBasePath}/settings` : `${basePath}/settings`}
@@ -437,6 +450,15 @@ function LanderIcon({ className }: { className?: string }) {
       <rect x="3" y="3" width="18" height="18" rx="2" />
       <path d="M3 9h18" />
       <path d="M9 21V9" />
+    </svg>
+  )
+}
+
+function BellIcon({ className }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9" />
+      <path d="M13.73 21a2 2 0 0 1-3.46 0" />
     </svg>
   )
 }
