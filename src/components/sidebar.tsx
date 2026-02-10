@@ -79,6 +79,7 @@ export function Sidebar({ currentOrg, memberships, userEmail, isAgencyAdmin, loc
         { href: '/agency', label: 'Overview', icon: OverviewIcon },
         { href: '/agency/organizations', label: 'Organizations', icon: OrganizationsIcon },
         { href: '/agency/locations', label: 'All Locations', icon: LocationIcon },
+        { href: '/agency/landers', label: 'Landers', icon: LanderIcon },
         { href: '/agency/integrations', label: 'Integrations', icon: IntegrationsIcon },
       ],
     },

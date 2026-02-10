@@ -12,9 +12,14 @@ export async function GET() {
 
   const { data: locations } = await supabase
     .from('locations')
-    .select('id, org_id, name, place_id, city, state')
-    .eq('active', true)
+    .select('id, org_id, name, place_id, city, state, status, active')
     .order('name')
 
-  return NextResponse.json({ locations: locations || [] })
+  // Filter out archived — use status if available, fall back to active boolean
+  const filtered = (locations || []).filter((loc: any) => {
+    if (loc.status) return loc.status !== 'archived'
+    return loc.active !== false
+  })
+
+  return NextResponse.json({ locations: filtered })
 }
