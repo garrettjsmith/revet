@@ -1,6 +1,7 @@
 import { createServerSupabase } from '@/lib/supabase/server'
 import { getOrgBySlug } from '@/lib/org'
 import { getLocation, checkAgencyAdmin } from '@/lib/locations'
+import { getTemplate } from '@/lib/lander-templates'
 import { notFound } from 'next/navigation'
 import Link from 'next/link'
 
@@ -94,7 +95,7 @@ export default async function LanderDashboardPage({
 
       {/* Info grid */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-8">
-        <InfoCard label="Schema" value={lander.active ? 'Active' : 'Inactive'} />
+        <InfoCard label="Template" value={getTemplate(lander.template_id || 'general').label} />
         <InfoCard label="Reviews" value={lander.show_reviews ? 'Shown' : 'Hidden'} />
         <InfoCard label="Map" value={lander.show_map ? 'Shown' : 'Hidden'} />
         <InfoCard label="FAQ" value={lander.show_faq ? 'Shown' : 'Hidden'} />

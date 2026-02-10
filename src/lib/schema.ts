@@ -1,4 +1,5 @@
 import type { Location, GBPProfile, GBPHoursPeriod, LocalLander } from '@/lib/types'
+import { getTemplate } from '@/lib/lander-templates'
 
 /**
  * Maps GBP primary_category_id (gcid:xxx) to Schema.org @type.
@@ -89,10 +90,11 @@ interface SchemaInput {
  * Generate JSON-LD structured data for a local lander page.
  */
 export function generateJsonLd({ location, gbp, lander, reviewStats }: SchemaInput): object {
-  // Determine Schema.org @type
-  let schemaType = 'LocalBusiness'
-  if (gbp?.primary_category_id) {
-    schemaType = CATEGORY_TO_SCHEMA[gbp.primary_category_id] || 'LocalBusiness'
+  // Determine Schema.org @type — prefer template's type, then GBP category, then fallback
+  const template = getTemplate(lander.template_id || 'general')
+  let schemaType = template.schemaType
+  if (schemaType === 'LocalBusiness' && gbp?.primary_category_id) {
+    schemaType = CATEGORY_TO_SCHEMA[gbp.primary_category_id] || schemaType
   }
   if (location.type === 'practitioner' && schemaType === 'LocalBusiness') {
     schemaType = 'Physician'

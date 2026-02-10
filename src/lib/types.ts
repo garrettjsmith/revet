@@ -266,6 +266,8 @@ export interface LocalLander {
   org_id: string
   location_id: string
   slug: string
+  template_id: string
+  template_data: Record<string, unknown>
   heading: string | null
   description: string | null
   primary_color: string

@@ -1,6 +1,8 @@
 'use client'
 
 import type { Location, GBPProfile, GBPHoursPeriod, LocalLander, Review } from '@/lib/types'
+import { getTemplate } from '@/lib/lander-templates'
+import type { TemplateSection, TemplateField } from '@/lib/lander-templates'
 
 interface LanderProps {
   lander: LocalLander
@@ -60,10 +62,13 @@ export function LocalLanderPage({ lander, location, gbp, reviews, reviewStats }:
   const description = lander.custom_about || lander.description || gbp?.description
   const hours = (lander.custom_hours || gbp?.regular_hours) as { periods?: GBPHoursPeriod[] } | null
   const name = lander.heading || gbp?.business_name || location.name
-  const website = gbp?.website_uri
-  const mapsUri = gbp?.maps_uri
+  const website = gbp?.website_uri || null
+  const mapsUri = gbp?.maps_uri || null
   const services = lander.custom_services || null
   const faq = lander.custom_faq || null
+  const templateData = lander.template_data || {}
+
+  const template = getTemplate(lander.template_id || 'general')
 
   // Build directions URL
   const directionsUrl = mapsUri || (
@@ -77,6 +82,213 @@ export function LocalLanderPage({ lander, location, gbp, reviews, reviewStats }:
       const day = period.openDay
       if (!hoursByDay[day]) hoursByDay[day] = []
       hoursByDay[day].push({ opens: period.openTime, closes: period.closeTime })
+    }
+  }
+
+  // Render a single section based on its definition
+  function renderSection(section: TemplateSection, index: number) {
+    // Built-in sections
+    if (section.builtIn) {
+      switch (section.id) {
+        case 'contact':
+          return <ContactSection key={index} address={address} phone={phone} email={location.email} website={website} locationType={location.type} directionsUrl={directionsUrl} primary={primary} />
+        case 'about':
+          return description ? (
+            <section key={index}>
+              <h2 className="text-lg font-semibold text-gray-900 mb-3">{section.label}</h2>
+              <p className="text-sm text-gray-600 leading-relaxed whitespace-pre-line">{description}</p>
+            </section>
+          ) : null
+        case 'hours':
+          return hours?.periods && hours.periods.length > 0 ? (
+            <section key={index}>
+              <h2 className="text-lg font-semibold text-gray-900 mb-3">{section.label}</h2>
+              <div className="border border-gray-100 rounded-lg divide-y divide-gray-100">
+                {DAY_ORDER.map((day) => {
+                  const slots = hoursByDay[day]
+                  return (
+                    <div key={day} className="flex items-center justify-between px-4 py-2.5 text-sm">
+                      <span className="text-gray-600 font-medium w-12">{DAY_SHORT[day]}</span>
+                      <span className="text-gray-700">
+                        {slots
+                          ? slots.map((s, i) => (
+                              <span key={i}>{i > 0 && ', '}{formatTime(s.opens)} – {formatTime(s.closes)}</span>
+                            ))
+                          : <span className="text-gray-400">Closed</span>
+                        }
+                      </span>
+                    </div>
+                  )
+                })}
+              </div>
+            </section>
+          ) : null
+        case 'services':
+          return services && services.length > 0 ? (
+            <section key={index}>
+              <h2 className="text-lg font-semibold text-gray-900 mb-3">{section.label}</h2>
+              <div className="grid sm:grid-cols-2 gap-3">
+                {services.map((svc, i) => (
+                  <div key={i} className="border border-gray-100 rounded-lg p-4">
+                    <h3 className="text-sm font-semibold text-gray-900 mb-1">{svc.name}</h3>
+                    {svc.description && <p className="text-xs text-gray-500 leading-relaxed">{svc.description}</p>}
+                  </div>
+                ))}
+              </div>
+            </section>
+          ) : null
+        case 'reviews':
+          return lander.show_reviews && reviewStats && reviewStats.reviewCount > 0 ? (
+            <section key={index}>
+              <h2 className="text-lg font-semibold text-gray-900 mb-3">{section.label}</h2>
+              <div className="flex items-center gap-3 mb-5">
+                <span className="text-3xl font-bold text-gray-900">{reviewStats.averageRating.toFixed(1)}</span>
+                <div>
+                  <StarRating rating={reviewStats.averageRating} size="lg" />
+                  <p className="text-xs text-gray-500 mt-0.5">{reviewStats.reviewCount} reviews</p>
+                </div>
+              </div>
+              {reviews.length > 0 && (
+                <div className="space-y-4">
+                  {reviews.map((review) => (
+                    <div key={review.id} className="border border-gray-100 rounded-lg p-4">
+                      <div className="flex items-center justify-between mb-2">
+                        <div className="flex items-center gap-2">
+                          <span className="text-sm font-medium text-gray-900">{review.reviewer_name || 'Anonymous'}</span>
+                          {review.rating && <StarRating rating={review.rating} />}
+                        </div>
+                        <span className="text-xs text-gray-400">{new Date(review.published_at).toLocaleDateString()}</span>
+                      </div>
+                      {review.body && <p className="text-sm text-gray-600 leading-relaxed line-clamp-3">{review.body}</p>}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </section>
+          ) : null
+        case 'faq':
+          return lander.show_faq && faq && faq.length > 0 ? (
+            <section key={index}>
+              <h2 className="text-lg font-semibold text-gray-900 mb-3">{section.label}</h2>
+              <div className="space-y-4">
+                {faq.map((item, i) => (
+                  <div key={i}>
+                    <h3 className="text-sm font-semibold text-gray-900 mb-1">{item.question}</h3>
+                    <p className="text-sm text-gray-600 leading-relaxed">{item.answer}</p>
+                  </div>
+                ))}
+              </div>
+            </section>
+          ) : null
+        case 'map':
+          return lander.show_map && gbp?.latitude && gbp?.longitude && location.type !== 'service_area' ? (
+            <section key={index}>
+              <h2 className="text-lg font-semibold text-gray-900 mb-3">{section.label}</h2>
+              <div className="rounded-lg overflow-hidden border border-gray-100">
+                <iframe
+                  title={`Map of ${name}`}
+                  width="100%"
+                  height="300"
+                  style={{ border: 0 }}
+                  loading="lazy"
+                  referrerPolicy="no-referrer-when-downgrade"
+                  src={`https://www.google.com/maps/embed/v1/place?key=${process.env.NEXT_PUBLIC_GOOGLE_MAPS_KEY || ''}&q=${gbp.latitude},${gbp.longitude}&zoom=15`}
+                />
+              </div>
+            </section>
+          ) : null
+        default:
+          return null
+      }
+    }
+
+    // Template sections — rendered from template_data fields
+    if (!section.fields) return null
+
+    // Check if any field in this section has data
+    const hasData = section.fields.some((f) => {
+      const val = templateData[f.key]
+      if (Array.isArray(val)) return val.length > 0
+      if (typeof val === 'string') return val.trim().length > 0
+      return !!val
+    })
+    if (!hasData) return null
+
+    return (
+      <section key={index}>
+        <h2 className="text-lg font-semibold text-gray-900 mb-3">{section.label}</h2>
+        <div className="space-y-4">
+          {section.fields.map((field) => renderField(field))}
+        </div>
+      </section>
+    )
+  }
+
+  // Render a single template field
+  function renderField(field: TemplateField) {
+    const val = templateData[field.key]
+    if (!val) return null
+
+    switch (field.type) {
+      case 'list': {
+        const items = Array.isArray(val) ? val as string[] : []
+        if (items.length === 0) return null
+        return (
+          <div key={field.key} className="flex flex-wrap gap-2">
+            {items.map((item, i) => (
+              <span
+                key={i}
+                className="px-3 py-1 text-sm rounded-full border border-gray-200 text-gray-700"
+              >
+                {item}
+              </span>
+            ))}
+          </div>
+        )
+      }
+      case 'text': {
+        const text = typeof val === 'string' ? val : ''
+        if (!text) return null
+        // If it looks like a URL, render as a link
+        if (text.startsWith('http://') || text.startsWith('https://')) {
+          return (
+            <div key={field.key}>
+              <a href={text} target="_blank" rel="noopener noreferrer" className="text-sm text-gray-700 underline">
+                {field.label}
+              </a>
+            </div>
+          )
+        }
+        return (
+          <div key={field.key} className="text-sm text-gray-700">
+            <span className="font-medium text-gray-900">{field.label}:</span>{' '}
+            {text}
+          </div>
+        )
+      }
+      case 'textarea': {
+        const text = typeof val === 'string' ? val : ''
+        if (!text) return null
+        return (
+          <p key={field.key} className="text-sm text-gray-600 leading-relaxed whitespace-pre-line">{text}</p>
+        )
+      }
+      case 'key_value': {
+        const entries = typeof val === 'object' && !Array.isArray(val) ? Object.entries(val as Record<string, string>) : []
+        if (entries.length === 0) return null
+        return (
+          <div key={field.key} className="space-y-1">
+            {entries.map(([k, v]) => (
+              <div key={k} className="flex items-baseline gap-2 text-sm">
+                <span className="font-medium text-gray-900">{k}:</span>
+                <span className="text-gray-600">{v}</span>
+              </div>
+            ))}
+          </div>
+        )
+      }
+      default:
+        return null
     }
   }
 
@@ -105,206 +317,7 @@ export function LocalLanderPage({ lander, location, gbp, reviews, reviewStats }:
       </header>
 
       <main className="max-w-3xl mx-auto px-6 py-8 space-y-10">
-        {/* NAP + Contact CTAs */}
-        <section className="flex flex-col sm:flex-row sm:items-start gap-6">
-          <div className="flex-1">
-            {location.type !== 'service_area' && address && (
-              <div className="flex items-start gap-2.5 mb-3">
-                <MapPinIcon className="w-4 h-4 text-gray-400 mt-0.5 shrink-0" />
-                <p className="text-sm text-gray-700">{address}</p>
-              </div>
-            )}
-            {location.type === 'service_area' && (
-              <div className="flex items-start gap-2.5 mb-3">
-                <MapPinIcon className="w-4 h-4 text-gray-400 mt-0.5 shrink-0" />
-                <p className="text-sm text-gray-700">Serves your area</p>
-              </div>
-            )}
-            {phone && (
-              <div className="flex items-center gap-2.5 mb-3">
-                <PhoneIcon className="w-4 h-4 text-gray-400 shrink-0" />
-                <a href={`tel:${phone}`} className="text-sm text-gray-700 no-underline hover:underline">
-                  {phone}
-                </a>
-              </div>
-            )}
-            {location.email && (
-              <div className="flex items-center gap-2.5 mb-3">
-                <EmailIcon className="w-4 h-4 text-gray-400 shrink-0" />
-                <a href={`mailto:${location.email}`} className="text-sm text-gray-700 no-underline hover:underline">
-                  {location.email}
-                </a>
-              </div>
-            )}
-            {website && (
-              <div className="flex items-center gap-2.5">
-                <GlobeIcon className="w-4 h-4 text-gray-400 shrink-0" />
-                <a href={website} target="_blank" rel="noopener noreferrer" className="text-sm text-gray-700 no-underline hover:underline">
-                  {new URL(website).hostname}
-                </a>
-              </div>
-            )}
-          </div>
-
-          {/* CTA buttons */}
-          <div className="flex flex-col gap-2.5 sm:w-48 shrink-0">
-            {phone && (
-              <a
-                href={`tel:${phone}`}
-                className="flex items-center justify-center gap-2 text-white text-sm font-medium rounded-lg px-4 py-2.5 no-underline transition-opacity hover:opacity-90"
-                style={{ background: primary }}
-              >
-                <PhoneIcon className="w-4 h-4" />
-                Call Now
-              </a>
-            )}
-            {directionsUrl && location.type !== 'service_area' && (
-              <a
-                href={directionsUrl}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="flex items-center justify-center gap-2 border border-gray-200 text-gray-700 text-sm font-medium rounded-lg px-4 py-2.5 no-underline transition-colors hover:border-gray-400"
-              >
-                <MapPinIcon className="w-4 h-4" />
-                Get Directions
-              </a>
-            )}
-            {website && (
-              <a
-                href={website}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="flex items-center justify-center gap-2 border border-gray-200 text-gray-700 text-sm font-medium rounded-lg px-4 py-2.5 no-underline transition-colors hover:border-gray-400"
-              >
-                <GlobeIcon className="w-4 h-4" />
-                Visit Website
-              </a>
-            )}
-          </div>
-        </section>
-
-        {/* About */}
-        {description && (
-          <section>
-            <h2 className="text-lg font-semibold text-gray-900 mb-3">About</h2>
-            <p className="text-sm text-gray-600 leading-relaxed whitespace-pre-line">{description}</p>
-          </section>
-        )}
-
-        {/* Hours */}
-        {hours?.periods && hours.periods.length > 0 && (
-          <section>
-            <h2 className="text-lg font-semibold text-gray-900 mb-3">Hours</h2>
-            <div className="border border-gray-100 rounded-lg divide-y divide-gray-100">
-              {DAY_ORDER.map((day) => {
-                const slots = hoursByDay[day]
-                return (
-                  <div key={day} className="flex items-center justify-between px-4 py-2.5 text-sm">
-                    <span className="text-gray-600 font-medium w-12">{DAY_SHORT[day]}</span>
-                    <span className="text-gray-700">
-                      {slots
-                        ? slots.map((s, i) => (
-                            <span key={i}>
-                              {i > 0 && ', '}
-                              {formatTime(s.opens)} – {formatTime(s.closes)}
-                            </span>
-                          ))
-                        : <span className="text-gray-400">Closed</span>
-                      }
-                    </span>
-                  </div>
-                )
-              })}
-            </div>
-          </section>
-        )}
-
-        {/* Services */}
-        {services && services.length > 0 && (
-          <section>
-            <h2 className="text-lg font-semibold text-gray-900 mb-3">Services</h2>
-            <div className="grid sm:grid-cols-2 gap-3">
-              {services.map((svc, i) => (
-                <div key={i} className="border border-gray-100 rounded-lg p-4">
-                  <h3 className="text-sm font-semibold text-gray-900 mb-1">{svc.name}</h3>
-                  {svc.description && (
-                    <p className="text-xs text-gray-500 leading-relaxed">{svc.description}</p>
-                  )}
-                </div>
-              ))}
-            </div>
-          </section>
-        )}
-
-        {/* Reviews Summary + Recent Reviews */}
-        {lander.show_reviews && reviewStats && reviewStats.reviewCount > 0 && (
-          <section>
-            <h2 className="text-lg font-semibold text-gray-900 mb-3">Reviews</h2>
-            <div className="flex items-center gap-3 mb-5">
-              <span className="text-3xl font-bold text-gray-900">{reviewStats.averageRating.toFixed(1)}</span>
-              <div>
-                <StarRating rating={reviewStats.averageRating} size="lg" />
-                <p className="text-xs text-gray-500 mt-0.5">{reviewStats.reviewCount} reviews</p>
-              </div>
-            </div>
-
-            {reviews.length > 0 && (
-              <div className="space-y-4">
-                {reviews.map((review) => (
-                  <div key={review.id} className="border border-gray-100 rounded-lg p-4">
-                    <div className="flex items-center justify-between mb-2">
-                      <div className="flex items-center gap-2">
-                        <span className="text-sm font-medium text-gray-900">
-                          {review.reviewer_name || 'Anonymous'}
-                        </span>
-                        {review.rating && <StarRating rating={review.rating} />}
-                      </div>
-                      <span className="text-xs text-gray-400">
-                        {new Date(review.published_at).toLocaleDateString()}
-                      </span>
-                    </div>
-                    {review.body && (
-                      <p className="text-sm text-gray-600 leading-relaxed line-clamp-3">{review.body}</p>
-                    )}
-                  </div>
-                ))}
-              </div>
-            )}
-          </section>
-        )}
-
-        {/* FAQ */}
-        {lander.show_faq && faq && faq.length > 0 && (
-          <section>
-            <h2 className="text-lg font-semibold text-gray-900 mb-3">Frequently Asked Questions</h2>
-            <div className="space-y-4">
-              {faq.map((item, i) => (
-                <div key={i}>
-                  <h3 className="text-sm font-semibold text-gray-900 mb-1">{item.question}</h3>
-                  <p className="text-sm text-gray-600 leading-relaxed">{item.answer}</p>
-                </div>
-              ))}
-            </div>
-          </section>
-        )}
-
-        {/* Map embed */}
-        {lander.show_map && gbp?.latitude && gbp?.longitude && location.type !== 'service_area' && (
-          <section>
-            <h2 className="text-lg font-semibold text-gray-900 mb-3">Location</h2>
-            <div className="rounded-lg overflow-hidden border border-gray-100">
-              <iframe
-                title={`Map of ${name}`}
-                width="100%"
-                height="300"
-                style={{ border: 0 }}
-                loading="lazy"
-                referrerPolicy="no-referrer-when-downgrade"
-                src={`https://www.google.com/maps/embed/v1/place?key=${process.env.NEXT_PUBLIC_GOOGLE_MAPS_KEY || ''}&q=${gbp.latitude},${gbp.longitude}&zoom=15`}
-              />
-            </div>
-          </section>
-        )}
+        {template.sections.map((section, i) => renderSection(section, i))}
       </main>
 
       {/* Footer */}
@@ -317,7 +330,92 @@ export function LocalLanderPage({ lander, location, gbp, reviews, reviewStats }:
   )
 }
 
-// Simple inline SVG icons
+// ---- Sub-components for built-in sections --------------------------------
+
+function ContactSection({
+  address, phone, email, website, locationType, directionsUrl, primary,
+}: {
+  address: string; phone: string | null; email: string | null
+  website: string | null; locationType: string; directionsUrl: string | null
+  primary: string
+}) {
+  return (
+    <section className="flex flex-col sm:flex-row sm:items-start gap-6">
+      <div className="flex-1">
+        {locationType !== 'service_area' && address && (
+          <div className="flex items-start gap-2.5 mb-3">
+            <MapPinIcon className="w-4 h-4 text-gray-400 mt-0.5 shrink-0" />
+            <p className="text-sm text-gray-700">{address}</p>
+          </div>
+        )}
+        {locationType === 'service_area' && (
+          <div className="flex items-start gap-2.5 mb-3">
+            <MapPinIcon className="w-4 h-4 text-gray-400 mt-0.5 shrink-0" />
+            <p className="text-sm text-gray-700">Serves your area</p>
+          </div>
+        )}
+        {phone && (
+          <div className="flex items-center gap-2.5 mb-3">
+            <PhoneIcon className="w-4 h-4 text-gray-400 shrink-0" />
+            <a href={`tel:${phone}`} className="text-sm text-gray-700 no-underline hover:underline">{phone}</a>
+          </div>
+        )}
+        {email && (
+          <div className="flex items-center gap-2.5 mb-3">
+            <EmailIcon className="w-4 h-4 text-gray-400 shrink-0" />
+            <a href={`mailto:${email}`} className="text-sm text-gray-700 no-underline hover:underline">{email}</a>
+          </div>
+        )}
+        {website && (
+          <div className="flex items-center gap-2.5">
+            <GlobeIcon className="w-4 h-4 text-gray-400 shrink-0" />
+            <a href={website} target="_blank" rel="noopener noreferrer" className="text-sm text-gray-700 no-underline hover:underline">
+              {new URL(website).hostname}
+            </a>
+          </div>
+        )}
+      </div>
+
+      <div className="flex flex-col gap-2.5 sm:w-48 shrink-0">
+        {phone && (
+          <a
+            href={`tel:${phone}`}
+            className="flex items-center justify-center gap-2 text-white text-sm font-medium rounded-lg px-4 py-2.5 no-underline transition-opacity hover:opacity-90"
+            style={{ background: primary }}
+          >
+            <PhoneIcon className="w-4 h-4" />
+            Call Now
+          </a>
+        )}
+        {directionsUrl && locationType !== 'service_area' && (
+          <a
+            href={directionsUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="flex items-center justify-center gap-2 border border-gray-200 text-gray-700 text-sm font-medium rounded-lg px-4 py-2.5 no-underline transition-colors hover:border-gray-400"
+          >
+            <MapPinIcon className="w-4 h-4" />
+            Get Directions
+          </a>
+        )}
+        {website && (
+          <a
+            href={website}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="flex items-center justify-center gap-2 border border-gray-200 text-gray-700 text-sm font-medium rounded-lg px-4 py-2.5 no-underline transition-colors hover:border-gray-400"
+          >
+            <GlobeIcon className="w-4 h-4" />
+            Visit Website
+          </a>
+        )}
+      </div>
+    </section>
+  )
+}
+
+// ---- Icons ---------------------------------------------------------------
+
 function MapPinIcon({ className }: { className?: string }) {
   return (
     <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">

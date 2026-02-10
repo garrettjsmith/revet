@@ -12,6 +12,10 @@ CREATE TABLE IF NOT EXISTS local_landers (
   location_id uuid NOT NULL REFERENCES locations(id) ON DELETE CASCADE,
   slug text NOT NULL UNIQUE,
 
+  -- Template
+  template_id text DEFAULT 'general',  -- References lander-templates.ts
+  template_data jsonb DEFAULT '{}',    -- Template-specific field values
+
   -- Display config
   heading text,                    -- Override heading (default: location name)
   description text,                -- Override description (default: GBP description)

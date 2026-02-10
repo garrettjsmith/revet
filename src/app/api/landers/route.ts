@@ -23,8 +23,8 @@ export async function POST(request: NextRequest) {
 
   const body = await request.json()
   const {
-    org_id, location_id, slug, heading, description,
-    primary_color, logo_url, custom_about,
+    org_id, location_id, slug, template_id, template_data,
+    heading, description, primary_color, logo_url, custom_about,
     show_reviews, show_map, show_faq, active,
   } = body
 
@@ -38,6 +38,8 @@ export async function POST(request: NextRequest) {
       org_id,
       location_id,
       slug,
+      template_id: template_id || 'general',
+      template_data: template_data || {},
       heading,
       description,
       primary_color: primary_color || '#1B4965',
@@ -82,8 +84,8 @@ export async function PUT(request: NextRequest) {
 
   const body = await request.json()
   const {
-    id, slug, heading, description,
-    primary_color, logo_url, custom_about,
+    id, slug, template_id, template_data,
+    heading, description, primary_color, logo_url, custom_about,
     show_reviews, show_map, show_faq, active,
   } = body
 
@@ -95,6 +97,8 @@ export async function PUT(request: NextRequest) {
     .from('local_landers')
     .update({
       slug,
+      template_id,
+      template_data,
       heading,
       description,
       primary_color,

@@ -1,9 +1,11 @@
 import { getOrgBySlug } from '@/lib/org'
 import { getLocation, requireAgencyAdmin } from '@/lib/locations'
 import { createServerSupabase } from '@/lib/supabase/server'
+import { detectTemplate } from '@/lib/lander-templates'
 import { notFound } from 'next/navigation'
 import Link from 'next/link'
 import { LanderSettingsForm } from './form'
+import type { LocationType } from '@/lib/types'
 
 export const dynamic = 'force-dynamic'
 
@@ -20,19 +22,20 @@ export default async function LanderSettingsPage({
 
   const supabase = createServerSupabase()
 
-  // Fetch existing lander (may not exist yet)
-  const { data: lander } = await supabase
-    .from('local_landers')
-    .select('*')
-    .eq('location_id', location.id)
-    .single()
+  // Fetch existing lander + GBP profile in parallel
+  const [landerResult, gbpResult] = await Promise.all([
+    supabase.from('local_landers').select('*').eq('location_id', location.id).single(),
+    supabase.from('gbp_profiles').select('business_name, description, phone_primary, primary_category_id, primary_category_name, website_uri').eq('location_id', location.id).single(),
+  ])
 
-  // Fetch GBP profile for defaults
-  const { data: gbp } = await supabase
-    .from('gbp_profiles')
-    .select('business_name, description, phone_primary, primary_category_name, website_uri')
-    .eq('location_id', location.id)
-    .single()
+  const lander = landerResult.data
+  const gbp = gbpResult.data
+
+  // Auto-detect template from GBP category + location type
+  const detectedTemplateId = detectTemplate(
+    gbp?.primary_category_id || null,
+    location.type as LocationType,
+  )
 
   const basePath = `/admin/${params.orgSlug}/locations/${params.locationId}`
 
@@ -77,6 +80,7 @@ export default async function LanderSettingsPage({
           description: gbp.description,
           categoryName: gbp.primary_category_name,
         } : null}
+        detectedTemplateId={detectedTemplateId}
       />
     </div>
   )

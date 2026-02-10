@@ -2,6 +2,8 @@
 
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
+import { LANDER_TEMPLATES, getTemplate, getTemplateFields } from '@/lib/lander-templates'
+import type { TemplateField } from '@/lib/lander-templates'
 import type { LocalLander } from '@/lib/types'
 
 interface GBPDefaults {
@@ -17,6 +19,7 @@ interface Props {
   locationName: string
   lander: LocalLander | null
   gbpDefaults: GBPDefaults | null
+  detectedTemplateId: string
 }
 
 function generateSlug(name: string): string {
@@ -29,10 +32,12 @@ function generateSlug(name: string): string {
     .substring(0, 80)
 }
 
-export function LanderSettingsForm({ orgId, orgSlug, locationId, locationName, lander, gbpDefaults }: Props) {
+export function LanderSettingsForm({ orgId, orgSlug, locationId, locationName, lander, gbpDefaults, detectedTemplateId }: Props) {
   const router = useRouter()
   const isEdit = !!lander
 
+  const [templateId, setTemplateId] = useState(lander?.template_id || detectedTemplateId)
+  const [templateData, setTemplateData] = useState<Record<string, unknown>>(lander?.template_data || {})
   const [slug, setSlug] = useState(lander?.slug || generateSlug(locationName))
   const [heading, setHeading] = useState(lander?.heading || gbpDefaults?.businessName || locationName)
   const [description, setDescription] = useState(lander?.description || gbpDefaults?.description || '')
@@ -45,6 +50,26 @@ export function LanderSettingsForm({ orgId, orgSlug, locationId, locationName, l
   const [active, setActive] = useState(lander?.active ?? true)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
+
+  const currentTemplate = getTemplate(templateId)
+  const templateFields = getTemplateFields(templateId)
+
+  // Update a template_data field
+  const setFieldValue = (key: string, value: unknown) => {
+    setTemplateData((prev) => ({ ...prev, [key]: value }))
+  }
+
+  // Parse comma-separated input into array for list fields
+  const getListValue = (key: string): string => {
+    const val = templateData[key]
+    if (Array.isArray(val)) return (val as string[]).join(', ')
+    return ''
+  }
+
+  const setListValue = (key: string, raw: string) => {
+    const items = raw.split(',').map((s) => s.trim()).filter(Boolean)
+    setFieldValue(key, items)
+  }
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -60,6 +85,8 @@ export function LanderSettingsForm({ orgId, orgSlug, locationId, locationName, l
           org_id: orgId,
           location_id: locationId,
           slug,
+          template_id: templateId,
+          template_data: templateData,
           heading: heading || null,
           description: description || null,
           primary_color: primaryColor,
@@ -95,6 +122,37 @@ export function LanderSettingsForm({ orgId, orgSlug, locationId, locationName, l
           {error}
         </div>
       )}
+
+      {/* Template picker */}
+      <div>
+        <label className="block text-sm font-medium text-ink mb-1.5">Page Template</label>
+        <div className="grid grid-cols-2 gap-2">
+          {LANDER_TEMPLATES.map((t) => (
+            <button
+              key={t.id}
+              type="button"
+              onClick={() => setTemplateId(t.id)}
+              className={`text-left px-3 py-2.5 rounded-lg border text-sm transition-colors ${
+                templateId === t.id
+                  ? 'border-ink bg-ink/5 text-ink font-medium'
+                  : 'border-warm-border text-warm-gray hover:border-ink/30 hover:text-ink'
+              }`}
+            >
+              <div className="font-medium">{t.label}</div>
+              <div className="text-xs mt-0.5 opacity-70">{t.description}</div>
+            </button>
+          ))}
+        </div>
+        {templateId !== detectedTemplateId && (
+          <button
+            type="button"
+            onClick={() => setTemplateId(detectedTemplateId)}
+            className="text-xs text-warm-gray hover:text-ink mt-1.5 transition-colors"
+          >
+            Reset to auto-detected ({getTemplate(detectedTemplateId).label})
+          </button>
+        )}
+      </div>
 
       {/* Slug */}
       <div>
@@ -150,8 +208,29 @@ export function LanderSettingsForm({ orgId, orgSlug, locationId, locationName, l
         />
       </div>
 
+      {/* Template-specific fields */}
+      {templateFields.length > 0 && (
+        <div className="border-t border-warm-border pt-6">
+          <label className="block text-sm font-medium text-ink mb-4">
+            {currentTemplate.label} Fields
+          </label>
+          <div className="space-y-5">
+            {templateFields.map((field) => (
+              <TemplateFieldInput
+                key={field.key}
+                field={field}
+                value={templateData[field.key]}
+                listValue={field.type === 'list' ? getListValue(field.key) : ''}
+                onChange={(val) => setFieldValue(field.key, val)}
+                onListChange={(raw) => setListValue(field.key, raw)}
+              />
+            ))}
+          </div>
+        </div>
+      )}
+
       {/* Primary Color */}
-      <div>
+      <div className="border-t border-warm-border pt-6">
         <label className="block text-sm font-medium text-ink mb-1.5">Brand Color</label>
         <div className="flex items-center gap-3">
           <input
@@ -215,6 +294,65 @@ export function LanderSettingsForm({ orgId, orgSlug, locationId, locationName, l
     </form>
   )
 }
+
+// ---- Template field input component -------------------------------------
+
+function TemplateFieldInput({
+  field, value, listValue, onChange, onListChange,
+}: {
+  field: TemplateField
+  value: unknown
+  listValue: string
+  onChange: (val: unknown) => void
+  onListChange: (raw: string) => void
+}) {
+  switch (field.type) {
+    case 'list':
+      return (
+        <div>
+          <label className="block text-sm font-medium text-ink mb-1.5">{field.label}</label>
+          <input
+            type="text"
+            value={listValue}
+            onChange={(e) => onListChange(e.target.value)}
+            placeholder={field.placeholder}
+            className="w-full px-3 py-2.5 text-sm text-ink border border-warm-border rounded-lg outline-none focus:border-ink transition-colors"
+          />
+          <p className="text-xs text-warm-gray mt-1">Comma-separated values</p>
+        </div>
+      )
+    case 'text':
+      return (
+        <div>
+          <label className="block text-sm font-medium text-ink mb-1.5">{field.label}</label>
+          <input
+            type="text"
+            value={typeof value === 'string' ? value : ''}
+            onChange={(e) => onChange(e.target.value)}
+            placeholder={field.placeholder}
+            className="w-full px-3 py-2.5 text-sm text-ink border border-warm-border rounded-lg outline-none focus:border-ink transition-colors"
+          />
+        </div>
+      )
+    case 'textarea':
+      return (
+        <div>
+          <label className="block text-sm font-medium text-ink mb-1.5">{field.label}</label>
+          <textarea
+            value={typeof value === 'string' ? value : ''}
+            onChange={(e) => onChange(e.target.value)}
+            placeholder={field.placeholder}
+            rows={3}
+            className="w-full px-3 py-2.5 text-sm text-ink border border-warm-border rounded-lg outline-none focus:border-ink transition-colors resize-y"
+          />
+        </div>
+      )
+    default:
+      return null
+  }
+}
+
+// ---- Toggle component ---------------------------------------------------
 
 function Toggle({ label, checked, onChange }: { label: string; checked: boolean; onChange: (v: boolean) => void }) {
   return (
