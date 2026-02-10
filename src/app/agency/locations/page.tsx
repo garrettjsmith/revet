@@ -8,33 +8,40 @@ export default async function AgencyLocationsPage() {
   await requireAgencyAdmin()
   const adminClient = createAdminClient()
 
-  // Fetch all locations with org info, review source stats, and lander status
-  const { data: rawLocations, error: locationsError } = await adminClient
-    .from('locations')
-    .select(`
-      id,
-      name,
-      city,
-      state,
-      status,
-      org_id,
-      organizations!inner(id, name, slug),
-      review_sources(sync_status, total_review_count, average_rating),
-      local_landers(id)
-    `)
-    .neq('status', 'archived')
-    .order('name')
+  // Fetch locations, orgs, and lander location IDs in parallel
+  const [locationsResult, orgsResult, landersResult] = await Promise.all([
+    adminClient
+      .from('locations')
+      .select(`
+        id,
+        name,
+        city,
+        state,
+        status,
+        org_id,
+        organizations!inner(id, name, slug),
+        review_sources(sync_status, total_review_count, average_rating)
+      `)
+      .neq('status', 'archived')
+      .order('name'),
+    adminClient
+      .from('organizations')
+      .select('id, name, slug')
+      .order('name'),
+    adminClient
+      .from('local_landers')
+      .select('location_id'),
+  ])
+
+  const { data: rawLocations, error: locationsError } = locationsResult
+  const { data: orgs, error: orgsError } = orgsResult
+  const landerLocationIds = new Set(
+    (landersResult.data || []).map((l: any) => l.location_id)
+  )
 
   if (locationsError) {
     console.error('Error fetching locations:', locationsError)
   }
-
-  // Fetch all orgs for the move dropdown
-  const { data: orgs, error: orgsError } = await adminClient
-    .from('organizations')
-    .select('id, name, slug')
-    .order('name')
-
   if (orgsError) {
     console.error('Error fetching organizations:', orgsError)
   }
@@ -58,8 +65,6 @@ export default async function AgencyLocationsPage() {
       }
     }
 
-    const landers = Array.isArray(loc.local_landers) ? loc.local_landers : []
-
     return {
       id: loc.id,
       name: loc.name,
@@ -71,7 +76,7 @@ export default async function AgencyLocationsPage() {
       reviews: reviewSource?.total_review_count || 0,
       avgRating: reviewSource?.average_rating?.toFixed(1) || null,
       syncStatus,
-      hasLander: landers.length > 0,
+      hasLander: landerLocationIds.has(loc.id),
     }
   })
 
