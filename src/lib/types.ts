@@ -259,6 +259,33 @@ export interface FormSubmission {
   created_at: string
 }
 
+// Local Landers
+
+export interface LocalLander {
+  id: string
+  org_id: string
+  location_id: string
+  slug: string
+  template_id: string
+  template_data: Record<string, unknown>
+  heading: string | null
+  description: string | null
+  primary_color: string
+  logo_url: string | null
+  custom_about: string | null
+  custom_services: Array<{ name: string; description: string }> | null
+  custom_faq: Array<{ question: string; answer: string }> | null
+  custom_hours: Record<string, unknown> | null
+  ai_content: Record<string, unknown> | null
+  ai_content_generated_at: string | null
+  show_reviews: boolean
+  show_map: boolean
+  show_faq: boolean
+  active: boolean
+  created_at: string
+  updated_at: string
+}
+
 // GBP Profiles
 
 export type GBPSyncStatus = 'pending' | 'active' | 'error' | 'paused'
