@@ -64,52 +64,75 @@ The key data points:
 
 ---
 
-## Prioritized Feature Roadmap
+## Refined Product Scope (February 2026)
 
-### Phase 1: Foundation (Weeks 1-4)
-*Goal: Make Revet credible as a multi-location platform, not just a review tool*
+The complete Revet loop — each pillar feeds the others:
 
-**1.1 GBP Profile Management**
-- View/edit all GBP fields (hours, description, categories, attributes, photos, services)
-- Bulk editing across locations
-- Suggested edit queue (accept/reject Google's suggested changes)
-- Change history / audit trail
-- *Why first*: This is what most of your current customers need daily. It's table stakes for the category.
+| Pillar | Agency does | Platform automates | Customer sees |
+|--------|-----------|-------------------|---------------|
+| **Profiles** | Optimization strategy | Sync, consistency monitoring, edit queue | Entity health score |
+| **Local Landers** | Content strategy, design | Page generation, schema, AI content | Traffic & engagement |
+| **Reviews** | Response strategy, escalation | Collection funnel, AI responses, alerts | Rating trends, feedback |
+| **Citations** | Directory strategy | Listing sync, accuracy monitoring | Consistency score |
+| **Reports** | Narrative, recommendations | Auto-generation, scheduling | Executive dashboards |
 
-**1.2 Role-Based Dashboards**
-- Location manager view: their location's reviews, rating, GBP stats, listing accuracy
-- Org-level view: all locations compared, top-level KPIs
-- Agency view: all orgs, cross-org reporting
-- *Why now*: The "fake SaaS" insight — customers want to log in and see data. The dashboard IS the product for them.
+**Key insight**: Local landers bypass the IT/website bottleneck. Revet hosts the pages, auto-generates schema from location data we already manage. No dev agency, no $15K website rebuild. Schema updates automatically when the profile changes.
 
-**1.3 Review Alerts & Digests**
+**Target pricing**: $100/location bundled (citations, review management, profile monitoring, local landers, reports). Competitors charge $300-900/location.
+
+**First lander customer**: Gemaire Distributors (gemaire.com) — 114 locations.
+
+**AI Visibility**: Reframed as "AI Readiness Score" — measure the deterministic inputs (entity consistency, structured data, review consensus) rather than polling non-deterministic LLM outputs. Periodic spot-checks for hallucination detection, not real-time tracking.
+
+See `docs/features/local-landers.md` for detailed lander spec.
+
+---
+
+## Prioritized Roadmap
+
+### Phase 1: Local Landers + Foundation (Weeks 1-4)
+*Goal: Ship landers for Gemaire (114 locations), make the platform credible beyond reviews*
+
+**1.1 Local Landers (THE PRIORITY)**
+- Revet-hosted location landing pages at `/l/[slug]`
+- Auto-generated LocalBusiness schema from GBP + location data
+- Business-neutral design, mobile-first, ISR rendering
+- Sections: NAP, hours, services, reviews summary, map, contact CTA, FAQ
+- Bulk creation from existing locations (one click for 114 Gemaire pages)
+- See `docs/features/local-landers.md` for full spec
+- *Why first*: Gemaire needs them now. Easiest to sell to other customers. Bypasses IT bottleneck. Schema gives immediate SEO/AI value.
+
+**1.2 Review Alerts & Digests**
 - Negative review alert (instant email)
 - New review digest (daily/weekly, configurable per role)
-- Review response suggestions (AI-generated drafts)
-- *Why now*: Fastest to build (email infra exists), highest perceived value per effort. Every competitor has this; you can't not have it.
+- *Why now*: Fastest to build (email infra exists), highest perceived value per effort. Table stakes.
 
-### Phase 2: Differentiation (Weeks 5-10)
-*Goal: Build the features that make Revet the "new era" platform*
+**1.3 Role-Based Dashboards**
+- Location dashboard: reviews + lander stats + GBP data
+- Org-level view: all locations compared, top-level KPIs
+- *Why now*: Customers need something to log in and see. The dashboard IS the product for them.
 
-**2.1 AI Visibility Tracker**
-- Per-location monitoring across Google AI Overviews, ChatGPT, Gemini, Perplexity
-- "Is your business recommended?" — binary tracking per AI surface per location
-- Accuracy check: does the AI say the right hours, address, services?
-- Hallucination alerts: flag when AI fabricates incorrect info
-- *Why this is the moat*: Nobody does this. It's the headline feature that positions Revet as forward-looking vs. every incumbent.
+### Phase 2: Profile Management + AI Content (Weeks 5-10)
+*Goal: Complete the profile→lander→reviews loop, add AI content generation*
 
-**2.2 Entity Health Score**
-- Per-location score: how consistently your business appears across all data sources AI pulls from
-- Cover the actual AI data pipeline: GBP, Bing Places, Foursquare, Apple Maps, Yelp, MapQuest, industry directories
-- Flag inconsistencies (different hours, wrong phone, mismatched name)
-- Prioritized fix list
-- *Why now*: This reframes citation management from "list sync" to "AI readiness" — a positioning win.
+**2.1 GBP Profile Management**
+- View/edit all GBP fields (hours, description, categories, attributes, photos, services)
+- Suggested edit queue (accept/reject Google's suggested changes)
+- Bulk editing across locations
+- *Why now*: Core agency workflow. Changes here auto-update landers and schema.
 
-**2.3 Multi-Platform Review Monitoring**
-- Pull reviews from Google, Yelp, Facebook, and 1-2 vertical-specific sources (Healthgrades for healthcare, etc.)
-- Unified review feed per location
-- Sentiment analysis (what themes does AI extract from your reviews?)
-- *Why now*: Expands from Google-only. Review sentiment across platforms directly affects AI recommendations.
+**2.2 AI Content for Landers**
+- Per-location unique content generated from GBP data + local context
+- Service descriptions, FAQ generation, review theme highlights
+- Avoids duplicate content across 100+ location pages
+- Cached, re-generated when data changes
+- *Why now*: Transforms landers from data pages to actual SEO assets.
+
+**2.3 Entity Health Score (AI Readiness)**
+- Per-location score based on measurable inputs: NAP consistency, schema validity, review volume, GBP completeness
+- Check consistency across GBP, Bing Places, Foursquare, Apple Maps
+- Periodic LLM spot-checks for hallucination detection (weekly, not real-time)
+- *Why now*: Reframes citation management as "AI readiness." Directional, not noisy.
 
 ### Phase 3: Intelligence (Weeks 11-16)
 *Goal: Automated insights and reporting — the client deliverable*

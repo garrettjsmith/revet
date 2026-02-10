@@ -1,106 +1,86 @@
-# lseo.app — Review Funnel Manager
+# Revet
 
-Review funnel landing pages with sentiment routing. Patients rate their visit → positive ratings route to Google Review → negative ratings route to practice manager email.
-
-Built for Notable integration at Sturdy Health. Extensible platform for additional local SEO tools.
+Search everywhere optimization platform for multi-location businesses. Manage profiles, local landing pages, reviews, citations, and reporting across all search surfaces — Google, Bing, Apple Maps, ChatGPT, Gemini, Perplexity, and beyond.
 
 ## Stack
 
 - **Next.js 14** (App Router) on Vercel
 - **Supabase** (Postgres + Auth + RLS)
-- **Tailwind CSS**
+- **Tailwind CSS 3.4**
+- **TypeScript**
+
+## Architecture
+
+### Data Model (3-tier hierarchy)
+
+```
+Agency (single tenant, agency admin)
+  └── Organization (client account)
+       └── Location (physical place, practitioner, or service area)
+            ├── Review Profiles (review collection funnels)
+            ├── Local Landers (hosted location pages)
+            ├── GBP Profiles (synced from Google)
+            ├── Review Sources (Google, Yelp, etc.)
+            └── Citations (directory listings)
+```
+
+### Route Structure
+
+| Path | Purpose | Auth |
+|------|---------|------|
+| `/admin/[orgSlug]/*` | Org-scoped pages (customer-facing dashboards) | Authenticated org member |
+| `/admin/[orgSlug]/locations/[locationId]/*` | Location-scoped pages | Authenticated, location access |
+| `/agency/*` | Agency admin tools (config, integrations, mappings) | `is_agency_admin` only |
+| `/r/[slug]` | Public review funnel | Public |
+| `/l/[slug]` | Public local lander | Public |
+| `/api/*` | API routes | Varies |
+
+### Key Principles
+
+- **Customers see data, not knobs.** Org members see dashboards, stats, reports. They don't configure, create, or edit. That's the agency's job.
+- **Agency admins see everything.** Config, creation, integrations, mappings — gated behind `is_agency_admin`.
+- **Location is the atomic unit.** Every tool (reviews, landers, citations, profiles) is scoped to a location.
+- **Mobile-first.** C-level customers check dashboards on their phones. Design for glanceability.
 
 ## Setup
 
 ### 1. Supabase
 
-1. Create a new Supabase project (or use existing)
-2. Go to **SQL Editor** and run the contents of `supabase/migrations/001_initial.sql`
-3. Go to **Authentication > Users** and create your admin user (email/password)
-4. Copy your project URL, anon key, and service role key
+1. Create a Supabase project
+2. Run migrations in `supabase/migrations/` in order
+3. Create your admin user in Authentication > Users
 
 ### 2. Environment Variables
 
-Copy `.env.example` to `.env.local` and fill in:
+Copy `.env.example` to `.env.local`:
 
 ```
 NEXT_PUBLIC_SUPABASE_URL=https://YOUR_PROJECT.supabase.co
 NEXT_PUBLIC_SUPABASE_ANON_KEY=your-anon-key
 SUPABASE_SERVICE_ROLE_KEY=your-service-role-key
-NEXT_PUBLIC_APP_URL=https://lseo.app
+NEXT_PUBLIC_APP_URL=https://use.revet.app
+RESEND_API_KEY=your-resend-key
 ```
 
-### 3. Seed Data
-
-Create your first organization in Supabase SQL Editor:
-
-```sql
-INSERT INTO organizations (name, slug) VALUES ('Sturdy Health', 'sturdy-health');
-```
-
-### 4. Run
+### 3. Run
 
 ```bash
 npm install
 npm run dev
 ```
 
-- **Admin:** http://localhost:3000/admin
-- **Patient page:** http://localhost:3000/r/{slug}
+## Product Modules
 
-### 5. Deploy to Vercel
-
-```bash
-npx vercel
-```
-
-Add the same env vars in Vercel dashboard. Point `lseo.app` domain.
-
-## URL Structure
-
-| Path | Purpose | Auth |
-|------|---------|------|
-| `/` | Marketing / home | Public |
-| `/r/{slug}` | Patient review funnel | Public |
-| `/admin` | Dashboard | Admin |
-| `/admin/profiles` | Manage review funnels | Admin |
-| `/admin/profiles/new` | Create profile | Admin |
-| `/admin/profiles/{id}` | Edit profile | Admin |
-| `/admin/login` | Sign in | Public |
-| `/api/events` | Event tracking endpoint | Public (write-only) |
-
-## Notable Integration
-
-Configure Notable to push this URL in the post-appointment SMS:
-
-```
-https://lseo.app/r/{profile-slug}
-```
-
-Patient flow:
-1. Receives SMS from Notable after appointment
-2. Taps link → sees star rating
-3. Rates 4-5★ → routed to Google Review page
-4. Rates 1-3★ → shown feedback form + manager email link
-
-The threshold (default 4★) is configurable per profile.
-
-## Adding More Tools
-
-The platform is structured for additional tools:
-
-```
-/r/{slug}  → Review funnels (tool 1)
-/l/{slug}  → Local landers (tool 2)
-/t/{slug}  → Future tool 3
-```
-
-Each tool gets its own:
-- Public-facing route namespace
-- Admin section under `/admin`
-- Supabase tables
-- Shared auth and organization model
+| Module | Status | Description |
+|--------|--------|-------------|
+| **Reviews** | Built | Collection funnels, feedback triage, event tracking, email alerts |
+| **GBP Integration** | Built | OAuth, account discovery, location sync, review sync |
+| **Local Landers** | Next | Hosted location landing pages with auto-schema |
+| **Profile Management** | Planned | GBP field editing, suggested edit queue, bulk operations |
+| **Citations** | Planned | Directory listing sync and monitoring |
+| **Reporting** | Planned | Automated reports, digests, executive dashboards |
+| **AI Visibility** | Planned | Entity health scoring, AI search monitoring |
 
 ## License
 
-Proprietary — GMB Gorilla
+Proprietary — Revet
