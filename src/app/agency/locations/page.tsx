@@ -12,7 +12,7 @@ export default async function AgencyLocationsPage() {
   const [locationsResult, orgsResult, reviewSourcesResult, landersResult] = await Promise.all([
     adminClient
       .from('locations')
-      .select('id, name, city, state, status, org_id, active')
+      .select('id, name, city, state, org_id, active')
       .order('name'),
     adminClient
       .from('organizations')
@@ -64,8 +64,6 @@ export default async function AgencyLocationsPage() {
   // Filter and transform locations
   const locations = (rawLocations || [])
     .filter((loc: any) => {
-      // Filter out archived — use status if available, fall back to active boolean
-      if (loc.status) return loc.status !== 'archived'
       return loc.active !== false
     })
     .map((loc: any) => {
