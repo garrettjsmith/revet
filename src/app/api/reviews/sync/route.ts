@@ -136,6 +136,16 @@ async function processAlertRules(
 
   if (!rules || rules.length === 0) return
 
+  // Pre-fetch preference-based emails for this location
+  const prefEmailCache = new Map<string, string[]>()
+  for (const alertType of ['new_review', 'negative_review']) {
+    const { data: emails } = await supabase.rpc('get_notification_emails', {
+      p_location_id: locationId,
+      p_alert_type: alertType,
+    })
+    prefEmailCache.set(alertType, (emails || []).map((r: { email: string }) => r.email))
+  }
+
   for (const rule of rules) {
     for (const review of reviews) {
       let shouldAlert = false
@@ -159,7 +169,13 @@ async function processAlertRules(
 
       if (!shouldAlert) continue
 
-      if (rule.notify_emails && rule.notify_emails.length > 0) {
+      // Combine rule emails + preference-based emails
+      const ruleEmails = rule.notify_emails || []
+      const prefAlertType = rule.rule_type === 'keyword_match' ? 'new_review' : rule.rule_type
+      const prefEmails = prefEmailCache.get(prefAlertType) || []
+      const allEmails = Array.from(new Set([...ruleEmails, ...prefEmails]))
+
+      if (allEmails.length > 0) {
         const publishedAt = new Date(review.published_at).toLocaleDateString('en-US', {
           weekday: 'short',
           month: 'short',
@@ -168,7 +184,7 @@ async function processAlertRules(
         })
 
         sendEmail({
-          to: rule.notify_emails,
+          to: allEmails,
           subject: rule.rule_type === 'negative_review'
             ? `Negative review: ${locationName}`
             : `New review: ${locationName}`,
