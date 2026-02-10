@@ -15,6 +15,7 @@ interface Location {
   reviews: number
   avgRating: string | null
   syncStatus: 'active' | 'pending' | 'error' | 'none'
+  hasLander: boolean
 }
 
 interface Organization {
@@ -41,6 +42,7 @@ export function AgencyLocationTable({ locations, orgs }: AgencyLocationTableProp
   const [selectedOrgId, setSelectedOrgId] = useState<string>('all')
   const [selectedStatus, setSelectedStatus] = useState<string>('all')
   const [selectedCity, setSelectedCity] = useState<string>('all')
+  const [selectedLander, setSelectedLander] = useState<string>('all')
 
   // Sort state
   const [sortField, setSortField] = useState<SortField>('name')
@@ -96,6 +98,10 @@ export function AgencyLocationTable({ locations, orgs }: AgencyLocationTableProp
       // City filter
       if (selectedCity !== 'all' && loc.city !== selectedCity) return false
 
+      // Lander filter
+      if (selectedLander === 'has_lander' && !loc.hasLander) return false
+      if (selectedLander === 'no_lander' && loc.hasLander) return false
+
       return true
     })
 
@@ -123,7 +129,7 @@ export function AgencyLocationTable({ locations, orgs }: AgencyLocationTableProp
     })
 
     return filtered
-  }, [locations, searchQuery, selectedOrgId, selectedStatus, selectedCity, sortField, sortDirection])
+  }, [locations, searchQuery, selectedOrgId, selectedStatus, selectedCity, selectedLander, sortField, sortDirection])
 
   // Paginate
   const totalPages = Math.ceil(filteredAndSortedLocations.length / ITEMS_PER_PAGE)
@@ -313,6 +319,16 @@ export function AgencyLocationTable({ locations, orgs }: AgencyLocationTableProp
             </option>
           ))}
         </select>
+
+        <select
+          value={selectedLander}
+          onChange={(e) => handleFilterChange(() => setSelectedLander(e.target.value))}
+          className="px-3 py-2 border border-warm-border rounded-lg text-sm bg-cream text-ink"
+        >
+          <option value="all">All Landers</option>
+          <option value="has_lander">Has Lander</option>
+          <option value="no_lander">No Lander</option>
+        </select>
       </div>
 
       {/* Table */}
@@ -358,13 +374,16 @@ export function AgencyLocationTable({ locations, orgs }: AgencyLocationTableProp
               >
                 Status <SortIcon field="syncStatus" />
               </th>
+              <th className="text-left px-5 py-3 text-[11px] text-warm-gray uppercase tracking-wider font-medium">
+                Lander
+              </th>
               <th className="text-left px-5 py-3 w-10"></th>
             </tr>
           </thead>
           <tbody className="bg-cream">
             {paginatedLocations.length === 0 ? (
               <tr>
-                <td colSpan={7} className="px-5 py-8 text-center text-warm-gray text-sm">
+                <td colSpan={8} className="px-5 py-8 text-center text-warm-gray text-sm">
                   No locations found
                 </td>
               </tr>
@@ -412,6 +431,13 @@ export function AgencyLocationTable({ locations, orgs }: AgencyLocationTableProp
                   </td>
                   <td className="px-5 py-3">
                     {getStatusBadge(location.syncStatus)}
+                  </td>
+                  <td className="px-5 py-3">
+                    {location.hasLander && (
+                      <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-emerald-100 text-emerald-800">
+                        Active
+                      </span>
+                    )}
                   </td>
                   <td className="px-5 py-3 relative">
                     <button
@@ -535,6 +561,23 @@ export function AgencyLocationTable({ locations, orgs }: AgencyLocationTableProp
                 className="px-4 py-1.5 bg-cream text-ink text-sm font-medium rounded hover:bg-cream/90 disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 Move
+              </button>
+
+              <div className="w-px h-5 bg-cream/20" />
+
+              <button
+                onClick={() => {
+                  const ids = Array.from(selectedLocationIds)
+                  sessionStorage.setItem('bulk_lander_location_ids', JSON.stringify(ids))
+                  router.push('/agency/landers/bulk-create')
+                }}
+                disabled={Array.from(selectedLocationIds).every((id) => {
+                  const loc = locations.find((l) => l.id === id)
+                  return loc?.hasLander
+                })}
+                className="px-4 py-1.5 bg-cream text-ink text-sm font-medium rounded hover:bg-cream/90 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                Create Landers
               </button>
 
               <button
