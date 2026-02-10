@@ -100,6 +100,7 @@ export function Sidebar({ currentOrg, memberships, userEmail, isAgencyAdmin, loc
         { href: `${locationBasePath}/reviews`, label: 'Reviews', icon: ReviewIcon },
         { href: `${locationBasePath}/review-funnels`, label: 'Review Funnels', icon: FunnelIcon },
         { href: `${locationBasePath}/forms`, label: 'Forms', icon: FormIcon },
+        { href: `${locationBasePath}/lander`, label: 'Lander', icon: LanderIcon },
         { href: `${locationBasePath}/gbp-profile`, label: 'GBP Profile', icon: IntegrationsIcon },
       ],
     },
@@ -425,6 +426,16 @@ function OverviewIcon({ className }: { className?: string }) {
       <path d="M18 17V9" />
       <path d="M13 17V5" />
       <path d="M8 17v-3" />
+    </svg>
+  )
+}
+
+function LanderIcon({ className }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+      <rect x="3" y="3" width="18" height="18" rx="2" />
+      <path d="M3 9h18" />
+      <path d="M9 21V9" />
     </svg>
   )
 }
