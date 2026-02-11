@@ -36,7 +36,7 @@ export async function GET(request: NextRequest) {
   const [membersResult, subsResult, locsResult, memberLocsResult] = await Promise.all([
     admin
       .from('org_members')
-      .select('id, user_id, role, is_agency_admin, location_access, created_at, users:user_id(email)')
+      .select('id, user_id, role, is_agency_admin, location_access, created_at')
       .eq('org_id', orgId)
       .order('created_at'),
     supabase
@@ -55,10 +55,20 @@ export async function GET(request: NextRequest) {
       .select('org_member_id, location_id'),
   ])
 
+  // Fetch user emails via admin auth API (PostgREST cannot join auth.users)
+  const userIds = (membersResult.data || []).map((m: Record<string, unknown>) => m.user_id as string)
+  const emailResults = await Promise.all(
+    userIds.map(async (uid) => {
+      const { data } = await admin.auth.admin.getUserById(uid)
+      return [uid, data?.user?.email || null] as const
+    })
+  )
+  const emailMap = new Map(emailResults)
+
   const members = (membersResult.data || []).map((m: Record<string, unknown>) => ({
     id: m.id,
     user_id: m.user_id,
-    email: (m.users as { email: string } | null)?.email || null,
+    email: emailMap.get(m.user_id as string) || null,
     role: m.role,
     is_agency_admin: m.is_agency_admin,
     location_access: m.location_access,
