@@ -43,6 +43,14 @@ export default function TeamPage() {
   const [expandedId, setExpandedId] = useState<string | null>(null)
   const [saving, setSaving] = useState<string | null>(null) // tracks which alert is saving
 
+  // Add member form state
+  const [showAddForm, setShowAddForm] = useState(false)
+  const [newEmail, setNewEmail] = useState('')
+  const [newRole, setNewRole] = useState<'owner' | 'admin' | 'member'>('member')
+  const [addingMember, setAddingMember] = useState(false)
+  const [addError, setAddError] = useState<string | null>(null)
+  const [addSuccess, setAddSuccess] = useState<string | null>(null)
+
   const loadTeam = useCallback(async (oid: string) => {
     const res = await fetch(`/api/team?org_id=${oid}`)
     if (res.ok) {
@@ -156,6 +164,35 @@ export default function TeamPage() {
     setSaving(null)
   }
 
+  const addMember = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!orgId || !newEmail.trim()) return
+
+    setAddingMember(true)
+    setAddError(null)
+    setAddSuccess(null)
+
+    const res = await fetch('/api/team/members', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ org_id: orgId, email: newEmail.trim(), role: newRole }),
+    })
+
+    if (res.ok) {
+      const data = await res.json()
+      setAddSuccess(data.invited ? `Invite sent to ${newEmail.trim()}` : `${newEmail.trim()} added`)
+      setNewEmail('')
+      setNewRole('member')
+      setShowAddForm(false)
+      await loadTeam(orgId)
+    } else {
+      const data = await res.json()
+      setAddError(data.error || 'Failed to add member')
+    }
+
+    setAddingMember(false)
+  }
+
   if (loading) {
     return <div className="text-warm-gray text-sm">Loading...</div>
   }
@@ -169,7 +206,70 @@ export default function TeamPage() {
             Manage members and their notification preferences.
           </p>
         </div>
+        {!showAddForm && (
+          <button
+            onClick={() => { setShowAddForm(true); setAddError(null); setAddSuccess(null) }}
+            className="px-4 py-2 bg-ink text-cream text-sm rounded-full hover:bg-ink/90 transition-colors"
+          >
+            Add member
+          </button>
+        )}
       </div>
+
+      {/* Success message */}
+      {addSuccess && (
+        <div className="bg-green-50 border border-green-200 rounded-xl px-5 py-3 text-sm text-green-800">
+          {addSuccess}
+        </div>
+      )}
+
+      {/* Add member form */}
+      {showAddForm && (
+        <form onSubmit={addMember} className="border border-warm-border rounded-xl px-5 py-4 space-y-4">
+          <div className="text-[11px] text-warm-gray uppercase tracking-wider">Add member</div>
+
+          {addError && (
+            <div className="text-sm text-red-600">{addError}</div>
+          )}
+
+          <div className="flex flex-col sm:flex-row gap-3">
+            <input
+              type="email"
+              required
+              placeholder="Email address"
+              value={newEmail}
+              onChange={e => setNewEmail(e.target.value)}
+              className="flex-1 px-4 py-2.5 bg-cream border border-warm-border rounded-lg text-sm text-ink placeholder:text-warm-gray/60 focus:outline-none focus:ring-1 focus:ring-ink/20"
+            />
+            <select
+              value={newRole}
+              onChange={e => setNewRole(e.target.value as 'owner' | 'admin' | 'member')}
+              className="px-4 py-2.5 bg-cream border border-warm-border rounded-lg text-sm text-ink focus:outline-none focus:ring-1 focus:ring-ink/20"
+            >
+              <option value="member">Member</option>
+              <option value="admin">Admin</option>
+              <option value="owner">Owner</option>
+            </select>
+          </div>
+
+          <div className="flex items-center gap-2">
+            <button
+              type="submit"
+              disabled={addingMember || !newEmail.trim()}
+              className="px-4 py-2 bg-ink text-cream text-sm rounded-full hover:bg-ink/90 transition-colors disabled:opacity-50"
+            >
+              {addingMember ? 'Adding...' : 'Add'}
+            </button>
+            <button
+              type="button"
+              onClick={() => { setShowAddForm(false); setAddError(null) }}
+              className="px-4 py-2 text-sm text-warm-gray hover:text-ink transition-colors"
+            >
+              Cancel
+            </button>
+          </div>
+        </form>
+      )}
 
       {/* Org-wide alerts banner */}
       {orgWideAlerts.size > 0 && (
