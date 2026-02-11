@@ -298,8 +298,21 @@ export function Sidebar({ currentOrg, memberships, userEmail, isAgencyAdmin, loc
         ))}
       </nav>
 
-      {/* Notifications + Settings + User (only for org scope) */}
+      {/* Team + Notifications + Settings + User (only for org scope) */}
       <div className="border-t border-warm-border p-3 space-y-1">
+        {!isAgencyScope && !currentLocation && (
+          <Link
+            href={`${basePath}/team`}
+            className={`flex items-center gap-2.5 px-2 py-1.5 rounded-md text-sm no-underline transition-colors ${
+              pathname.includes('/team')
+                ? 'bg-warm-light text-ink font-medium'
+                : 'text-warm-gray hover:text-ink hover:bg-warm-light/50'
+            }`}
+          >
+            <TeamIcon className="w-4 h-4 shrink-0" />
+            Team
+          </Link>
+        )}
         {!isAgencyScope && !currentLocation && (
           <Link
             href={`${basePath}/notifications`}
@@ -461,6 +474,15 @@ function BellIcon({ className }: { className?: string }) {
     <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
       <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9" />
       <path d="M13.73 21a2 2 0 0 1-3.46 0" />
+    </svg>
+  )
+}
+
+function TeamIcon({ className }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+      <circle cx="12" cy="7" r="4" />
+      <path d="M5.5 21v-2a6.5 6.5 0 0 1 13 0v2" />
     </svg>
   )
 }
