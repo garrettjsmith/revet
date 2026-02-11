@@ -55,12 +55,12 @@ export async function GET() {
     locationCounts.set(loc.org_id, (locationCounts.get(loc.org_id) || 0) + 1)
   }
 
-  // Build subscription summary per org
-  const orgSubs = new Map<string, Set<string>>()
+  // Build subscriber counts per org per alert type
+  const orgAlertCounts = new Map<string, Record<string, number>>()
   for (const sub of (subsResult.data || [])) {
-    const key = sub.org_id
-    if (!orgSubs.has(key)) orgSubs.set(key, new Set())
-    orgSubs.get(key)!.add(sub.alert_type)
+    if (!orgAlertCounts.has(sub.org_id)) orgAlertCounts.set(sub.org_id, {})
+    const counts = orgAlertCounts.get(sub.org_id)!
+    counts[sub.alert_type] = (counts[sub.alert_type] || 0) + 1
   }
 
   const orgs = (orgsResult.data || []).map(org => ({
@@ -68,7 +68,8 @@ export async function GET() {
     name: org.name,
     slug: org.slug,
     locationCount: locationCounts.get(org.id) || 0,
-    configuredAlerts: Array.from(orgSubs.get(org.id) || []),
+    configuredAlerts: Object.keys(orgAlertCounts.get(org.id) || {}),
+    alertCounts: orgAlertCounts.get(org.id) || {},
   }))
 
   return NextResponse.json({ orgs })
