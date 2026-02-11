@@ -104,6 +104,7 @@ export function Sidebar({ currentOrg, memberships, userEmail, isAgencyAdmin, loc
         { href: `${locationBasePath}/forms`, label: 'Forms', icon: FormIcon },
         { href: `${locationBasePath}/lander`, label: 'Lander', icon: LanderIcon },
         { href: `${locationBasePath}/gbp-profile`, label: 'GBP Profile', icon: IntegrationsIcon },
+        { href: `${locationBasePath}/notifications`, label: 'Notifications', icon: BellIcon },
       ],
     },
   ] : [
@@ -299,7 +300,7 @@ export function Sidebar({ currentOrg, memberships, userEmail, isAgencyAdmin, loc
 
       {/* Notifications + Settings + User (only for org scope) */}
       <div className="border-t border-warm-border p-3 space-y-1">
-        {!isAgencyScope && (
+        {!isAgencyScope && !currentLocation && (
           <Link
             href={`${basePath}/notifications`}
             className={`flex items-center gap-2.5 px-2 py-1.5 rounded-md text-sm no-underline transition-colors ${
