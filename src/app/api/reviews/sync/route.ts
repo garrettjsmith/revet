@@ -1,5 +1,5 @@
 import { createAdminClient } from '@/lib/supabase/admin'
-import { sendEmail, buildReviewAlertEmail } from '@/lib/email'
+import { sendEmail, buildReviewAlertEmail, buildReviewResponseEmail } from '@/lib/email'
 import { NextRequest, NextResponse } from 'next/server'
 
 /**
@@ -47,6 +47,21 @@ export async function POST(request: NextRequest) {
     if (!incomingReviews || !Array.isArray(incomingReviews) || incomingReviews.length === 0) {
       return NextResponse.json({ error: 'No reviews to sync' }, { status: 400 })
     }
+
+    // Pre-fetch existing reviews to detect new replies
+    const platformReviewIds = incomingReviews
+      .map((r: any) => r.platform_review_id)
+      .filter(Boolean)
+
+    const { data: existingReviews } = await supabase
+      .from('reviews')
+      .select('platform_review_id, reply_body')
+      .eq('source_id', source_id)
+      .in('platform_review_id', platformReviewIds)
+
+    const existingReplyMap = new Map(
+      (existingReviews || []).map((r: any) => [r.platform_review_id, r.reply_body])
+    )
 
     let processedCount = 0
 
@@ -100,6 +115,25 @@ export async function POST(request: NextRequest) {
       source.platform,
       incomingReviews
     )
+
+    // Detect reviews that newly received replies
+    const reviewsWithNewReplies = incomingReviews.filter((review: any) => {
+      if (!review.reply_body) return false
+      // Only alert if the review existed before without a reply
+      if (!existingReplyMap.has(review.platform_review_id)) return false
+      return !existingReplyMap.get(review.platform_review_id)
+    })
+
+    if (reviewsWithNewReplies.length > 0) {
+      await processResponseAlerts(
+        supabase,
+        (source.locations as any).org_id,
+        source.location_id,
+        (source.locations as any).name,
+        source.platform,
+        reviewsWithNewReplies
+      )
+    }
 
     return NextResponse.json({
       ok: true,
@@ -203,5 +237,48 @@ async function processAlertRules(
         })
       }
     }
+  }
+}
+
+async function processResponseAlerts(
+  supabase: ReturnType<typeof createAdminClient>,
+  orgId: string,
+  locationId: string,
+  locationName: string,
+  platform: string,
+  reviews: any[]
+) {
+  const { data: emails } = await supabase.rpc('get_subscription_emails', {
+    p_org_id: orgId,
+    p_location_id: locationId,
+    p_alert_type: 'review_response',
+  })
+
+  const recipients = (emails || []).map((r: { email: string }) => r.email)
+  if (recipients.length === 0) return
+
+  for (const review of reviews) {
+    const repliedAt = new Date(review.reply_published_at || new Date()).toLocaleDateString('en-US', {
+      weekday: 'short',
+      month: 'short',
+      day: 'numeric',
+      year: 'numeric',
+    })
+
+    sendEmail({
+      to: recipients,
+      subject: `Response posted: ${locationName}`,
+      html: buildReviewResponseEmail({
+        locationName,
+        platform,
+        reviewerName: review.reviewer_name,
+        rating: review.rating,
+        reviewBody: review.body,
+        replyBody: review.reply_body,
+        repliedAt,
+      }),
+    }).catch((err) => {
+      console.error('[reviews/sync] Response alert email failed:', err)
+    })
   }
 }
