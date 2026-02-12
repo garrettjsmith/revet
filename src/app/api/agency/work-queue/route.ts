@@ -89,7 +89,8 @@ export async function GET(request: NextRequest) {
   const wantsSyncErrors = filter === 'all' || filter === 'sync_errors'
 
   // Helper to apply location scope to a query builder
-  function applyScope<T extends { in: (col: string, values: string[]) => T }>(query: T): T {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  function applyScope(query: any) {
     if (scopedLocationIds) {
       return query.in('location_id', scopedLocationIds)
     }

@@ -22,7 +22,8 @@ async function countQueueItems(
   supabase: ReturnType<typeof createAdminClient>,
   locationIds: string[] | null
 ): Promise<QueueCounts> {
-  function scope<T extends { in: (col: string, values: string[]) => T }>(query: T): T {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  function scope(query: any) {
     if (locationIds) return query.in('location_id', locationIds)
     return query
   }
