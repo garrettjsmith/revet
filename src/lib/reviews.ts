@@ -74,6 +74,7 @@ export async function getOrgReviews(
   opts?: {
     platform?: string
     status?: string
+    maxRating?: number
     limit?: number
   }
 ): Promise<{ reviews: Review[]; count: number }> {
@@ -98,6 +99,7 @@ export async function getOrgReviews(
 
   if (opts?.platform) query = query.eq('platform', opts.platform)
   if (opts?.status) query = query.eq('status', opts.status)
+  if (opts?.maxRating) query = query.lte('rating', opts.maxRating)
 
   const { data, count } = await query
 

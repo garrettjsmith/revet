@@ -7,7 +7,7 @@ export const dynamic = 'force-dynamic'
 export default async function AgencyReviewsPage({
   searchParams,
 }: {
-  searchParams: { status?: string; platform?: string }
+  searchParams: { status?: string; platform?: string; rating?: string }
 }) {
   const supabase = createAdminClient()
 
@@ -29,6 +29,7 @@ export default async function AgencyReviewsPage({
 
   if (searchParams.status) query = query.eq('status', searchParams.status)
   if (searchParams.platform) query = query.eq('platform', searchParams.platform)
+  if (searchParams.rating) query = query.lte('rating', parseInt(searchParams.rating))
 
   const { data: reviews } = await query
 
@@ -63,7 +64,7 @@ export default async function AgencyReviewsPage({
         <Link
           href="/agency/reviews"
           className={`px-3 py-1 rounded-full text-xs no-underline transition-colors ${
-            !searchParams.status
+            !searchParams.status && !searchParams.rating
               ? 'bg-ink text-cream'
               : 'border border-warm-border text-warm-gray hover:text-ink'
           }`}
@@ -73,12 +74,22 @@ export default async function AgencyReviewsPage({
         <Link
           href="/agency/reviews?status=new"
           className={`px-3 py-1 rounded-full text-xs no-underline transition-colors ${
-            searchParams.status === 'new'
+            searchParams.status === 'new' && !searchParams.rating
               ? 'bg-ink text-cream'
               : 'border border-warm-border text-warm-gray hover:text-ink'
           }`}
         >
           Unread
+        </Link>
+        <Link
+          href="/agency/reviews?status=new&rating=2"
+          className={`px-3 py-1 rounded-full text-xs no-underline transition-colors ${
+            searchParams.rating === '2'
+              ? 'bg-red-800 text-cream'
+              : 'border border-warm-border text-warm-gray hover:text-ink'
+          }`}
+        >
+          Negative (1-2★)
         </Link>
         <Link
           href="/agency/reviews?status=flagged"

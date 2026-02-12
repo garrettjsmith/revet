@@ -3,6 +3,11 @@
 import { useState, useEffect, useCallback } from 'react'
 import Link from 'next/link'
 
+interface SubItem {
+  name: string
+  path: string
+}
+
 interface ActionItem {
   type: string
   priority: 'urgent' | 'important' | 'info'
@@ -10,6 +15,7 @@ interface ActionItem {
   label: string
   action_label: string
   action_path: string
+  locations?: SubItem[]
 }
 
 interface ActionItemsData {
@@ -102,17 +108,33 @@ export function ActionItems({ apiPath }: ActionItemsProps) {
       </div>
       <div className="divide-y divide-warm-border/50">
         {sorted.map((item) => (
-          <div key={item.type} className="flex items-center gap-3 px-5 py-3.5 hover:bg-warm-light/30 transition-colors">
-            <PriorityDot priority={item.priority} />
-            <div className="min-w-0 flex-1">
-              <div className="text-sm text-ink">{item.label}</div>
+          <div key={item.type} className="px-5 py-3.5 hover:bg-warm-light/30 transition-colors">
+            <div className="flex items-center gap-3">
+              <PriorityDot priority={item.priority} />
+              <div className="min-w-0 flex-1">
+                <div className="text-sm text-ink">{item.label}</div>
+              </div>
+              <Link
+                href={item.action_path}
+                className="text-xs text-warm-gray hover:text-ink no-underline whitespace-nowrap transition-colors"
+              >
+                {item.action_label} →
+              </Link>
             </div>
-            <Link
-              href={item.action_path}
-              className="text-xs text-warm-gray hover:text-ink no-underline whitespace-nowrap transition-colors"
-            >
-              {item.action_label} →
-            </Link>
+            {/* Location sub-items for actionable drill-down */}
+            {item.locations && item.locations.length > 0 && (
+              <div className="ml-5 mt-2 flex flex-wrap gap-1.5">
+                {item.locations.map((loc) => (
+                  <Link
+                    key={loc.path}
+                    href={loc.path}
+                    className="inline-flex items-center px-2.5 py-1 text-[11px] text-warm-gray bg-warm-light/50 border border-warm-border/50 rounded-full hover:text-ink hover:border-warm-border no-underline transition-colors"
+                  >
+                    {loc.name}
+                  </Link>
+                ))}
+              </div>
+            )}
           </div>
         ))}
       </div>
