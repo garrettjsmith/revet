@@ -72,9 +72,12 @@ interface WorkQueueData {
     posts: number
     sync_errors: number
   }
+  scope?: 'all' | 'mine'
+  is_agency_admin?: boolean
 }
 
 type FilterType = 'all' | 'needs_reply' | 'ai_drafts' | 'google_updates' | 'posts' | 'sync_errors'
+type ScopeType = 'all' | 'mine'
 type ViewMode = 'inbox' | 'rapid'
 
 interface TeamMember {
@@ -88,6 +91,7 @@ export function WorkQueue() {
   const [data, setData] = useState<WorkQueueData | null>(null)
   const [loading, setLoading] = useState(true)
   const [filter, setFilter] = useState<FilterType>('all')
+  const [scope, setScope] = useState<ScopeType>('all')
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [viewMode, setViewMode] = useState<ViewMode>('inbox')
   const [rapidIndex, setRapidIndex] = useState(0)
@@ -99,7 +103,7 @@ export function WorkQueue() {
 
   const fetchData = useCallback(async () => {
     try {
-      const res = await fetch(`/api/agency/work-queue?filter=${filter}`)
+      const res = await fetch(`/api/agency/work-queue?filter=${filter}&scope=${scope}`)
       if (res.ok) {
         const newData: WorkQueueData = await res.json()
         setData(newData)
@@ -116,7 +120,7 @@ export function WorkQueue() {
     } finally {
       setLoading(false)
     }
-  }, [filter]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [filter, scope]) // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     setLoading(true)
@@ -342,7 +346,7 @@ export function WorkQueue() {
   if (items.length === 0) {
     return (
       <div className="h-screen flex flex-col">
-        <QueueHeader counts={data?.counts} filter={filter} setFilter={setFilter} viewMode={viewMode} setViewMode={setViewMode} itemCount={0} />
+        <QueueHeader counts={data?.counts} filter={filter} setFilter={setFilter} scope={scope} setScope={setScope} isAgencyAdmin={!!data?.is_agency_admin} viewMode={viewMode} setViewMode={setViewMode} itemCount={0} />
         <div className="flex-1 flex items-center justify-center">
           <div className="text-center">
             <div className="w-12 h-12 rounded-full bg-emerald-100 flex items-center justify-center mx-auto mb-3">
@@ -366,7 +370,7 @@ export function WorkQueue() {
 
     return (
       <div className="h-screen flex flex-col">
-        <QueueHeader counts={data?.counts} filter={filter} setFilter={setFilter} viewMode={viewMode} setViewMode={setViewMode} itemCount={items.length} />
+        <QueueHeader counts={data?.counts} filter={filter} setFilter={setFilter} scope={scope} setScope={setScope} isAgencyAdmin={!!data?.is_agency_admin} viewMode={viewMode} setViewMode={setViewMode} itemCount={items.length} />
 
         <div className="px-6 py-3 border-b border-warm-border flex items-center justify-between">
           <span className="text-xs text-warm-gray font-mono">{rapidIndex + 1} of {items.length}</span>
@@ -416,7 +420,7 @@ export function WorkQueue() {
 
   return (
     <div className="h-screen flex flex-col">
-      <QueueHeader counts={data?.counts} filter={filter} setFilter={setFilter} viewMode={viewMode} setViewMode={setViewMode} itemCount={items.length} />
+      <QueueHeader counts={data?.counts} filter={filter} setFilter={setFilter} scope={scope} setScope={setScope} isAgencyAdmin={!!data?.is_agency_admin} viewMode={viewMode} setViewMode={setViewMode} itemCount={items.length} />
 
       <div className="flex-1 flex overflow-hidden">
         {/* Item List */}
@@ -1068,6 +1072,9 @@ function QueueHeader({
   counts,
   filter,
   setFilter,
+  scope,
+  setScope,
+  isAgencyAdmin,
   viewMode,
   setViewMode,
   itemCount,
@@ -1075,6 +1082,9 @@ function QueueHeader({
   counts?: WorkQueueData['counts'] | null
   filter: FilterType
   setFilter: (f: FilterType) => void
+  scope: ScopeType
+  setScope: (s: ScopeType) => void
+  isAgencyAdmin: boolean
   viewMode: ViewMode
   setViewMode: (m: ViewMode) => void
   itemCount: number
@@ -1091,14 +1101,36 @@ function QueueHeader({
             {urgentCount > 0 && <span className="text-red-500"> · {urgentCount} urgent</span>}
           </div>
         </div>
-        {itemCount > 0 && (
-          <button
-            onClick={() => setViewMode(viewMode === 'inbox' ? 'rapid' : 'inbox')}
-            className="px-3 py-1.5 text-xs border border-warm-border rounded-full text-warm-gray hover:text-ink hover:border-ink transition-colors"
-          >
-            {viewMode === 'inbox' ? 'Rapid review' : 'Inbox view'}
-          </button>
-        )}
+        <div className="flex items-center gap-2">
+          {isAgencyAdmin && (
+            <div className="flex rounded-full border border-warm-border overflow-hidden">
+              <button
+                onClick={() => setScope('all')}
+                className={`px-3 py-1.5 text-xs transition-colors ${
+                  scope === 'all' ? 'bg-ink text-cream' : 'text-warm-gray hover:text-ink'
+                }`}
+              >
+                All
+              </button>
+              <button
+                onClick={() => setScope('mine')}
+                className={`px-3 py-1.5 text-xs transition-colors ${
+                  scope === 'mine' ? 'bg-ink text-cream' : 'text-warm-gray hover:text-ink'
+                }`}
+              >
+                My Queue
+              </button>
+            </div>
+          )}
+          {itemCount > 0 && (
+            <button
+              onClick={() => setViewMode(viewMode === 'inbox' ? 'rapid' : 'inbox')}
+              className="px-3 py-1.5 text-xs border border-warm-border rounded-full text-warm-gray hover:text-ink hover:border-ink transition-colors"
+            >
+              {viewMode === 'inbox' ? 'Rapid review' : 'Inbox view'}
+            </button>
+          )}
+        </div>
       </div>
 
       <div className="flex gap-1 overflow-x-auto">

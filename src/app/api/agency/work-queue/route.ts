@@ -10,18 +10,25 @@ export const dynamic = 'force-dynamic'
  * Returns actionable work items for the agency work queue.
  * Items are computed from existing tables (no separate queue table).
  *
+ * Access control:
+ *   - Agency admins see all items (scope=all, default) or their managed orgs (scope=mine)
+ *   - Account managers see only items from their assigned orgs
+ *
  * Query params:
  *   filter: 'all' | 'needs_reply' | 'ai_drafts' | 'google_updates' | 'posts' | 'sync_errors'
+ *   scope: 'all' | 'mine' (only affects agency admins; managers always scoped)
  *   limit: number (default: 50)
  */
 export async function GET(request: NextRequest) {
-  // Auth: verify agency admin
   const supabase = createServerSupabase()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
 
+  const adminClient = createAdminClient()
+
+  // Check agency admin status
   const { data: adminCheck } = await supabase
     .from('org_members')
     .select('is_agency_admin')
@@ -29,15 +36,49 @@ export async function GET(request: NextRequest) {
     .eq('is_agency_admin', true)
     .limit(1)
 
-  if (!adminCheck || adminCheck.length === 0) {
-    return NextResponse.json({ error: 'Agency admin required' }, { status: 403 })
+  const isAgencyAdmin = adminCheck && adminCheck.length > 0
+
+  // Check account manager assignments
+  const { data: managerAssignments } = await adminClient
+    .from('org_account_managers')
+    .select('org_id')
+    .eq('user_id', user.id)
+
+  const managedOrgIds = (managerAssignments || []).map((a) => a.org_id)
+  const isAccountManager = managedOrgIds.length > 0
+
+  // Must be either agency admin or account manager
+  if (!isAgencyAdmin && !isAccountManager) {
+    return NextResponse.json({ error: 'Access denied' }, { status: 403 })
   }
 
   const { searchParams } = new URL(request.url)
   const filter = searchParams.get('filter') || 'all'
+  const scope = searchParams.get('scope') || 'all'
   const limit = Math.min(parseInt(searchParams.get('limit') || '50', 10), 100)
 
-  const adminClient = createAdminClient()
+  // Determine scoped location IDs
+  // Agency admins see all by default, but can filter to "mine"
+  // Account managers always see only their assigned orgs
+  let scopedLocationIds: string[] | null = null // null = no filter (see all)
+
+  if (!isAgencyAdmin || scope === 'mine') {
+    if (managedOrgIds.length === 0) {
+      return NextResponse.json({ items: [], counts: { total: 0, needs_reply: 0, ai_drafts: 0, google_updates: 0, posts: 0, sync_errors: 0 } })
+    }
+
+    const { data: locations } = await adminClient
+      .from('locations')
+      .select('id')
+      .in('org_id', managedOrgIds)
+      .eq('active', true)
+
+    scopedLocationIds = (locations || []).map((l) => l.id)
+
+    if (scopedLocationIds.length === 0) {
+      return NextResponse.json({ items: [], counts: { total: 0, needs_reply: 0, ai_drafts: 0, google_updates: 0, posts: 0, sync_errors: 0 } })
+    }
+  }
 
   const reviewSelect = 'id, location_id, platform, reviewer_name, reviewer_photo_url, rating, body, published_at, sentiment, ai_draft, ai_draft_generated_at, status, assigned_to, locations(name, org_id, organizations(name, slug))'
 
@@ -46,6 +87,14 @@ export async function GET(request: NextRequest) {
   const wantsGoogle = filter === 'all' || filter === 'google_updates'
   const wantsPosts = filter === 'all' || filter === 'posts'
   const wantsSyncErrors = filter === 'all' || filter === 'sync_errors'
+
+  // Helper to apply location scope to a query builder
+  function applyScope<T extends { in: (col: string, values: string[]) => T }>(query: T): T {
+    if (scopedLocationIds) {
+      return query.in('location_id', scopedLocationIds)
+    }
+    return query
+  }
 
   // Run all queries in parallel
   const [
@@ -58,58 +107,70 @@ export async function GET(request: NextRequest) {
   ] = await Promise.all([
     // 1: Unreplied negative Google reviews (urgent)
     wantsReviews
-      ? adminClient
-          .from('reviews')
-          .select(reviewSelect)
-          .eq('platform', 'google')
-          .eq('status', 'new')
-          .eq('sentiment', 'negative')
-          .is('reply_body', null)
+      ? applyScope(
+          adminClient
+            .from('reviews')
+            .select(reviewSelect)
+            .eq('platform', 'google')
+            .eq('status', 'new')
+            .eq('sentiment', 'negative')
+            .is('reply_body', null)
+        )
           .order('published_at', { ascending: false })
           .limit(limit)
       : Promise.resolve({ data: [] as any[] }),
     // 2: Reviews with AI drafts pending approval (important)
     wantsDrafts
-      ? adminClient
-          .from('reviews')
-          .select(reviewSelect)
-          .not('ai_draft', 'is', null)
-          .is('reply_body', null)
-          .neq('status', 'archived')
+      ? applyScope(
+          adminClient
+            .from('reviews')
+            .select(reviewSelect)
+            .not('ai_draft', 'is', null)
+            .is('reply_body', null)
+            .neq('status', 'archived')
+        )
           .order('ai_draft_generated_at', { ascending: false })
           .limit(limit)
       : Promise.resolve({ data: [] as any[] }),
     // 3: Google suggested updates (urgent)
     wantsGoogle
-      ? adminClient
-          .from('gbp_profiles')
-          .select('location_id, business_name, has_google_updated, updated_at, locations(name, org_id, organizations(name, slug))')
-          .eq('has_google_updated', true)
+      ? applyScope(
+          adminClient
+            .from('gbp_profiles')
+            .select('location_id, business_name, has_google_updated, updated_at, locations(name, org_id, organizations(name, slug))')
+            .eq('has_google_updated', true)
+        )
           .limit(limit)
       : Promise.resolve({ data: [] as any[] }),
     // 4: Pending posts in queue (info)
     wantsPosts
-      ? adminClient
-          .from('gbp_post_queue')
-          .select('id, location_id, topic_type, summary, scheduled_for, status, assigned_to, created_at, locations(name, org_id, organizations(name, slug))')
-          .eq('status', 'pending')
+      ? applyScope(
+          adminClient
+            .from('gbp_post_queue')
+            .select('id, location_id, topic_type, summary, scheduled_for, status, assigned_to, created_at, locations(name, org_id, organizations(name, slug))')
+            .eq('status', 'pending')
+        )
           .order('created_at', { ascending: false })
           .limit(limit)
       : Promise.resolve({ data: [] as any[] }),
     // 5: Review source sync errors (important)
     wantsSyncErrors
-      ? adminClient
-          .from('review_sources')
-          .select('id, location_id, platform, sync_status, last_synced_at, metadata, locations(name, org_id, organizations(name, slug))')
-          .eq('sync_status', 'error')
+      ? applyScope(
+          adminClient
+            .from('review_sources')
+            .select('id, location_id, platform, sync_status, last_synced_at, metadata, locations(name, org_id, organizations(name, slug))')
+            .eq('sync_status', 'error')
+        )
           .limit(limit)
       : Promise.resolve({ data: [] as any[] }),
     // 6: GBP profile sync errors (important)
     wantsSyncErrors
-      ? adminClient
-          .from('gbp_profiles')
-          .select('location_id, sync_status, sync_error, last_synced_at, locations(name, org_id, organizations(name, slug))')
-          .eq('sync_status', 'error')
+      ? applyScope(
+          adminClient
+            .from('gbp_profiles')
+            .select('location_id, sync_status, sync_error, last_synced_at, locations(name, org_id, organizations(name, slug))')
+            .eq('sync_status', 'error')
+        )
           .limit(limit)
       : Promise.resolve({ data: [] as any[] }),
   ])
@@ -168,7 +229,12 @@ export async function GET(request: NextRequest) {
     sync_errors: items.filter((i) => i.type === 'sync_error').length,
   }
 
-  return NextResponse.json({ items: items.slice(0, limit), counts })
+  return NextResponse.json({
+    items: items.slice(0, limit),
+    counts,
+    scope: scopedLocationIds ? 'mine' : 'all',
+    is_agency_admin: isAgencyAdmin,
+  })
 }
 
 // ─── Formatters ─────────────────────────────────────────────
