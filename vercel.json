@@ -20,6 +20,18 @@
     {
       "path": "/api/cron/reply-queue",
       "schedule": "*/5 * * * *"
+    },
+    {
+      "path": "/api/google/media/sync",
+      "schedule": "0 4 * * *"
+    },
+    {
+      "path": "/api/google/posts/sync",
+      "schedule": "0 5 * * *"
+    },
+    {
+      "path": "/api/cron/post-queue",
+      "schedule": "*/5 * * * *"
     }
   ]
 }

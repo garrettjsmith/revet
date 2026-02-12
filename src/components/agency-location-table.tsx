@@ -3,6 +3,7 @@
 import { useState, useMemo } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
+import { BulkProfileEditor } from '@/components/bulk-profile-editor'
 
 interface Location {
   id: string
@@ -58,6 +59,9 @@ export function AgencyLocationTable({ locations, orgs }: AgencyLocationTableProp
   const [bulkMoveOrgId, setBulkMoveOrgId] = useState<string>('')
   const [isMoving, setIsMoving] = useState(false)
   const [moveProgress, setMoveProgress] = useState({ current: 0, total: 0 })
+
+  // Bulk edit state
+  const [showBulkEdit, setShowBulkEdit] = useState(false)
 
   // Kebab menu state
   const [activeKebabId, setActiveKebabId] = useState<string | null>(null)
@@ -580,6 +584,15 @@ export function AgencyLocationTable({ locations, orgs }: AgencyLocationTableProp
                 Create Landers
               </button>
 
+              <div className="w-px h-5 bg-cream/20" />
+
+              <button
+                onClick={() => setShowBulkEdit(true)}
+                className="px-4 py-1.5 bg-cream text-ink text-sm font-medium rounded hover:bg-cream/90"
+              >
+                Edit Profiles
+              </button>
+
               <button
                 onClick={() => setSelectedLocationIds(new Set())}
                 className="ml-auto px-3 py-1.5 text-sm text-cream/80 hover:text-cream"
@@ -589,6 +602,17 @@ export function AgencyLocationTable({ locations, orgs }: AgencyLocationTableProp
             </>
           )}
         </div>
+      )}
+
+      {/* Bulk profile editor modal */}
+      {showBulkEdit && (
+        <BulkProfileEditor
+          locationIds={Array.from(selectedLocationIds)}
+          onClose={() => {
+            setShowBulkEdit(false)
+            setSelectedLocationIds(new Set())
+          }}
+        />
       )}
     </div>
   )

@@ -4,11 +4,13 @@ import { getOrgBySlug } from '@/lib/org'
 import { getLocation, checkAgencyAdmin } from '@/lib/locations'
 import { notFound } from 'next/navigation'
 import Link from 'next/link'
-import type { GBPProfile, GBPMedia } from '@/lib/types'
+import type { GBPProfile, GBPMedia, GBPPost, GBPPostQueue } from '@/lib/types'
 import { PerformanceChart } from '@/components/performance-chart'
 import { GBPEditToggle } from '@/components/gbp-edit-toggle'
 import { ProfileAuditCard } from '@/components/profile-audit-card'
 import { GoogleUpdatesBanner } from '@/components/google-updates-banner'
+import { GBPMediaManager } from '@/components/gbp-media-manager'
+import { GBPPostsSection } from '@/components/gbp-posts-section'
 
 export const dynamic = 'force-dynamic'
 
@@ -69,6 +71,24 @@ export default async function GBPProfilePage({
     .order('create_time', { ascending: false })
 
   const mediaItems = (media || []) as GBPMedia[]
+
+  // Fetch posts
+  const { data: postsData } = await adminClient
+    .from('gbp_posts')
+    .select('*')
+    .eq('location_id', location.id)
+    .order('create_time', { ascending: false })
+
+  const postItems = (postsData || []) as GBPPost[]
+
+  const { data: queuedData } = await adminClient
+    .from('gbp_post_queue')
+    .select('*')
+    .eq('location_id', location.id)
+    .in('status', ['pending', 'sending'])
+    .order('created_at', { ascending: false })
+
+  const queuedPosts = (queuedData || []) as GBPPostQueue[]
 
   // Fetch review stats
   const { data: reviewSource } = await adminClient
@@ -377,33 +397,10 @@ export default async function GBPProfilePage({
           </div>
 
           {/* Photos */}
-          {mediaItems.length > 0 && (
-            <div className="border border-warm-border rounded-xl overflow-hidden">
-              <div className="px-5 py-4 border-b border-warm-border">
-                <h2 className="text-sm font-semibold text-ink">Photos ({mediaItems.length})</h2>
-              </div>
-              <div className="p-5">
-                <div className="grid grid-cols-6 gap-3">
-                  {mediaItems.map((m) => (
-                    <div key={m.id} className="aspect-square rounded-lg overflow-hidden bg-warm-light border border-warm-border">
-                      {m.google_url ? (
-                        <img
-                          src={`${m.google_url}=s300`}
-                          alt={m.description || ''}
-                          className="w-full h-full object-cover"
-                          loading="lazy"
-                        />
-                      ) : (
-                        <div className="w-full h-full flex items-center justify-center text-xs text-warm-gray">
-                          No preview
-                        </div>
-                      )}
-                    </div>
-                  ))}
-                </div>
-              </div>
-            </div>
-          )}
+          <GBPMediaManager mediaItems={mediaItems} locationId={location.id} isAdmin={isAdmin} />
+
+          {/* Posts */}
+          <GBPPostsSection posts={postItems} queuedPosts={queuedPosts} locationId={location.id} isAdmin={isAdmin} />
         </div>
       )}
     </div>
