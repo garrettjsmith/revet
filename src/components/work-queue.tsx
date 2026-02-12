@@ -846,26 +846,38 @@ function GoogleUpdateDetail({
         </div>
       ) : (
         <div className="py-6 text-center text-xs text-warm-gray mb-4">
-          No field-level differences detected. The update may have already been resolved.
+          No field-level differences found. Data already matches Google.
         </div>
       )}
 
-      <div className="flex items-center gap-2">
-        <button
-          onClick={() => onAction('accept')}
-          disabled={actionLoading === 'google_accept'}
-          className="px-5 py-2.5 bg-blue-600 hover:bg-blue-700 text-white text-xs font-medium rounded-full transition-colors disabled:opacity-50"
-        >
-          {actionLoading === 'google_accept' ? 'Accepting...' : 'Accept Changes'}
-        </button>
-        <button
-          onClick={() => onAction('reject')}
-          disabled={actionLoading === 'google_reject'}
-          className="px-4 py-2.5 border border-warm-border text-xs text-warm-gray rounded-full hover:text-ink hover:border-ink transition-colors disabled:opacity-50"
-        >
-          {actionLoading === 'google_reject' ? 'Rejecting...' : 'Reject & Keep Current'}
-        </button>
-      </div>
+      {diffs && diffs.length > 0 ? (
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => onAction('accept')}
+            disabled={actionLoading === 'google_accept'}
+            className="px-5 py-2.5 bg-blue-600 hover:bg-blue-700 text-white text-xs font-medium rounded-full transition-colors disabled:opacity-50"
+          >
+            {actionLoading === 'google_accept' ? 'Accepting...' : 'Accept Changes'}
+          </button>
+          <button
+            onClick={() => onAction('reject')}
+            disabled={actionLoading === 'google_reject'}
+            className="px-4 py-2.5 border border-warm-border text-xs text-warm-gray rounded-full hover:text-ink hover:border-ink transition-colors disabled:opacity-50"
+          >
+            {actionLoading === 'google_reject' ? 'Rejecting...' : 'Reject & Keep Current'}
+          </button>
+        </div>
+      ) : !loadingDiffs ? (
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => onAction('accept')}
+            disabled={actionLoading === 'google_accept'}
+            className="px-4 py-2.5 border border-warm-border text-xs text-ink rounded-full hover:border-ink transition-colors disabled:opacity-50"
+          >
+            {actionLoading === 'google_accept' ? 'Resolving...' : 'Mark Resolved'}
+          </button>
+        </div>
+      ) : null}
     </div>
   )
 }
