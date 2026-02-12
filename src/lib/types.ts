@@ -26,6 +26,16 @@ export interface OrgMember {
   email?: string
 }
 
+export interface OrgAccountManager {
+  id: string
+  org_id: string
+  user_id: string
+  created_at: string
+  // joined
+  email?: string
+  org_name?: string
+}
+
 export type LocationType = 'place' | 'practitioner' | 'service_area'
 
 export interface Location {

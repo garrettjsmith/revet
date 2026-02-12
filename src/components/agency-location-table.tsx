@@ -28,9 +28,16 @@ interface Organization {
   slug: string
 }
 
+interface AgencyMember {
+  id: string
+  email: string
+}
+
 interface AgencyLocationTableProps {
   locations: Location[]
   orgs: Organization[]
+  orgManagers?: Record<string, { userId: string; email: string }[]>
+  agencyMembers?: AgencyMember[]
 }
 
 type SortField = 'name' | 'orgName' | 'city' | 'reviews' | 'syncStatus'
@@ -38,7 +45,7 @@ type SortDirection = 'asc' | 'desc'
 
 const ITEMS_PER_PAGE = 15
 
-export function AgencyLocationTable({ locations, orgs }: AgencyLocationTableProps) {
+export function AgencyLocationTable({ locations, orgs, orgManagers = {}, agencyMembers = [] }: AgencyLocationTableProps) {
   const router = useRouter()
 
   // Filter states
@@ -378,6 +385,9 @@ export function AgencyLocationTable({ locations, orgs }: AgencyLocationTableProp
               >
                 Organization <SortIcon field="orgName" />
               </th>
+              <th className="text-left px-5 py-3 text-[11px] text-warm-gray uppercase tracking-wider font-medium">
+                Manager
+              </th>
               <th
                 className="text-left px-5 py-3 text-[11px] text-warm-gray uppercase tracking-wider font-medium cursor-pointer select-none hover:text-ink"
                 onClick={() => handleSort('city')}
@@ -408,7 +418,7 @@ export function AgencyLocationTable({ locations, orgs }: AgencyLocationTableProp
           <tbody className="bg-cream">
             {paginatedLocations.length === 0 ? (
               <tr>
-                <td colSpan={9} className="px-5 py-8 text-center text-warm-gray text-sm">
+                <td colSpan={10} className="px-5 py-8 text-center text-warm-gray text-sm">
                   No locations found
                 </td>
               </tr>
@@ -436,6 +446,13 @@ export function AgencyLocationTable({ locations, orgs }: AgencyLocationTableProp
                   </td>
                   <td className="px-5 py-3">
                     <div className="text-xs text-warm-gray">{location.orgName}</div>
+                  </td>
+                  <td className="px-5 py-3">
+                    <ManagerSelect
+                      orgId={location.orgId}
+                      managers={orgManagers[location.orgId] || []}
+                      agencyMembers={agencyMembers}
+                    />
                   </td>
                   <td className="px-5 py-3 text-sm text-ink">
                     {location.city || '—'}
@@ -678,6 +695,106 @@ const tierStyles: Record<ServiceTier, { label: string; classes: string }> = {
   starter: { label: 'Starter', classes: 'bg-gray-100 text-gray-600' },
   standard: { label: 'Standard', classes: 'bg-blue-50 text-blue-700' },
   premium: { label: 'Premium', classes: 'bg-amber-50 text-amber-700' },
+}
+
+function ManagerSelect({
+  orgId,
+  managers: initialManagers,
+  agencyMembers,
+}: {
+  orgId: string
+  managers: { userId: string; email: string }[]
+  agencyMembers: AgencyMember[]
+}) {
+  const [managers, setManagers] = useState(initialManagers)
+  const [open, setOpen] = useState(false)
+
+  const addManager = async (userId: string) => {
+    const member = agencyMembers.find((m) => m.id === userId)
+    if (!member) return
+
+    setManagers((prev) => [...prev, { userId, email: member.email }])
+    setOpen(false)
+
+    await fetch('/api/agency/account-managers', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ org_id: orgId, user_id: userId }),
+    })
+  }
+
+  const removeManager = async (userId: string) => {
+    setManagers((prev) => prev.filter((m) => m.userId !== userId))
+
+    await fetch('/api/agency/account-managers', {
+      method: 'DELETE',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ org_id: orgId, user_id: userId }),
+    })
+  }
+
+  const assignable = agencyMembers.filter(
+    (m) => !managers.some((mgr) => mgr.userId === m.id)
+  )
+
+  return (
+    <div className="relative">
+      {managers.length > 0 ? (
+        <div className="flex flex-wrap gap-1">
+          {managers.map((m) => (
+            <span
+              key={m.userId}
+              className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] bg-violet-50 text-violet-700"
+            >
+              {m.email.split('@')[0]}
+              <button
+                onClick={() => removeManager(m.userId)}
+                className="text-violet-400 hover:text-violet-700 leading-none"
+              >
+                x
+              </button>
+            </span>
+          ))}
+          {assignable.length > 0 && (
+            <button
+              onClick={() => setOpen(!open)}
+              className="text-[10px] text-warm-gray hover:text-ink"
+            >
+              +
+            </button>
+          )}
+        </div>
+      ) : (
+        <button
+          onClick={() => setOpen(!open)}
+          className="text-[10px] text-warm-gray hover:text-ink"
+        >
+          Assign...
+        </button>
+      )}
+
+      {open && (
+        <>
+          <div className="fixed inset-0 z-10" onClick={() => setOpen(false)} />
+          <div className="absolute z-20 mt-1 bg-cream border border-warm-border rounded-lg shadow-lg py-1 min-w-[160px]">
+            {assignable.map((m) => (
+              <button
+                key={m.id}
+                onClick={() => addManager(m.id)}
+                className="w-full text-left px-3 py-1.5 text-xs text-ink hover:bg-warm-light transition-colors"
+              >
+                {m.email.split('@')[0]}
+                <span className="text-warm-gray ml-1 text-[10px]">({m.email})</span>
+              </button>
+            ))}
+            {assignable.length === 0 && (
+              <div className="px-3 py-1.5 text-xs text-warm-gray">No members available</div>
+            )}
+          </div>
+        </>
+      )}
+    </div>
+  )
 }
 
 function TierSelect({ locationId, value }: { locationId: string; value: ServiceTier }) {

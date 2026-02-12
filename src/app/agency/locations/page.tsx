@@ -9,7 +9,7 @@ export default async function AgencyLocationsPage() {
   const adminClient = createAdminClient()
 
   // Fetch locations with separate queries to avoid PostgREST join issues
-  const [locationsResult, orgsResult, reviewSourcesResult, landersResult] = await Promise.all([
+  const [locationsResult, orgsResult, reviewSourcesResult, landersResult, accountManagersResult] = await Promise.all([
     adminClient
       .from('locations')
       .select('id, name, city, state, org_id, status, service_tier')
@@ -24,6 +24,9 @@ export default async function AgencyLocationsPage() {
     adminClient
       .from('local_landers')
       .select('location_id'),
+    adminClient
+      .from('org_account_managers')
+      .select('org_id, user_id'),
   ])
 
   const { data: rawLocations, error: locationsError } = locationsResult
@@ -58,6 +61,55 @@ export default async function AgencyLocationsPage() {
   for (const rs of (reviewSourcesResult.data || [])) {
     if (!reviewSourceMap.has(rs.location_id)) {
       reviewSourceMap.set(rs.location_id, rs)
+    }
+  }
+
+  // Resolve account manager emails
+  const managerRows = accountManagersResult.data || []
+  const managerUserIds = Array.from(new Set(managerRows.map((m: any) => m.user_id)))
+  const managerEmailMap = new Map<string, string>()
+  for (const uid of managerUserIds) {
+    const { data } = await adminClient.auth.admin.getUserById(uid)
+    if (data?.user?.email) {
+      managerEmailMap.set(uid, data.user.email)
+    }
+  }
+
+  // Build org → managers lookup: { orgId: [{ userId, email }] }
+  const orgManagerMap = new Map<string, { userId: string; email: string }[]>()
+  for (const row of managerRows) {
+    const email = managerEmailMap.get(row.user_id)
+    if (!email) continue
+    if (!orgManagerMap.has(row.org_id)) {
+      orgManagerMap.set(row.org_id, [])
+    }
+    orgManagerMap.get(row.org_id)!.push({ userId: row.user_id, email })
+  }
+
+  // Build serializable managers list for client component
+  const orgManagers: Record<string, { userId: string; email: string }[]> = {}
+  Array.from(orgManagerMap.entries()).forEach(([orgId, managers]) => {
+    orgManagers[orgId] = managers
+  })
+
+  // Flat list of all agency team members for assignment dropdown
+  const agencyMembers = managerUserIds.map((uid) => ({
+    id: uid,
+    email: managerEmailMap.get(uid) || '',
+  })).filter((m) => m.email)
+
+  // Also include any agency admins not yet in the managers list
+  const { data: adminMembers } = await adminClient
+    .from('org_members')
+    .select('user_id')
+    .eq('is_agency_admin', true)
+
+  for (const am of adminMembers || []) {
+    if (!agencyMembers.find((m) => m.id === am.user_id)) {
+      const { data } = await adminClient.auth.admin.getUserById(am.user_id)
+      if (data?.user?.email) {
+        agencyMembers.push({ id: am.user_id, email: data.user.email })
+      }
     }
   }
 
@@ -105,6 +157,8 @@ export default async function AgencyLocationsPage() {
       <AgencyLocationTable
         locations={locations}
         orgs={orgs || []}
+        orgManagers={orgManagers}
+        agencyMembers={agencyMembers}
       />
     </div>
   )
