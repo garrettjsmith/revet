@@ -45,10 +45,13 @@ export interface Location {
   postal_code: string | null
   country: string
   metadata: Record<string, unknown>
+  service_tier: 'starter' | 'standard' | 'premium'
   active: boolean
   created_at: string
   updated_at: string
 }
+
+export type ServiceTier = 'starter' | 'standard' | 'premium'
 
 export interface ReviewProfile {
   id: string
@@ -405,6 +408,7 @@ export interface GBPPostQueue {
   status: PostQueueStatus
   scheduled_for: string | null
   queued_by: string
+  assigned_to: string | null
   attempts: number
   last_error: string | null
   gbp_post_name: string | null

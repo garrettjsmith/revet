@@ -12,7 +12,7 @@ export default async function AgencyLocationsPage() {
   const [locationsResult, orgsResult, reviewSourcesResult, landersResult] = await Promise.all([
     adminClient
       .from('locations')
-      .select('id, name, city, state, org_id, status')
+      .select('id, name, city, state, org_id, status, service_tier')
       .order('name'),
     adminClient
       .from('organizations')
@@ -87,6 +87,7 @@ export default async function AgencyLocationsPage() {
         avgRating: reviewSource?.average_rating?.toFixed(1) || null,
         syncStatus,
         hasLander: landerLocationIds.has(loc.id),
+        serviceTier: loc.service_tier || 'standard',
       }
     })
 

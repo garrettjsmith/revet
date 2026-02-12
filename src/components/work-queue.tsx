@@ -77,6 +77,11 @@ interface WorkQueueData {
 type FilterType = 'all' | 'needs_reply' | 'ai_drafts' | 'google_updates' | 'posts' | 'sync_errors'
 type ViewMode = 'inbox' | 'rapid'
 
+interface TeamMember {
+  id: string
+  email: string
+}
+
 // ─── Main Component ───────────────────────────────────────────
 
 export function WorkQueue() {
@@ -90,6 +95,7 @@ export function WorkQueue() {
   const [editMode, setEditMode] = useState(false)
   const [editText, setEditText] = useState('')
   const [mobileDetailOpen, setMobileDetailOpen] = useState(false)
+  const [teamMembers, setTeamMembers] = useState<TeamMember[]>([])
 
   const fetchData = useCallback(async () => {
     try {
@@ -125,6 +131,14 @@ export function WorkQueue() {
       window.removeEventListener('focus', handleFocus)
     }
   }, [fetchData])
+
+  // Fetch team members for assignment dropdown
+  useEffect(() => {
+    fetch('/api/agency/members')
+      .then((res) => res.ok ? res.json() : { members: [] })
+      .then((data) => setTeamMembers(data.members || []))
+      .catch(() => {})
+  }, [])
 
   // Keyboard shortcuts for rapid review mode
   useEffect(() => {
@@ -290,6 +304,23 @@ export function WorkQueue() {
     setActionLoading(null)
   }
 
+  // Assignment
+  const handleAssign = async (item: WorkItem, userId: string | null) => {
+    try {
+      const res = await fetch('/api/agency/work-queue/assign', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ item_id: item.id, item_type: item.type, assigned_to: userId }),
+      })
+      if (res.ok && data) {
+        const newItems = data.items.map((i) =>
+          i.id === item.id ? { ...i, assigned_to: userId } : i
+        )
+        setData({ ...data, items: newItems })
+      }
+    } catch { /* ignore */ }
+  }
+
   // ─── Derived state ────────────────────────────────────────
 
   const items = data?.items || []
@@ -362,6 +393,8 @@ export function WorkQueue() {
               onGoogleAction={(action) => handleGoogleAction(rapidItem, action)}
               onDeletePost={() => handleDeletePost(rapidItem)}
               onDismiss={() => removeItem(rapidItem.id)}
+              teamMembers={teamMembers}
+              onAssign={(userId) => handleAssign(rapidItem, userId)}
             />
 
             {!editMode && isReviewItem(rapidItem) && (
@@ -400,7 +433,7 @@ export function WorkQueue() {
                 item.id === selectedId ? 'bg-warm-light' : 'hover:bg-warm-light/50'
               }`}
             >
-              <ListItemContent item={item} />
+              <ListItemContent item={item} teamMembers={teamMembers} />
             </button>
           ))}
         </div>
@@ -432,6 +465,8 @@ export function WorkQueue() {
                 onGoogleAction={(action) => handleGoogleAction(selectedItem, action)}
                 onDeletePost={() => handleDeletePost(selectedItem)}
                 onDismiss={() => removeItem(selectedItem.id)}
+                teamMembers={teamMembers}
+                onAssign={(userId) => handleAssign(selectedItem, userId)}
               />
             </div>
           ) : (
@@ -447,7 +482,11 @@ export function WorkQueue() {
 
 // ─── List Item Content ──────────────────────────────────────
 
-function ListItemContent({ item }: { item: WorkItem }) {
+function ListItemContent({ item, teamMembers = [] }: { item: WorkItem; teamMembers?: TeamMember[] }) {
+  const assignedLabel = item.assigned_to
+    ? teamMembers.find((m) => m.id === item.assigned_to)?.email?.split('@')[0] || 'Assigned'
+    : null
+
   if (isReviewItem(item) && item.review) {
     return (
       <div className="flex items-start gap-3">
@@ -477,6 +516,12 @@ function ListItemContent({ item }: { item: WorkItem }) {
               <>
                 <span className="text-warm-border">·</span>
                 <span className="text-[10px] text-amber-600 font-medium">Draft ready</span>
+              </>
+            )}
+            {assignedLabel && (
+              <>
+                <span className="text-warm-border">·</span>
+                <span className="text-[10px] text-ink/50">{assignedLabel}</span>
               </>
             )}
           </div>
@@ -536,6 +581,12 @@ function ListItemContent({ item }: { item: WorkItem }) {
                 </span>
               </>
             )}
+            {assignedLabel && (
+              <>
+                <span className="text-warm-border">·</span>
+                <span className="text-[10px] text-ink/50">{assignedLabel}</span>
+              </>
+            )}
           </div>
         </div>
       </div>
@@ -586,6 +637,8 @@ function ItemDetail({
   onGoogleAction,
   onDeletePost,
   onDismiss,
+  teamMembers,
+  onAssign,
 }: {
   item: WorkItem
   editMode: boolean
@@ -601,56 +654,58 @@ function ItemDetail({
   onGoogleAction: (action: 'accept' | 'reject') => void
   onDeletePost: () => void
   onDismiss: () => void
+  teamMembers: TeamMember[]
+  onAssign: (userId: string | null) => void
 }) {
-  if (isReviewItem(item) && item.review) {
-    return (
-      <ReviewDetail
-        item={item}
-        editMode={editMode}
-        editText={editText}
-        setEditMode={setEditMode}
-        setEditText={setEditText}
-        actionLoading={actionLoading}
-        onApprove={onApproveReview}
-        onEditAndSend={onEditAndSendReview}
-        onRegenerate={onRegenerateReview}
-        onSkip={onSkipReview}
-        onReject={onRejectReview}
-      />
-    )
-  }
+  const assignable = isReviewItem(item) || item.type === 'post_pending'
 
-  if (item.type === 'google_update') {
-    return (
-      <GoogleUpdateDetail
-        item={item}
-        actionLoading={actionLoading}
-        onAction={onGoogleAction}
-      />
-    )
-  }
+  return (
+    <div>
+      {assignable && teamMembers.length > 0 && (
+        <AssignDropdown item={item} teamMembers={teamMembers} onAssign={onAssign} />
+      )}
 
-  if (item.type === 'post_pending' && item.post) {
-    return (
-      <PostDetail
-        item={item}
-        actionLoading={actionLoading}
-        onDelete={onDeletePost}
-        onDismiss={onDismiss}
-      />
-    )
-  }
+      {isReviewItem(item) && item.review && (
+        <ReviewDetail
+          item={item}
+          editMode={editMode}
+          editText={editText}
+          setEditMode={setEditMode}
+          setEditText={setEditText}
+          actionLoading={actionLoading}
+          onApprove={onApproveReview}
+          onEditAndSend={onEditAndSendReview}
+          onRegenerate={onRegenerateReview}
+          onSkip={onSkipReview}
+          onReject={onRejectReview}
+        />
+      )}
 
-  if (item.type === 'sync_error' && item.sync_error) {
-    return (
-      <SyncErrorDetail
-        item={item}
-        onDismiss={onDismiss}
-      />
-    )
-  }
+      {item.type === 'google_update' && (
+        <GoogleUpdateDetail
+          item={item}
+          actionLoading={actionLoading}
+          onAction={onGoogleAction}
+        />
+      )}
 
-  return null
+      {item.type === 'post_pending' && item.post && (
+        <PostDetail
+          item={item}
+          actionLoading={actionLoading}
+          onDelete={onDeletePost}
+          onDismiss={onDismiss}
+        />
+      )}
+
+      {item.type === 'sync_error' && item.sync_error && (
+        <SyncErrorDetail
+          item={item}
+          onDismiss={onDismiss}
+        />
+      )}
+    </div>
+  )
 }
 
 // ─── Review Detail ──────────────────────────────────────────
@@ -1082,6 +1137,56 @@ function KbdHint({ label, shortcut }: { label: string; shortcut: string }) {
   )
 }
 
+function AssignDropdown({
+  item,
+  teamMembers,
+  onAssign,
+}: {
+  item: WorkItem
+  teamMembers: TeamMember[]
+  onAssign: (userId: string | null) => void
+}) {
+  const [open, setOpen] = useState(false)
+  const assigned = teamMembers.find((m) => m.id === item.assigned_to)
+
+  return (
+    <div className="relative mb-4">
+      <button
+        onClick={() => setOpen(!open)}
+        className="flex items-center gap-1.5 text-[11px] text-warm-gray hover:text-ink transition-colors"
+      >
+        <UserIcon className="w-3.5 h-3.5" />
+        {assigned ? assigned.email.split('@')[0] : 'Assign'}
+        <ChevronIcon className="w-3 h-3" />
+      </button>
+      {open && (
+        <div className="absolute z-10 mt-1 bg-white border border-warm-border rounded-lg shadow-lg py-1 min-w-[180px]">
+          {item.assigned_to && (
+            <button
+              onClick={() => { onAssign(null); setOpen(false) }}
+              className="w-full text-left px-3 py-1.5 text-xs text-warm-gray hover:bg-warm-light transition-colors"
+            >
+              Unassign
+            </button>
+          )}
+          {teamMembers.map((m) => (
+            <button
+              key={m.id}
+              onClick={() => { onAssign(m.id); setOpen(false) }}
+              className={`w-full text-left px-3 py-1.5 text-xs transition-colors ${
+                m.id === item.assigned_to ? 'text-ink font-medium bg-warm-light' : 'text-ink hover:bg-warm-light'
+              }`}
+            >
+              {m.email.split('@')[0]}
+              <span className="text-warm-gray ml-1">({m.email})</span>
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
 function PriorityDot({ priority }: { priority: string }) {
   const colors: Record<string, string> = { urgent: 'bg-red-500', important: 'bg-amber-500', info: 'bg-warm-border' }
   return <div className={`w-2 h-2 rounded-full shrink-0 mt-1.5 ${colors[priority] || 'bg-warm-border'}`} />
@@ -1166,6 +1271,23 @@ function AlertIcon({ className }: { className?: string }) {
       <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" />
       <line x1="12" y1="9" x2="12" y2="13" />
       <line x1="12" y1="17" x2="12.01" y2="17" />
+    </svg>
+  )
+}
+
+function UserIcon({ className }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" />
+      <circle cx="12" cy="7" r="4" />
+    </svg>
+  )
+}
+
+function ChevronIcon({ className }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <polyline points="6 9 12 15 18 9" />
     </svg>
   )
 }
