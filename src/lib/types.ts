@@ -177,6 +177,8 @@ export interface Review {
   sentiment: ReviewSentiment | null
   internal_notes: string | null
   assigned_to: string | null
+  ai_draft: string | null
+  ai_draft_generated_at: string | null
   platform_metadata: Record<string, unknown>
   fetched_at: string
   created_at: string

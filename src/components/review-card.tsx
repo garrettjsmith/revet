@@ -30,8 +30,9 @@ interface ReviewCardProps {
 
 export function ReviewCard({ review, showLocation, canReply }: ReviewCardProps) {
   const [showReply, setShowReply] = useState(false)
-  const [replyText, setReplyText] = useState(review.reply_body || '')
+  const [replyText, setReplyText] = useState(review.reply_body || review.ai_draft || '')
   const [saving, setSaving] = useState(false)
+  const [generating, setGenerating] = useState(false)
   const [notes, setNotes] = useState(review.internal_notes || '')
   const [showNotes, setShowNotes] = useState(false)
   const supabase = createClient()
@@ -52,14 +53,19 @@ export function ReviewCard({ review, showLocation, canReply }: ReviewCardProps) 
 
   const handleSaveReply = async () => {
     setSaving(true)
-    await supabase
-      .from('reviews')
-      .update({
-        reply_body: replyText,
-        replied_via: 'manual',
-        status: 'responded',
+    try {
+      const res = await fetch(`/api/reviews/${review.id}/reply`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ reply_body: replyText.trim() }),
       })
-      .eq('id', review.id)
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}))
+        console.error('Reply failed:', data.error)
+      }
+    } catch (err) {
+      console.error('Reply failed:', err)
+    }
     setSaving(false)
     setShowReply(false)
     router.refresh()
@@ -72,6 +78,25 @@ export function ReviewCard({ review, showLocation, canReply }: ReviewCardProps) 
       .eq('id', review.id)
     setShowNotes(false)
     router.refresh()
+  }
+
+  const handleGenerateReply = async () => {
+    setGenerating(true)
+    try {
+      const res = await fetch(`/api/reviews/${review.id}/ai-reply`, {
+        method: 'POST',
+      })
+      const data = await res.json()
+      if (res.ok && data.draft) {
+        setReplyText(data.draft)
+        setShowReply(true)
+      } else {
+        console.error('AI generation failed:', data.error)
+      }
+    } catch (err) {
+      console.error('AI generation failed:', err)
+    }
+    setGenerating(false)
   }
 
   const publishedDate = new Date(review.published_at).toLocaleDateString('en-US', {
@@ -146,9 +171,19 @@ export function ReviewCard({ review, showLocation, canReply }: ReviewCardProps) 
       {review.reply_body && !showReply && (
         <div className="bg-warm-light rounded-lg p-3 mb-3 border-l-2 border-ink">
           <div className="text-[10px] text-warm-gray uppercase tracking-wider mb-1">
-            Reply {review.replied_via === 'api' ? '(via API)' : ''}
+            Reply {review.replied_via === 'ai_autopilot' ? '(AI)' : review.replied_via === 'api' ? '(via API)' : ''}
           </div>
           <p className="text-xs text-ink leading-relaxed">{review.reply_body}</p>
+        </div>
+      )}
+
+      {/* AI draft indicator */}
+      {!review.reply_body && review.ai_draft && !showReply && (
+        <div className="bg-amber-50 rounded-lg p-3 mb-3 border-l-2 border-amber-300">
+          <div className="text-[10px] text-amber-600 uppercase tracking-wider mb-1">
+            AI Draft (pending approval)
+          </div>
+          <p className="text-xs text-ink leading-relaxed">{review.ai_draft}</p>
         </div>
       )}
 
@@ -221,8 +256,17 @@ export function ReviewCard({ review, showLocation, canReply }: ReviewCardProps) 
             >
               {saving ? 'Saving...' : 'Save Reply'}
             </button>
+            {isGoogle && (
+              <button
+                onClick={handleGenerateReply}
+                disabled={generating}
+                className="px-4 py-1.5 border border-warm-border text-warm-gray text-xs rounded-full hover:text-ink hover:border-ink transition-colors disabled:opacity-50"
+              >
+                {generating ? 'Generating...' : 'Generate reply'}
+              </button>
+            )}
             <span className="text-[10px] text-warm-gray">
-              {isGoogle ? 'Will be posted via Google API when connected' : 'Saved for reference only'}
+              {isGoogle ? 'Posts to Google via API' : 'Saved for reference only'}
             </span>
           </div>
         </div>
