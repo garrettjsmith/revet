@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 
 // ─── Types ────────────────────────────────────────────────────
 
@@ -788,6 +788,7 @@ function GoogleUpdateDetail({
 }) {
   const [diffs, setDiffs] = useState<FieldDiff[] | null>(null)
   const [loadingDiffs, setLoadingDiffs] = useState(true)
+  const autoResolvedRef = useRef(false)
 
   useEffect(() => {
     let cancelled = false
@@ -795,7 +796,15 @@ function GoogleUpdateDetail({
       try {
         const res = await fetch(`/api/locations/${item.location_id}/gbp-profile/google-updates`)
         const data = await res.json()
-        if (!cancelled) setDiffs(data.diffs || [])
+        if (!cancelled) {
+          const loadedDiffs: FieldDiff[] = data.diffs || []
+          setDiffs(loadedDiffs)
+          // Auto-resolve stale items with no actual diffs
+          if (loadedDiffs.length === 0 && !autoResolvedRef.current) {
+            autoResolvedRef.current = true
+            onAction('accept')
+          }
+        }
       } catch {
         if (!cancelled) setDiffs([])
       }
@@ -803,7 +812,15 @@ function GoogleUpdateDetail({
     }
     load()
     return () => { cancelled = true }
-  }, [item.location_id])
+  }, [item.location_id]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  if (loadingDiffs) {
+    return (
+      <div className="py-8 text-center text-xs text-warm-gray animate-pulse">Checking Google for changes...</div>
+    )
+  }
+
+  if (!diffs || diffs.length === 0) return null
 
   return (
     <div>
@@ -824,31 +841,23 @@ function GoogleUpdateDetail({
 
       <div className="text-xs text-warm-gray mb-4">{item.location_name} · {item.org_name}</div>
 
-      {loadingDiffs ? (
-        <div className="py-8 text-center text-xs text-warm-gray animate-pulse">Loading changes from Google...</div>
-      ) : diffs && diffs.length > 0 ? (
-        <div className="space-y-3 mb-6">
-          {diffs.map((d) => (
-            <div key={d.field} className="text-xs">
-              <div className="font-medium text-ink mb-1.5">{d.label}</div>
-              <div className="grid grid-cols-2 gap-3">
-                <div className="bg-warm-light/50 rounded-lg p-3 border border-warm-border/50">
-                  <div className="text-[10px] text-warm-gray uppercase tracking-wider mb-1">Current</div>
-                  <div className="text-sm text-ink">{d.currentValue || '(empty)'}</div>
-                </div>
-                <div className="bg-blue-50 rounded-lg p-3 border border-blue-200">
-                  <div className="text-[10px] text-blue-500 uppercase tracking-wider mb-1">Google suggests</div>
-                  <div className="text-sm text-ink">{d.googleValue || '(empty)'}</div>
-                </div>
+      <div className="space-y-3 mb-6">
+        {diffs.map((d) => (
+          <div key={d.field} className="text-xs">
+            <div className="font-medium text-ink mb-1.5">{d.label}</div>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="bg-warm-light/50 rounded-lg p-3 border border-warm-border/50">
+                <div className="text-[10px] text-warm-gray uppercase tracking-wider mb-1">Current</div>
+                <div className="text-sm text-ink">{d.currentValue || '(empty)'}</div>
+              </div>
+              <div className="bg-blue-50 rounded-lg p-3 border border-blue-200">
+                <div className="text-[10px] text-blue-500 uppercase tracking-wider mb-1">Google suggests</div>
+                <div className="text-sm text-ink">{d.googleValue || '(empty)'}</div>
               </div>
             </div>
-          ))}
-        </div>
-      ) : (
-        <div className="py-6 text-center text-xs text-warm-gray mb-4">
-          No field-level differences detected. The update may have already been resolved.
-        </div>
-      )}
+          </div>
+        ))}
+      </div>
 
       <div className="flex items-center gap-2">
         <button
