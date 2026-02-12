@@ -7,6 +7,7 @@ import Link from 'next/link'
 import type { ProfileStats, FormTemplate, Review, GBPProfile } from '@/lib/types'
 import AuditTrail from '@/components/audit-trail'
 import { PerformanceMini } from '@/components/performance-mini'
+import { RecentLocationTracker } from '@/components/recent-location-tracker'
 
 export const dynamic = 'force-dynamic'
 
@@ -100,6 +101,14 @@ export default async function LocationDetailPage({
 
   return (
     <div>
+      <RecentLocationTracker
+        locationId={location.id}
+        locationName={location.name}
+        city={location.city}
+        state={location.state}
+        orgSlug={params.orgSlug}
+        orgName={org.name}
+      />
       {/* Location header */}
       <div className="flex items-center justify-between mb-6">
         <div>
