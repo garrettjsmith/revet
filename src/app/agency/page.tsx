@@ -2,6 +2,7 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { requireAgencyAdmin } from '@/lib/locations'
 import Link from 'next/link'
 import { SyncNowButton } from '@/components/sync-now-button'
+import { ActionItems } from '@/components/action-items'
 
 export const dynamic = 'force-dynamic'
 
@@ -101,6 +102,9 @@ export default async function AgencyOverview() {
   return (
     <div>
       <h1 className="text-2xl font-serif text-ink mb-8">Agency Overview</h1>
+
+      {/* Action Items — what needs attention */}
+      <ActionItems apiPath="/api/agency/action-items" />
 
       {/* Stat cards */}
       <div className="grid grid-cols-4 gap-4 mb-8">

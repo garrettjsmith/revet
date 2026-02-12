@@ -5,6 +5,7 @@ import { createClient } from '@/lib/supabase/client'
 import { useRouter, usePathname } from 'next/navigation'
 import Link from 'next/link'
 import type { Organization, OrgMember } from '@/lib/types'
+import { CommandPalette } from '@/components/command-palette'
 
 interface SidebarLocation {
   id: string
@@ -348,7 +349,19 @@ export function Sidebar({ currentOrg, memberships, userEmail, isAgencyAdmin, loc
             Sign out
           </button>
         </div>
+        {/* Cmd+K shortcut hint */}
+        <button
+          onClick={() => {
+            window.dispatchEvent(new KeyboardEvent('keydown', { key: 'k', metaKey: true }))
+          }}
+          className="flex items-center gap-2 px-2 py-1.5 rounded-md text-xs text-warm-gray hover:text-ink hover:bg-warm-light/50 transition-colors w-full"
+        >
+          <SearchIcon className="w-3.5 h-3.5 shrink-0" />
+          <span className="flex-1 text-left">Search</span>
+          <kbd className="text-[10px] font-mono bg-warm-light rounded px-1.5 py-0.5">⌘K</kbd>
+        </button>
       </div>
+      <CommandPalette isAgencyAdmin={isAgencyAdmin} />
     </aside>
   )
 }
@@ -483,6 +496,15 @@ function TeamIcon({ className }: { className?: string }) {
     <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
       <circle cx="12" cy="7" r="4" />
       <path d="M5.5 21v-2a6.5 6.5 0 0 1 13 0v2" />
+    </svg>
+  )
+}
+
+function SearchIcon({ className }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+      <circle cx="11" cy="11" r="8" />
+      <path d="m21 21-4.35-4.35" />
     </svg>
   )
 }
