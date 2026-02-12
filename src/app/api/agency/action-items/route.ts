@@ -25,74 +25,95 @@ export async function GET() {
 
   const adminClient = createAdminClient()
 
-  // Run all queries in parallel
+  // Run all queries in parallel — fetch actual locations for Google updates and sync errors
   const [
     { count: unreadNegativeCount },
     { count: unreadTotalCount },
-    { count: googleUpdatesCount },
-    { count: reviewSyncErrors },
-    { count: profileSyncErrors },
+    { data: googleUpdateProfiles },
+    { data: reviewSyncErrorSources },
+    { data: profileSyncErrorProfiles },
     { count: pendingReplies },
     { count: pendingPosts },
     { count: totalLocations },
     { count: totalReviews },
     { data: staleSources },
   ] = await Promise.all([
-    // Negative reviews without replies (status = 'new', sentiment = 'negative')
     adminClient
       .from('reviews')
       .select('*', { count: 'exact', head: true })
       .eq('status', 'new')
       .eq('sentiment', 'negative'),
-    // Total unread reviews
     adminClient
       .from('reviews')
       .select('*', { count: 'exact', head: true })
       .eq('status', 'new'),
-    // GBP profiles with Google updates
+    // Google updates — fetch actual locations (up to 10)
     adminClient
       .from('gbp_profiles')
-      .select('*', { count: 'exact', head: true })
-      .eq('has_google_updated', true),
-    // Review source sync errors
+      .select('location_id, locations(name, org_id, organizations(name, slug))')
+      .eq('has_google_updated', true)
+      .limit(10),
+    // Review source sync errors — fetch actual locations
     adminClient
       .from('review_sources')
-      .select('*', { count: 'exact', head: true })
-      .eq('sync_status', 'error'),
-    // GBP profile sync errors
+      .select('location_id, platform, locations(name, org_id, organizations(name, slug))')
+      .eq('sync_status', 'error')
+      .limit(10),
+    // GBP profile sync errors — fetch actual locations
     adminClient
       .from('gbp_profiles')
-      .select('*', { count: 'exact', head: true })
-      .eq('sync_status', 'error'),
-    // Pending reply queue items
+      .select('location_id, locations(name, org_id, organizations(name, slug))')
+      .eq('sync_status', 'error')
+      .limit(10),
     adminClient
       .from('review_reply_queue')
       .select('*', { count: 'exact', head: true })
       .eq('status', 'pending'),
-    // Pending post queue items
     adminClient
       .from('gbp_post_queue')
       .select('*', { count: 'exact', head: true })
       .eq('status', 'pending'),
-    // Total locations
     adminClient
       .from('locations')
       .select('*', { count: 'exact', head: true }),
-    // Total reviews
     adminClient
       .from('reviews')
       .select('*', { count: 'exact', head: true }),
-    // Stale review sources (active but last synced > 24h ago)
     adminClient
       .from('review_sources')
-      .select('id')
+      .select('location_id, locations(name, org_id, organizations(name, slug))')
       .eq('sync_status', 'active')
-      .lt('last_synced_at', new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString()),
+      .lt('last_synced_at', new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString())
+      .limit(10),
   ])
 
-  const syncErrors = (reviewSyncErrors || 0) + (profileSyncErrors || 0)
-  const staleCount = staleSources?.length || 0
+  // Build location sub-items from fetched data
+  function toLocationLinks(rows: any[] | null): Array<{ name: string; path: string }> {
+    if (!rows) return []
+    return rows.map((r: any) => {
+      const loc = r.locations
+      const org = loc?.organizations
+      const orgSlug = org?.slug || ''
+      return {
+        name: loc?.name || 'Unknown',
+        path: `/admin/${orgSlug}/locations/${r.location_id}`,
+      }
+    })
+  }
 
+  // Dedupe sync errors by location_id
+  const allSyncErrors = [
+    ...(reviewSyncErrorSources || []),
+    ...(profileSyncErrorProfiles || []),
+  ]
+  const seenLocationIds = new Set<string>()
+  const dedupedSyncErrors = allSyncErrors.filter((r: any) => {
+    if (seenLocationIds.has(r.location_id)) return false
+    seenLocationIds.add(r.location_id)
+    return true
+  })
+
+  type SubItem = { name: string; path: string }
   type ActionItem = {
     type: string
     priority: 'urgent' | 'important' | 'info'
@@ -100,6 +121,7 @@ export async function GET() {
     label: string
     action_label: string
     action_path: string
+    locations?: SubItem[]
   }
 
   const items: ActionItem[] = []
@@ -111,40 +133,51 @@ export async function GET() {
       count: unreadNegativeCount || 0,
       label: `${unreadNegativeCount} negative review${unreadNegativeCount === 1 ? '' : 's'} need${unreadNegativeCount === 1 ? 's' : ''} a reply`,
       action_label: 'View reviews',
-      action_path: '/agency/locations?filter=negative-reviews',
+      action_path: '/agency/reviews?status=new&rating=2',
     })
   }
 
-  if ((googleUpdatesCount || 0) > 0) {
+  const googleUpdates = googleUpdateProfiles || []
+  if (googleUpdates.length > 0) {
+    const locationLinks = toLocationLinks(googleUpdates).map((l) => ({
+      ...l,
+      path: `${l.path}/gbp-profile`,
+    }))
     items.push({
       type: 'google_updates',
       priority: 'urgent',
-      count: googleUpdatesCount || 0,
-      label: `${googleUpdatesCount} profile${googleUpdatesCount === 1 ? '' : 's'} ${googleUpdatesCount === 1 ? 'has' : 'have'} Google-suggested edits`,
+      count: googleUpdates.length,
+      label: `${googleUpdates.length} profile${googleUpdates.length === 1 ? '' : 's'} ${googleUpdates.length === 1 ? 'has' : 'have'} Google-suggested edits`,
       action_label: 'Review updates',
-      action_path: '/agency/locations?filter=google-updates',
+      action_path: locationLinks[0]?.path || '/agency',
+      locations: locationLinks,
     })
   }
 
-  if (syncErrors > 0) {
+  if (dedupedSyncErrors.length > 0) {
+    const locationLinks = toLocationLinks(dedupedSyncErrors)
     items.push({
       type: 'sync_errors',
       priority: 'important',
-      count: syncErrors,
-      label: `${syncErrors} sync error${syncErrors === 1 ? '' : 's'} need attention`,
+      count: dedupedSyncErrors.length,
+      label: `${dedupedSyncErrors.length} sync error${dedupedSyncErrors.length === 1 ? '' : 's'} need attention`,
       action_label: 'View errors',
-      action_path: '/agency',
+      action_path: locationLinks[0]?.path || '/agency',
+      locations: locationLinks,
     })
   }
 
-  if (staleCount > 0) {
+  const staleList = staleSources || []
+  if (staleList.length > 0) {
+    const locationLinks = toLocationLinks(staleList)
     items.push({
       type: 'stale_syncs',
       priority: 'important',
-      count: staleCount,
-      label: `${staleCount} source${staleCount === 1 ? '' : 's'} not synced in 24h`,
+      count: staleList.length,
+      label: `${staleList.length} source${staleList.length === 1 ? '' : 's'} not synced in 24h`,
       action_label: 'View sources',
-      action_path: '/agency',
+      action_path: locationLinks[0]?.path || '/agency',
+      locations: locationLinks,
     })
   }
 
@@ -154,8 +187,8 @@ export async function GET() {
       priority: 'info',
       count: pendingReplies || 0,
       label: `${pendingReplies} repl${pendingReplies === 1 ? 'y' : 'ies'} queued to send`,
-      action_label: 'View queue',
-      action_path: '/agency',
+      action_label: 'View reviews',
+      action_path: '/agency/reviews',
     })
   }
 
@@ -165,7 +198,7 @@ export async function GET() {
       priority: 'info',
       count: pendingPosts || 0,
       label: `${pendingPosts} post${pendingPosts === 1 ? '' : 's'} scheduled`,
-      action_label: 'View queue',
+      action_label: 'View posts',
       action_path: '/agency',
     })
   }

@@ -32,6 +32,10 @@
     {
       "path": "/api/cron/post-queue",
       "schedule": "*/5 * * * *"
+    },
+    {
+      "path": "/api/cron/ai-drafts",
+      "schedule": "*/30 * * * *"
     }
   ]
 }

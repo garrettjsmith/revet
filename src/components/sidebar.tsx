@@ -78,6 +78,7 @@ export function Sidebar({ currentOrg, memberships, userEmail, isAgencyAdmin, loc
       label: null,
       items: [
         { href: '/agency', label: 'Overview', icon: OverviewIcon },
+        { href: '/agency/queue', label: 'Work Queue', icon: QueueIcon },
         { href: '/agency/organizations', label: 'Organizations', icon: OrganizationsIcon },
         { href: '/agency/locations', label: 'All Locations', icon: LocationIcon },
         { href: '/agency/landers', label: 'Landers', icon: LanderIcon },
@@ -505,6 +506,15 @@ function SearchIcon({ className }: { className?: string }) {
     <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
       <circle cx="11" cy="11" r="8" />
       <path d="m21 21-4.35-4.35" />
+    </svg>
+  )
+}
+
+function QueueIcon({ className }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M22 12h-6l-2 3h-4l-2-3H2" />
+      <path d="M5.45 5.11L2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z" />
     </svg>
   )
 }

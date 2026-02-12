@@ -11,7 +11,7 @@ export default async function OrgReviewsPage({
   searchParams,
 }: {
   params: { orgSlug: string }
-  searchParams: { platform?: string; status?: string }
+  searchParams: { platform?: string; status?: string; rating?: string }
 }) {
   const org = await getOrgBySlug(params.orgSlug)
   const supabase = createServerSupabase()
@@ -43,9 +43,11 @@ export default async function OrgReviewsPage({
     }
   }
 
+  const maxRating = searchParams.rating ? parseInt(searchParams.rating) : undefined
   const { reviews, count } = await getOrgReviews(org.id, {
     platform: searchParams.platform,
     status: searchParams.status,
+    maxRating,
     limit: 10,
   })
 
@@ -80,7 +82,7 @@ export default async function OrgReviewsPage({
         <Link
           href={`${basePath}/reviews`}
           className={`px-3 py-1 rounded-full text-xs no-underline transition-colors ${
-            !searchParams.status
+            !searchParams.status && !searchParams.rating
               ? 'bg-ink text-cream'
               : 'border border-warm-border text-warm-gray hover:text-ink'
           }`}
@@ -90,12 +92,22 @@ export default async function OrgReviewsPage({
         <Link
           href={`${basePath}/reviews?status=new`}
           className={`px-3 py-1 rounded-full text-xs no-underline transition-colors ${
-            searchParams.status === 'new'
+            searchParams.status === 'new' && !searchParams.rating
               ? 'bg-ink text-cream'
               : 'border border-warm-border text-warm-gray hover:text-ink'
           }`}
         >
           Unread
+        </Link>
+        <Link
+          href={`${basePath}/reviews?rating=2`}
+          className={`px-3 py-1 rounded-full text-xs no-underline transition-colors ${
+            searchParams.rating === '2'
+              ? 'bg-red-800 text-cream'
+              : 'border border-warm-border text-warm-gray hover:text-ink'
+          }`}
+        >
+          Negative (1-2★)
         </Link>
         <Link
           href={`${basePath}/reviews?status=flagged`}
@@ -118,7 +130,7 @@ export default async function OrgReviewsPage({
           initialReviews={reviews}
           totalCount={count}
           locationIds={locationIds}
-          filters={{ platform: searchParams.platform, status: searchParams.status }}
+          filters={{ platform: searchParams.platform, status: searchParams.status, maxRating }}
           showLocation
           canReply
         />
