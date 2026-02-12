@@ -12,7 +12,7 @@ export default async function AgencyLocationsPage() {
   const [locationsResult, orgsResult, reviewSourcesResult, landersResult, accountManagersResult] = await Promise.all([
     adminClient
       .from('locations')
-      .select('id, name, city, state, org_id, status')
+      .select('id, name, city, state, org_id, status, service_tier')
       .order('name'),
     adminClient
       .from('organizations')
