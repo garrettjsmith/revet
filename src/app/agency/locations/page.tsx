@@ -88,9 +88,9 @@ export default async function AgencyLocationsPage() {
 
   // Build serializable managers list for client component
   const orgManagers: Record<string, { userId: string; email: string }[]> = {}
-  for (const [orgId, managers] of orgManagerMap) {
+  Array.from(orgManagerMap.entries()).forEach(([orgId, managers]) => {
     orgManagers[orgId] = managers
-  }
+  })
 
   // Flat list of all agency team members for assignment dropdown
   const agencyMembers = managerUserIds.map((uid) => ({

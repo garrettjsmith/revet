@@ -128,10 +128,9 @@ export async function GET(request: NextRequest) {
   }
 
   // Collect all unique user IDs (admins + non-admin managers)
-  const allUserIds = Array.from(new Set([
-    ...adminUserIds,
-    ...managerOrgMap.keys(),
-  ]))
+  const allUserIds = Array.from(new Set(
+    Array.from(adminUserIds).concat(Array.from(managerOrgMap.keys()))
+  ))
 
   if (allUserIds.length === 0) {
     return NextResponse.json({ ok: true, message: 'No recipients', sent: 0 })
@@ -179,7 +178,7 @@ export async function GET(request: NextRequest) {
     }
 
     // Map each manager to their location IDs
-    for (const [userId, orgIds] of managerOrgMap) {
+    Array.from(managerOrgMap.entries()).forEach(([userId, orgIds]) => {
       const locIds: string[] = []
       for (const orgId of orgIds) {
         locIds.push(...(orgLocationMap.get(orgId) || []))
@@ -187,7 +186,7 @@ export async function GET(request: NextRequest) {
       if (locIds.length > 0) {
         managerLocationMap.set(userId, locIds)
       }
-    }
+    })
   }
 
   // 6. Send digests
@@ -195,9 +194,9 @@ export async function GET(request: NextRequest) {
 
   // Send to agency admins (global counts)
   if (globalCounts.totalItems > 0) {
-    for (const uid of adminUserIds) {
+    Array.from(adminUserIds).forEach((uid) => {
       const recipient = userEmails.get(uid)
-      if (!recipient) continue
+      if (!recipient) return
 
       const html = buildQueueDigestEmail({
         recipientName: recipient.name,
@@ -214,11 +213,12 @@ export async function GET(request: NextRequest) {
       })
 
       sent++
-    }
+    })
   }
 
   // Send to account managers (scoped counts)
-  for (const [userId, locationIds] of managerLocationMap) {
+  const managerEntries = Array.from(managerLocationMap.entries())
+  for (const [userId, locationIds] of managerEntries) {
     const recipient = userEmails.get(userId)
     if (!recipient) continue
 
