@@ -387,6 +387,32 @@ export interface GBPPost {
   updated_at: string
 }
 
+export type PostQueueStatus = 'pending' | 'sending' | 'confirmed' | 'failed'
+
+export interface GBPPostQueue {
+  id: string
+  location_id: string
+  topic_type: GBPPostTopicType
+  summary: string
+  action_type: string | null
+  action_url: string | null
+  media_url: string | null
+  event_title: string | null
+  event_start: string | null
+  event_end: string | null
+  offer_coupon_code: string | null
+  offer_terms: string | null
+  status: PostQueueStatus
+  scheduled_for: string | null
+  queued_by: string
+  attempts: number
+  last_error: string | null
+  gbp_post_name: string | null
+  sent_at: string | null
+  created_at: string
+  updated_at: string
+}
+
 // GBP Performance
 
 export interface GBPPerformanceMetric {
