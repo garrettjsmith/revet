@@ -91,7 +91,7 @@ export async function GET(request: NextRequest) {
     wantsPosts
       ? adminClient
           .from('gbp_post_queue')
-          .select('id, location_id, topic_type, summary, scheduled_for, status, created_at, locations(name, org_id, organizations(name, slug))')
+          .select('id, location_id, topic_type, summary, scheduled_for, status, assigned_to, created_at, locations(name, org_id, organizations(name, slug))')
           .eq('status', 'pending')
           .order('created_at', { ascending: false })
           .limit(limit)
@@ -237,7 +237,7 @@ function formatPostItem(post: any) {
     type: 'post_pending' as const,
     priority: 'info' as const,
     created_at: post.created_at,
-    assigned_to: null,
+    assigned_to: post.assigned_to || null,
     location_id: post.location_id,
     location_name: loc?.name || 'Unknown',
     org_name: org?.name || 'Unknown',

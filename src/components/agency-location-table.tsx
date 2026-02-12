@@ -5,6 +5,8 @@ import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { BulkProfileEditor } from '@/components/bulk-profile-editor'
 
+type ServiceTier = 'starter' | 'standard' | 'premium'
+
 interface Location {
   id: string
   name: string
@@ -17,6 +19,7 @@ interface Location {
   avgRating: string | null
   syncStatus: 'active' | 'pending' | 'error' | 'none'
   hasLander: boolean
+  serviceTier: ServiceTier
 }
 
 interface Organization {
@@ -44,6 +47,7 @@ export function AgencyLocationTable({ locations, orgs }: AgencyLocationTableProp
   const [selectedStatus, setSelectedStatus] = useState<string>('all')
   const [selectedCity, setSelectedCity] = useState<string>('all')
   const [selectedLander, setSelectedLander] = useState<string>('all')
+  const [selectedTier, setSelectedTier] = useState<string>('all')
 
   // Sort state
   const [sortField, setSortField] = useState<SortField>('name')
@@ -106,6 +110,9 @@ export function AgencyLocationTable({ locations, orgs }: AgencyLocationTableProp
       if (selectedLander === 'has_lander' && !loc.hasLander) return false
       if (selectedLander === 'no_lander' && loc.hasLander) return false
 
+      // Tier filter
+      if (selectedTier !== 'all' && loc.serviceTier !== selectedTier) return false
+
       return true
     })
 
@@ -133,7 +140,7 @@ export function AgencyLocationTable({ locations, orgs }: AgencyLocationTableProp
     })
 
     return filtered
-  }, [locations, searchQuery, selectedOrgId, selectedStatus, selectedCity, selectedLander, sortField, sortDirection])
+  }, [locations, searchQuery, selectedOrgId, selectedStatus, selectedCity, selectedLander, selectedTier, sortField, sortDirection])
 
   // Paginate
   const totalPages = Math.ceil(filteredAndSortedLocations.length / ITEMS_PER_PAGE)
@@ -333,6 +340,17 @@ export function AgencyLocationTable({ locations, orgs }: AgencyLocationTableProp
           <option value="has_lander">Has Lander</option>
           <option value="no_lander">No Lander</option>
         </select>
+
+        <select
+          value={selectedTier}
+          onChange={(e) => handleFilterChange(() => setSelectedTier(e.target.value))}
+          className="px-3 py-2 border border-warm-border rounded-lg text-sm bg-cream text-ink"
+        >
+          <option value="all">All Tiers</option>
+          <option value="starter">Starter</option>
+          <option value="standard">Standard</option>
+          <option value="premium">Premium</option>
+        </select>
       </div>
 
       {/* Table */}
@@ -379,6 +397,9 @@ export function AgencyLocationTable({ locations, orgs }: AgencyLocationTableProp
                 Status <SortIcon field="syncStatus" />
               </th>
               <th className="text-left px-5 py-3 text-[11px] text-warm-gray uppercase tracking-wider font-medium">
+                Tier
+              </th>
+              <th className="text-left px-5 py-3 text-[11px] text-warm-gray uppercase tracking-wider font-medium">
                 Lander
               </th>
               <th className="text-left px-5 py-3 w-10"></th>
@@ -387,7 +408,7 @@ export function AgencyLocationTable({ locations, orgs }: AgencyLocationTableProp
           <tbody className="bg-cream">
             {paginatedLocations.length === 0 ? (
               <tr>
-                <td colSpan={8} className="px-5 py-8 text-center text-warm-gray text-sm">
+                <td colSpan={9} className="px-5 py-8 text-center text-warm-gray text-sm">
                   No locations found
                 </td>
               </tr>
@@ -435,6 +456,12 @@ export function AgencyLocationTable({ locations, orgs }: AgencyLocationTableProp
                   </td>
                   <td className="px-5 py-3">
                     {getStatusBadge(location.syncStatus)}
+                  </td>
+                  <td className="px-5 py-3">
+                    <TierSelect
+                      locationId={location.id}
+                      value={location.serviceTier}
+                    />
                   </td>
                   <td className="px-5 py-3">
                     {location.hasLander && (
@@ -593,6 +620,33 @@ export function AgencyLocationTable({ locations, orgs }: AgencyLocationTableProp
                 Edit Profiles
               </button>
 
+              <div className="w-px h-5 bg-cream/20" />
+
+              <select
+                defaultValue=""
+                onChange={async (e) => {
+                  const tier = e.target.value
+                  if (!tier) return
+                  const ids = Array.from(selectedLocationIds)
+                  for (const id of ids) {
+                    await fetch(`/api/locations/${id}/service-tier`, {
+                      method: 'PATCH',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({ service_tier: tier }),
+                    })
+                  }
+                  e.target.value = ''
+                  setSelectedLocationIds(new Set())
+                  router.refresh()
+                }}
+                className="px-3 py-1.5 border border-cream/20 rounded bg-ink text-cream text-sm"
+              >
+                <option value="">Set tier...</option>
+                <option value="starter">Starter</option>
+                <option value="standard">Standard</option>
+                <option value="premium">Premium</option>
+              </select>
+
               <button
                 onClick={() => setSelectedLocationIds(new Set())}
                 className="ml-auto px-3 py-1.5 text-sm text-cream/80 hover:text-cream"
@@ -615,5 +669,46 @@ export function AgencyLocationTable({ locations, orgs }: AgencyLocationTableProp
         />
       )}
     </div>
+  )
+}
+
+// ─── Tier Select ─────────────────────────────────────────────
+
+const tierStyles: Record<ServiceTier, { label: string; classes: string }> = {
+  starter: { label: 'Starter', classes: 'bg-gray-100 text-gray-600' },
+  standard: { label: 'Standard', classes: 'bg-blue-50 text-blue-700' },
+  premium: { label: 'Premium', classes: 'bg-amber-50 text-amber-700' },
+}
+
+function TierSelect({ locationId, value }: { locationId: string; value: ServiceTier }) {
+  const [tier, setTier] = useState<ServiceTier>(value)
+  const [saving, setSaving] = useState(false)
+
+  const handleChange = async (newTier: ServiceTier) => {
+    setTier(newTier)
+    setSaving(true)
+    try {
+      await fetch(`/api/locations/${locationId}/service-tier`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ service_tier: newTier }),
+      })
+    } catch { /* ignore */ }
+    setSaving(false)
+  }
+
+  const style = tierStyles[tier]
+
+  return (
+    <select
+      value={tier}
+      onChange={(e) => handleChange(e.target.value as ServiceTier)}
+      disabled={saving}
+      className={`px-2 py-0.5 rounded text-xs font-medium border-none cursor-pointer ${style.classes} ${saving ? 'opacity-50' : ''}`}
+    >
+      <option value="starter">Starter</option>
+      <option value="standard">Standard</option>
+      <option value="premium">Premium</option>
+    </select>
   )
 }

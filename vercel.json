@@ -36,6 +36,14 @@
     {
       "path": "/api/cron/ai-drafts",
       "schedule": "*/30 * * * *"
+    },
+    {
+      "path": "/api/cron/post-generate",
+      "schedule": "0 10 * * 1"
+    },
+    {
+      "path": "/api/cron/queue-digest",
+      "schedule": "0 13 * * *"
     }
   ]
 }
