@@ -384,3 +384,41 @@ export function buildReviewDigestEmail({
 </body>
 </html>`
 }
+
+/**
+ * Build an HTML email alerting that Google has modified a business profile.
+ */
+export function buildProfileUpdateEmail({
+  locationName,
+  profileUrl,
+}: {
+  locationName: string
+  profileUrl: string
+}) {
+  return `
+<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8"></head>
+<body style="margin:0;padding:0;background:#FAF8F5;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;">
+  <div style="max-width:560px;margin:0 auto;padding:32px 16px;">
+    <div style="background:#ffffff;border:1px solid #bfdbfe;border-radius:12px;overflow:hidden;">
+      <div style="background:#1e40af;padding:20px 24px;">
+        <h1 style="margin:0;color:#ffffff;font-size:16px;font-weight:600;">Profile Update Detected</h1>
+        <p style="margin:4px 0 0;color:#93c5fd;font-size:12px;">${locationName}</p>
+      </div>
+      <div style="padding:20px 24px;">
+        <p style="margin:0 0 16px;color:#1a1a1a;font-size:14px;line-height:1.6;">
+          Google has suggested changes to the business profile for <strong>${locationName}</strong>. Review and accept or reject the changes to keep your listing accurate.
+        </p>
+        <a href="${profileUrl}" style="display:inline-block;padding:10px 20px;background:#1a1a1a;color:#FAF8F5;text-decoration:none;border-radius:999px;font-size:13px;font-weight:500;">
+          Review Changes
+        </a>
+      </div>
+    </div>
+    <p style="text-align:center;margin:16px 0 0;color:#c4bfb8;font-size:10px;">
+      Sent by revet.app
+    </p>
+  </div>
+</body>
+</html>`
+}

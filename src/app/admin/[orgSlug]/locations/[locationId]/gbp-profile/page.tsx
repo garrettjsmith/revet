@@ -1,10 +1,14 @@
 import { createServerSupabase } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { getOrgBySlug } from '@/lib/org'
-import { getLocation } from '@/lib/locations'
+import { getLocation, checkAgencyAdmin } from '@/lib/locations'
 import { notFound } from 'next/navigation'
 import Link from 'next/link'
 import type { GBPProfile, GBPMedia } from '@/lib/types'
+import { PerformanceChart } from '@/components/performance-chart'
+import { GBPEditToggle } from '@/components/gbp-edit-toggle'
+import { ProfileAuditCard } from '@/components/profile-audit-card'
+import { GoogleUpdatesBanner } from '@/components/google-updates-banner'
 
 export const dynamic = 'force-dynamic'
 
@@ -44,6 +48,7 @@ export default async function GBPProfilePage({
   const location = await getLocation(params.locationId, org.id)
   if (!location) notFound()
 
+  const isAdmin = await checkAgencyAdmin()
   const adminClient = createAdminClient()
   const basePath = `/admin/${params.orgSlug}/locations/${params.locationId}`
 
@@ -100,16 +105,21 @@ export default async function GBPProfilePage({
             {gbp ? (gbp.business_name || location.name) : location.name}
           </p>
         </div>
-        {gbp?.maps_uri && (
-          <a
-            href={gbp.maps_uri}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="px-4 py-2 border border-warm-border text-warm-gray text-xs rounded-full hover:text-ink hover:border-ink no-underline transition-colors"
-          >
-            View on Google Maps
-          </a>
-        )}
+        <div className="flex items-center gap-2">
+          {isAdmin && gbp && (
+            <GBPEditToggle profile={gbp} locationId={location.id} />
+          )}
+          {gbp?.maps_uri && (
+            <a
+              href={gbp.maps_uri}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="px-4 py-2 border border-warm-border text-warm-gray text-xs rounded-full hover:text-ink hover:border-ink no-underline transition-colors"
+            >
+              View on Google Maps
+            </a>
+          )}
+        </div>
       </div>
 
       {!gbp ? (
@@ -161,6 +171,14 @@ export default async function GBPProfilePage({
             )}
           </div>
 
+          {/* Google Updates Banner */}
+          {isAdmin && gbp.has_google_updated && (
+            <GoogleUpdatesBanner locationId={location.id} />
+          )}
+
+          {/* Optimization Score */}
+          <ProfileAuditCard locationId={location.id} isAgencyAdmin={isAdmin} />
+
           {/* Stats cards */}
           <div className="grid grid-cols-4 gap-4">
             <div className="bg-ink rounded-xl p-5">
@@ -180,6 +198,9 @@ export default async function GBPProfilePage({
               <div className="text-2xl font-bold font-mono text-cream">{mediaItems.length}</div>
             </div>
           </div>
+
+          {/* Performance Metrics */}
+          <PerformanceChart locationId={location.id} />
 
           <div className="grid grid-cols-2 gap-6">
             {/* Left column — Profile details */}
