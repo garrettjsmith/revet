@@ -1,5 +1,6 @@
 import { createAdminClient } from '@/lib/supabase/admin'
 import { sendEmail, buildReviewAlertEmail, buildReviewResponseEmail } from '@/lib/email'
+import { generateReviewReply } from '@/lib/ai/generate-reply'
 import { NextRequest, NextResponse } from 'next/server'
 
 /**
@@ -132,6 +133,20 @@ export async function POST(request: NextRequest) {
         (source.locations as any).name,
         source.platform,
         reviewsWithNewReplies
+      )
+    }
+
+    // Process autopilot for truly new reviews (not previously in DB)
+    const newReviews = incomingReviews.filter((r: any) =>
+      !existingReplyMap.has(r.platform_review_id) && !r.reply_body
+    )
+    if (newReviews.length > 0) {
+      await processAutopilot(
+        supabase,
+        source_id,
+        source.location_id,
+        (source.locations as any).name,
+        newReviews
       )
     }
 
@@ -280,5 +295,94 @@ async function processResponseAlerts(
     }).catch((err) => {
       console.error('[reviews/sync] Response alert email failed:', err)
     })
+  }
+}
+
+async function processAutopilot(
+  supabase: ReturnType<typeof createAdminClient>,
+  sourceId: string,
+  locationId: string,
+  locationName: string,
+  reviews: any[]
+) {
+  if (!process.env.ANTHROPIC_API_KEY) return
+
+  // Check if autopilot is enabled for this location
+  const { data: config } = await supabase
+    .from('review_autopilot_config')
+    .select('*')
+    .eq('location_id', locationId)
+    .eq('enabled', true)
+    .single()
+
+  if (!config) return
+
+  const autoRatings: number[] = (config as any).auto_reply_ratings || [4, 5]
+
+  // Limit to 10 reviews per sync run to stay within timeout
+  const eligible = reviews
+    .filter((r: any) => r.rating !== null && autoRatings.includes(r.rating))
+    .slice(0, 10)
+
+  if (eligible.length === 0) return
+
+  for (const review of eligible) {
+    // Look up the DB review record
+    const { data: dbReview } = await supabase
+      .from('reviews')
+      .select('id, ai_draft')
+      .eq('source_id', sourceId)
+      .eq('platform_review_id', review.platform_review_id)
+      .single()
+
+    if (!dbReview || dbReview.ai_draft) continue
+
+    // Check no existing queue entry
+    const { data: existingQueue } = await supabase
+      .from('review_reply_queue')
+      .select('id')
+      .eq('review_id', dbReview.id)
+      .limit(1)
+
+    if (existingQueue && existingQueue.length > 0) continue
+
+    try {
+      const draft = await generateReviewReply({
+        businessName: locationName,
+        businessContext: (config as any).business_context,
+        reviewerName: review.reviewer_name,
+        rating: review.rating,
+        reviewBody: review.body,
+        tone: (config as any).tone,
+      })
+
+      // Save draft on the review
+      await supabase
+        .from('reviews')
+        .update({
+          ai_draft: draft,
+          ai_draft_generated_at: new Date().toISOString(),
+        })
+        .eq('id', dbReview.id)
+
+      // If not requiring approval, queue for auto-posting with random delay
+      if (!(config as any).require_approval) {
+        const minDelay = ((config as any).delay_min_minutes || 30) * 60 * 1000
+        const maxDelay = ((config as any).delay_max_minutes || 180) * 60 * 1000
+        const delay = minDelay + Math.random() * (maxDelay - minDelay)
+        const scheduledFor = new Date(Date.now() + delay).toISOString()
+
+        await supabase.from('review_reply_queue').insert({
+          review_id: dbReview.id,
+          reply_body: draft,
+          queued_by: '00000000-0000-0000-0000-000000000000',
+          status: 'pending',
+          source: 'ai_autopilot',
+          scheduled_for: scheduledFor,
+        })
+      }
+    } catch (err) {
+      console.error(`[reviews/sync] Autopilot generation failed for review ${dbReview.id}:`, err)
+    }
   }
 }

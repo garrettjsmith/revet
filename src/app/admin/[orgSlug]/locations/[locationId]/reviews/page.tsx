@@ -1,5 +1,5 @@
 import { getOrgBySlug } from '@/lib/org'
-import { getLocation } from '@/lib/locations'
+import { getLocation, checkAgencyAdmin } from '@/lib/locations'
 import { getLocationReviews, getLocationReviewStats } from '@/lib/reviews'
 import { notFound } from 'next/navigation'
 import Link from 'next/link'
@@ -19,6 +19,7 @@ export default async function LocationReviewsPage({
   if (!location) notFound()
 
   const basePath = `/admin/${params.orgSlug}/locations/${params.locationId}`
+  const isAdmin = await checkAgencyAdmin()
 
   const sourceStats = await getLocationReviewStats(location.id)
 
@@ -66,6 +67,14 @@ export default async function LocationReviewsPage({
           </div>
           <h1 className="text-2xl font-serif text-ink">Reviews</h1>
         </div>
+        {isAdmin && (
+          <Link
+            href={`${basePath}/reviews/autopilot`}
+            className="px-4 py-1.5 border border-warm-border text-warm-gray text-xs rounded-full hover:text-ink hover:border-ink no-underline transition-colors"
+          >
+            Configure autopilot
+          </Link>
+        )}
       </div>
 
       {/* Stats */}
