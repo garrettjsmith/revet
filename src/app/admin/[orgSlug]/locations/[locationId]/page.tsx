@@ -6,6 +6,7 @@ import { notFound } from 'next/navigation'
 import Link from 'next/link'
 import type { ProfileStats, FormTemplate, Review, GBPProfile } from '@/lib/types'
 import AuditTrail from '@/components/audit-trail'
+import { PerformanceMini } from '@/components/performance-mini'
 
 export const dynamic = 'force-dynamic'
 
@@ -158,42 +159,45 @@ export default async function LocationDetailPage({
           </Link>
         </div>
         {gbp ? (
-          <div className="px-5 py-4 flex items-center justify-between">
-            <div className="flex items-center gap-4">
-              <span className={`inline-flex items-center gap-1.5 text-xs font-medium ${
-                gbp.open_status === 'OPEN' ? 'text-emerald-600' : 'text-amber-600'
-              }`}>
-                <span className={`w-1.5 h-1.5 rounded-full ${
-                  gbp.open_status === 'OPEN' ? 'bg-emerald-500' : 'bg-amber-500'
-                }`} />
-                {gbp.open_status === 'OPEN' ? 'Open' : gbp.open_status === 'CLOSED_TEMPORARILY' ? 'Temporarily Closed' : gbp.open_status || 'Unknown'}
-              </span>
-              {gbp.primary_category_name && (
-                <>
-                  <span className="text-warm-border">&middot;</span>
-                  <span className="text-xs text-warm-gray">{gbp.primary_category_name}</span>
-                </>
-              )}
-              {gbp.last_synced_at && (
-                <>
-                  <span className="text-warm-border">&middot;</span>
-                  <span className="text-xs text-warm-gray">
-                    Synced {new Date(gbp.last_synced_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
-                  </span>
-                </>
+          <>
+            <div className="px-5 py-4 flex items-center justify-between">
+              <div className="flex items-center gap-4">
+                <span className={`inline-flex items-center gap-1.5 text-xs font-medium ${
+                  gbp.open_status === 'OPEN' ? 'text-emerald-600' : 'text-amber-600'
+                }`}>
+                  <span className={`w-1.5 h-1.5 rounded-full ${
+                    gbp.open_status === 'OPEN' ? 'bg-emerald-500' : 'bg-amber-500'
+                  }`} />
+                  {gbp.open_status === 'OPEN' ? 'Open' : gbp.open_status === 'CLOSED_TEMPORARILY' ? 'Temporarily Closed' : gbp.open_status || 'Unknown'}
+                </span>
+                {gbp.primary_category_name && (
+                  <>
+                    <span className="text-warm-border">&middot;</span>
+                    <span className="text-xs text-warm-gray">{gbp.primary_category_name}</span>
+                  </>
+                )}
+                {gbp.last_synced_at && (
+                  <>
+                    <span className="text-warm-border">&middot;</span>
+                    <span className="text-xs text-warm-gray">
+                      Synced {new Date(gbp.last_synced_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+                    </span>
+                  </>
+                )}
+              </div>
+              {gbp.maps_uri && (
+                <a
+                  href={gbp.maps_uri}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-xs text-warm-gray hover:text-ink no-underline transition-colors"
+                >
+                  Maps →
+                </a>
               )}
             </div>
-            {gbp.maps_uri && (
-              <a
-                href={gbp.maps_uri}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="text-xs text-warm-gray hover:text-ink no-underline transition-colors"
-              >
-                Maps →
-              </a>
-            )}
-          </div>
+            <PerformanceMini locationId={location.id} />
+          </>
         ) : reviewSource ? (
           <div className="px-5 py-4 flex items-center justify-between">
             <div className="flex items-center gap-4">
