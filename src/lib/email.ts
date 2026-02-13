@@ -424,6 +424,64 @@ export function buildProfileUpdateEmail({
 }
 
 /**
+ * Build an HTML email notifying a client that posts are ready for review.
+ */
+export function buildPostReviewEmail({
+  orgName,
+  locationName,
+  postSummary,
+  mediaUrl,
+  scheduledFor,
+  reviewUrl,
+  postCount,
+}: {
+  orgName: string
+  locationName: string
+  postSummary: string
+  mediaUrl?: string | null
+  scheduledFor?: string | null
+  reviewUrl: string
+  postCount?: number
+}) {
+  const escapedSummary = postSummary.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+  const count = postCount || 1
+  const scheduleText = scheduledFor
+    ? new Date(scheduledFor).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+    : null
+
+  return `
+<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8"></head>
+<body style="margin:0;padding:0;background:#FAF8F5;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;">
+  <div style="max-width:560px;margin:0 auto;padding:32px 16px;">
+    <div style="background:#ffffff;border:1px solid #e8e4dc;border-radius:12px;overflow:hidden;">
+      <div style="background:#1a1a1a;padding:20px 24px;">
+        <h1 style="margin:0;color:#FAF8F5;font-size:16px;font-weight:600;">
+          ${count > 1 ? `${count} Posts` : 'Post'} Ready for Review
+        </h1>
+        <p style="margin:4px 0 0;color:#9b9590;font-size:12px;">${locationName} &middot; ${orgName}</p>
+      </div>
+      <div style="padding:20px 24px;">
+        ${mediaUrl ? `<img src="${mediaUrl}" alt="" style="width:100%;border-radius:8px;margin-bottom:16px;" />` : ''}
+        <p style="margin:0 0 12px;color:#1a1a1a;font-size:14px;line-height:1.6;">
+          ${escapedSummary}${count > 1 ? `<br><span style="color:#9b9590;font-size:12px;">+ ${count - 1} more post${count > 2 ? 's' : ''}</span>` : ''}
+        </p>
+        ${scheduleText ? `<p style="margin:0 0 16px;color:#9b9590;font-size:12px;">Scheduled for ${scheduleText}</p>` : ''}
+        <a href="${reviewUrl}" style="display:inline-block;padding:10px 20px;background:#1a1a1a;color:#FAF8F5;text-decoration:none;border-radius:999px;font-size:13px;font-weight:500;">
+          Review Posts
+        </a>
+      </div>
+    </div>
+    <p style="text-align:center;margin:16px 0 0;color:#c4bfb8;font-size:10px;">
+      Sent by revet.app
+    </p>
+  </div>
+</body>
+</html>`
+}
+
+/**
  * Build an HTML email for the work queue digest.
  * Sent to agency admins summarizing pending queue items.
  */

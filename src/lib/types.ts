@@ -400,7 +400,7 @@ export interface GBPPost {
   updated_at: string
 }
 
-export type PostQueueStatus = 'pending' | 'sending' | 'confirmed' | 'failed'
+export type PostQueueStatus = 'draft' | 'client_review' | 'pending' | 'sending' | 'confirmed' | 'failed' | 'rejected'
 
 export interface GBPPostQueue {
   id: string
@@ -419,10 +419,43 @@ export interface GBPPostQueue {
   scheduled_for: string | null
   queued_by: string
   assigned_to: string | null
+  topic_id: string | null
+  source: 'manual' | 'ai'
   attempts: number
   last_error: string | null
   gbp_post_name: string | null
   sent_at: string | null
+  created_at: string
+  updated_at: string
+}
+
+// Post Topics
+
+export type PostTopicSource = 'ai' | 'manual'
+
+export interface GBPPostTopic {
+  id: string
+  location_id: string
+  topic: string
+  source: PostTopicSource
+  used_at: string | null
+  used_in_queue_id: string | null
+  use_count: number
+  active: boolean
+  created_at: string
+}
+
+// Brand Config
+
+export interface BrandConfig {
+  id: string
+  org_id: string
+  brand_voice: string | null
+  design_style: string | null
+  primary_color: string | null
+  secondary_color: string | null
+  font_style: string | null
+  sample_image_urls: string[]
   created_at: string
   updated_at: string
 }
