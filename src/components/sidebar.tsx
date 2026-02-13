@@ -6,6 +6,7 @@ import { useRouter, usePathname } from 'next/navigation'
 import Link from 'next/link'
 import type { Organization, OrgMember } from '@/lib/types'
 import { CommandPalette } from '@/components/command-palette'
+import { useChatPane } from '@/components/chat-context'
 
 interface SidebarLocation {
   id: string
@@ -29,6 +30,7 @@ export function Sidebar({ currentOrg, memberships, userEmail, isAgencyAdmin, loc
   const router = useRouter()
   const pathname = usePathname()
   const supabase = createClient()
+  const { toggle: toggleChat } = useChatPane()
   const [scopeSelectorOpen, setScopeSelectorOpen] = useState(false)
   const [locationSelectorOpen, setLocationSelectorOpen] = useState(false)
 
@@ -350,6 +352,15 @@ export function Sidebar({ currentOrg, memberships, userEmail, isAgencyAdmin, loc
             Sign out
           </button>
         </div>
+        {/* Ask Revet chat */}
+        <button
+          onClick={toggleChat}
+          className="flex items-center gap-2 px-2 py-1.5 rounded-md text-xs text-warm-gray hover:text-ink hover:bg-warm-light/50 transition-colors w-full"
+        >
+          <SparkleIcon className="w-3.5 h-3.5 shrink-0" />
+          <span className="flex-1 text-left">Ask Revet</span>
+          <kbd className="text-[10px] font-mono bg-warm-light rounded px-1.5 py-0.5">⌘J</kbd>
+        </button>
         {/* Cmd+K shortcut hint */}
         <button
           onClick={() => {
@@ -515,6 +526,14 @@ function QueueIcon({ className }: { className?: string }) {
     <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
       <path d="M22 12h-6l-2 3h-4l-2-3H2" />
       <path d="M5.45 5.11L2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z" />
+    </svg>
+  )
+}
+
+function SparkleIcon({ className }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M12 3l1.5 5.5L19 10l-5.5 1.5L12 17l-1.5-5.5L5 10l5.5-1.5L12 3z" />
     </svg>
   )
 }
