@@ -56,6 +56,9 @@ export async function GET(req: NextRequest) {
     { data: profileSyncErrorProfiles },
     { count: pendingReplies },
     { count: totalReviews },
+    { count: aiDraftsCount },
+    { count: staleLanderCount },
+    { data: pendingRecLocations },
   ] = await Promise.all([
     adminClient
       .from('reviews')
@@ -98,6 +101,28 @@ export async function GET(req: NextRequest) {
       .from('reviews')
       .select('*', { count: 'exact', head: true })
       .in('location_id', locationIds),
+    // AI drafts ready for review
+    adminClient
+      .from('reviews')
+      .select('*', { count: 'exact', head: true })
+      .in('location_id', locationIds)
+      .not('ai_draft', 'is', null)
+      .is('reply_body', null)
+      .neq('status', 'archived'),
+    // Stale lander content
+    adminClient
+      .from('local_landers')
+      .select('*', { count: 'exact', head: true })
+      .in('location_id', locationIds)
+      .eq('active', true)
+      .eq('ai_content_stale', true),
+    // Profile optimization recommendations awaiting client
+    adminClient
+      .from('profile_recommendations')
+      .select('location_id, locations:location_id(name)')
+      .in('location_id', locationIds)
+      .eq('status', 'client_review')
+      .limit(10),
   ])
 
   function toLocationLinks(rows: any[] | null): Array<{ name: string; path: string }> {
@@ -174,6 +199,34 @@ export async function GET(req: NextRequest) {
     })
   }
 
+  if ((aiDraftsCount || 0) > 0) {
+    items.push({
+      type: 'ai_drafts',
+      priority: 'important',
+      count: aiDraftsCount || 0,
+      label: `${aiDraftsCount} AI-drafted repl${aiDraftsCount === 1 ? 'y' : 'ies'} ready for review`,
+      action_label: 'View drafts',
+      action_path: `${basePath}/reviews?status=new`,
+    })
+  }
+
+  const pendingRecs = pendingRecLocations || []
+  if (pendingRecs.length > 0) {
+    const locationLinks = toLocationLinks(pendingRecs).map((l) => ({
+      ...l,
+      path: `${l.path}/gbp-profile`,
+    }))
+    items.push({
+      type: 'profile_recommendations',
+      priority: 'important',
+      count: pendingRecs.length,
+      label: `${pendingRecs.length} profile optimization${pendingRecs.length === 1 ? '' : 's'} awaiting your approval`,
+      action_label: 'Review changes',
+      action_path: locationLinks[0]?.path || basePath,
+      locations: locationLinks,
+    })
+  }
+
   if ((pendingReplies || 0) > 0) {
     items.push({
       type: 'pending_replies',
@@ -182,6 +235,17 @@ export async function GET(req: NextRequest) {
       label: `${pendingReplies} repl${pendingReplies === 1 ? 'y' : 'ies'} queued to send`,
       action_label: 'View reviews',
       action_path: `${basePath}/reviews`,
+    })
+  }
+
+  if ((staleLanderCount || 0) > 0) {
+    items.push({
+      type: 'stale_landers',
+      priority: 'info',
+      count: staleLanderCount || 0,
+      label: `${staleLanderCount} landing page${staleLanderCount === 1 ? '' : 's'} ${staleLanderCount === 1 ? 'has' : 'have'} outdated content`,
+      action_label: 'View landers',
+      action_path: `${basePath}/locations`,
     })
   }
 

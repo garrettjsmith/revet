@@ -15,7 +15,7 @@ export const dynamic = 'force-dynamic'
  *   - Account managers see only items from their assigned orgs
  *
  * Query params:
- *   filter: 'all' | 'needs_reply' | 'ai_drafts' | 'google_updates' | 'posts' | 'sync_errors' | 'profile_optimizations'
+ *   filter: 'all' | 'needs_reply' | 'ai_drafts' | 'google_updates' | 'posts' | 'sync_errors' | 'profile_optimizations' | 'stale_landers'
  *   scope: 'all' | 'mine' (only affects agency admins; managers always scoped)
  *   limit: number (default: 50)
  */
@@ -88,6 +88,7 @@ export async function GET(request: NextRequest) {
   const wantsPosts = filter === 'all' || filter === 'posts'
   const wantsSyncErrors = filter === 'all' || filter === 'sync_errors'
   const wantsProfileOpt = filter === 'all' || filter === 'profile_optimizations'
+  const wantsStaleLanders = filter === 'all' || filter === 'stale_landers'
 
   // Helper to apply location scope to a query builder
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -107,6 +108,7 @@ export async function GET(request: NextRequest) {
     reviewSyncErrorResult,
     profileSyncErrorResult,
     profileOptResult,
+    staleLanderResult,
   ] = await Promise.all([
     // 1: Unreplied negative Google reviews (urgent)
     wantsReviews
@@ -185,6 +187,18 @@ export async function GET(request: NextRequest) {
           .order('created_at', { ascending: false })
           .limit(limit)
       : Promise.resolve({ data: [] as any[] }),
+    // 8: Stale lander content (important) — AI content needs regeneration
+    wantsStaleLanders
+      ? applyScope(
+          adminClient
+            .from('local_landers')
+            .select('id, location_id, slug, ai_content_stale, updated_at, locations(name, org_id, organizations(name, slug))')
+            .eq('active', true)
+            .eq('ai_content_stale', true)
+        )
+          .order('updated_at', { ascending: true })
+          .limit(limit)
+      : Promise.resolve({ data: [] as any[] }),
   ])
 
   // Build unified item list
@@ -246,6 +260,14 @@ export async function GET(request: NextRequest) {
     items.push(formatProfileOptItem(rec, locationRecs))
   }
 
+  // Stale landers (important)
+  for (const lander of staleLanderResult.data || []) {
+    const key = `stale_lander_${lander.id}`
+    if (seen.has(key)) continue
+    seen.add(key)
+    items.push(formatStaleLanderItem(lander))
+  }
+
   // Count by type for filter badges
   const counts = {
     total: items.length,
@@ -255,6 +277,7 @@ export async function GET(request: NextRequest) {
     posts: items.filter((i) => i.type === 'post_pending').length,
     sync_errors: items.filter((i) => i.type === 'sync_error').length,
     profile_optimizations: items.filter((i) => i.type === 'profile_optimization').length,
+    stale_landers: items.filter((i) => i.type === 'stale_lander').length,
   }
 
   return NextResponse.json({
@@ -368,6 +391,27 @@ function formatSyncErrorItem(source: any, sourceType: 'review_source' | 'gbp_pro
       platform: source.platform || 'google',
       sync_error: source.sync_error || source.metadata?.last_error || null,
       last_synced_at: source.last_synced_at,
+    },
+  }
+}
+
+function formatStaleLanderItem(lander: any) {
+  const loc = lander.locations
+  const org = loc?.organizations
+
+  return {
+    id: `stale_lander_${lander.id}`,
+    type: 'stale_lander' as const,
+    priority: 'important' as const,
+    created_at: lander.updated_at || new Date().toISOString(),
+    assigned_to: null,
+    location_id: lander.location_id,
+    location_name: loc?.name || 'Unknown',
+    org_name: org?.name || 'Unknown',
+    org_slug: org?.slug || '',
+    stale_lander: {
+      lander_id: lander.id,
+      slug: lander.slug,
     },
   }
 }

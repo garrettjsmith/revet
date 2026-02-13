@@ -289,6 +289,8 @@ export function buildReviewDigestEmail({
   negativeCount,
   locations,
   needsAttention,
+  aiDraftsReady,
+  repliesSent,
 }: {
   orgName: string
   date: string
@@ -299,6 +301,8 @@ export function buildReviewDigestEmail({
   negativeCount: number
   locations: { name: string; reviewCount: number; avgRating: number | null }[]
   needsAttention: { locationName: string; reviewerName: string | null; rating: number | null; body: string | null; publishedAt: string }[]
+  aiDraftsReady?: number
+  repliesSent?: number
 }) {
   const avgStars = avgRating
     ? Array.from({ length: 5 }, (_, i) =>
@@ -374,6 +378,12 @@ export function buildReviewDigestEmail({
         <div style="padding:16px 0 0;">
           <p style="margin:0 0 4px;color:#dc2626;font-size:12px;font-weight:600;text-transform:uppercase;letter-spacing:0.5px;">Needs Attention</p>
           ${attentionItems}
+        </div>` : ''}
+        ${(aiDraftsReady || 0) > 0 || (repliesSent || 0) > 0 ? `
+        <div style="padding:16px 0 0;border-top:1px solid #e8e4dc;margin-top:16px;">
+          <p style="margin:0 0 8px;color:#6b6560;font-size:12px;font-weight:600;text-transform:uppercase;letter-spacing:0.5px;">Response Activity</p>
+          ${(repliesSent || 0) > 0 ? `<p style="margin:4px 0;color:#16a34a;font-size:13px;">${repliesSent} repl${repliesSent === 1 ? 'y' : 'ies'} sent in the last 24h</p>` : ''}
+          ${(aiDraftsReady || 0) > 0 ? `<p style="margin:4px 0;color:#d97706;font-size:13px;">${aiDraftsReady} AI-drafted repl${aiDraftsReady === 1 ? 'y' : 'ies'} ready for review</p>` : ''}
         </div>` : ''}
       </div>
     </div>
@@ -544,6 +554,7 @@ export function buildQueueDigestEmail({
   postCount,
   syncErrorCount,
   profileOptCount,
+  staleLanderCount,
   queueUrl,
 }: {
   recipientName: string | null
@@ -554,6 +565,7 @@ export function buildQueueDigestEmail({
   postCount: number
   syncErrorCount: number
   profileOptCount?: number
+  staleLanderCount?: number
   queueUrl: string
 }) {
   const urgentCount = reviewCount + googleUpdateCount
@@ -565,6 +577,7 @@ export function buildQueueDigestEmail({
     draftCount > 0 ? `<tr><td style="padding:6px 0;color:#1a1a1a;font-size:14px;">AI drafts ready</td><td style="padding:6px 0;color:#d97706;font-size:14px;text-align:right;font-weight:600;">${draftCount}</td></tr>` : '',
     postCount > 0 ? `<tr><td style="padding:6px 0;color:#1a1a1a;font-size:14px;">Posts pending review</td><td style="padding:6px 0;color:#6b6560;font-size:14px;text-align:right;font-weight:600;">${postCount}</td></tr>` : '',
     (profileOptCount || 0) > 0 ? `<tr><td style="padding:6px 0;color:#1a1a1a;font-size:14px;">Profile optimizations</td><td style="padding:6px 0;color:#7c3aed;font-size:14px;text-align:right;font-weight:600;">${profileOptCount}</td></tr>` : '',
+    (staleLanderCount || 0) > 0 ? `<tr><td style="padding:6px 0;color:#1a1a1a;font-size:14px;">Stale lander content</td><td style="padding:6px 0;color:#d97706;font-size:14px;text-align:right;font-weight:600;">${staleLanderCount}</td></tr>` : '',
     syncErrorCount > 0 ? `<tr><td style="padding:6px 0;color:#1a1a1a;font-size:14px;">Sync errors</td><td style="padding:6px 0;color:#dc2626;font-size:14px;text-align:right;font-weight:600;">${syncErrorCount}</td></tr>` : '',
   ].filter(Boolean).join('')
 
