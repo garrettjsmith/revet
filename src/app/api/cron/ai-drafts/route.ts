@@ -24,10 +24,6 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
 
-  if (!process.env.ANTHROPIC_API_KEY) {
-    return NextResponse.json({ error: 'AI not configured' }, { status: 503 })
-  }
-
   const supabase = createAdminClient()
 
   // Get all locations with autopilot enabled
@@ -80,6 +76,10 @@ export async function GET(request: NextRequest) {
 
   if (!reviews || reviews.length === 0) {
     return NextResponse.json({ ok: true, generated: 0, message: 'No reviews need drafts' })
+  }
+
+  if (!process.env.ANTHROPIC_API_KEY) {
+    return NextResponse.json({ error: 'AI not configured' }, { status: 503 })
   }
 
   let generated = 0
