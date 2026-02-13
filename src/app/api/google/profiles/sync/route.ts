@@ -140,6 +140,17 @@ export async function POST(request: NextRequest) {
             console.error(`[profiles/sync] Profile update alert failed for ${locationId}:`, err)
           })
         }
+
+        // Flag lander AI content as stale so it gets regenerated
+        supabase
+          .from('local_landers')
+          .update({ ai_content_stale: true })
+          .eq('location_id', locationId)
+          .eq('active', true)
+          .not('ai_content', 'is', null)
+          .then(({ error }) => {
+            if (error) console.error(`[profiles/sync] Stale flag error for ${locationId}:`, error)
+          })
       }
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'Unknown error'

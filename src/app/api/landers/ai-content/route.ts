@@ -84,20 +84,35 @@ export async function POST(request: NextRequest) {
 
   // Extract review themes (simple: pull keywords from positive reviews)
   let reviewSummary: { averageRating: number; reviewCount: number; themes: string[] } | null = null
+  const bodies = reviews
+    .filter((r) => r.body)
+    .map((r) => r.body!)
   if (reviews.length > 0) {
     const totalRating = reviews.reduce((sum, r) => sum + (r.rating || 0), 0)
-    // Extract common words from review bodies as themes (basic approach)
-    const bodies = reviews
-      .filter((r) => r.body)
-      .map((r) => r.body!)
-      .slice(0, 20)
-    const themes = extractReviewThemes(bodies)
+    const themes = extractReviewThemes(bodies.slice(0, 20))
     reviewSummary = {
       averageRating: totalRating / reviews.length,
       reviewCount: reviews.length,
       themes,
     }
   }
+
+  // Extract actual review excerpts (first ~150 chars of up to 10 reviews)
+  const reviewExcerpts = bodies
+    .slice(0, 10)
+    .map((b) => b.length > 150 ? b.slice(0, 147) + '...' : b)
+
+  // Parse GBP attributes into a simpler shape
+  const gbpAttributes = (gbp?.attributes || []).map((attr: any) => ({
+    name: attr.name || attr.attributeId || '',
+    values: attr.values || (attr.repeatedEnumValue?.setValues || []),
+  })).filter((a: any) => a.name)
+
+  // Parse GBP service items
+  const gbpServiceItems = (gbp?.service_items || []).map((item: any) => ({
+    name: item.structuredServiceItem?.description || item.freeFormServiceItem?.label || '',
+    description: item.freeFormServiceItem?.label || undefined,
+  })).filter((s: any) => s.name)
 
   try {
     const aiContent = await generateLanderContent({
@@ -111,14 +126,18 @@ export async function POST(request: NextRequest) {
       services,
       reviewSummary,
       templateId: lander.template_id || 'general',
+      gbpAttributes: gbpAttributes.length > 0 ? gbpAttributes : null,
+      gbpServiceItems: gbpServiceItems.length > 0 ? gbpServiceItems : null,
+      reviewExcerpts: reviewExcerpts.length > 0 ? reviewExcerpts : null,
     })
 
-    // Save to database
+    // Save to database and clear stale flag
     const { error: updateError } = await admin
       .from('local_landers')
       .update({
         ai_content: aiContent,
         ai_content_generated_at: new Date().toISOString(),
+        ai_content_stale: false,
       })
       .eq('id', lander_id)
 

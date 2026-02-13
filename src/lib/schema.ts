@@ -216,6 +216,33 @@ export function generateJsonLd({ location, gbp, lander, reviewStats, photos }: S
 
   const schemas: object[] = [schema]
 
+  // BreadcrumbList — Home > Locations > {State} > {City} > {Name}
+  const breadcrumbItems: Array<{ name: string; url?: string }> = [
+    { name: 'Home', url: appUrl },
+    { name: 'Locations', url: `${appUrl}/l` },
+  ]
+  if (location.state) {
+    breadcrumbItems.push({ name: location.state })
+  }
+  if (location.city) {
+    breadcrumbItems.push({ name: location.city })
+  }
+  breadcrumbItems.push({
+    name: lander.heading || gbp?.business_name || location.name,
+    url: `${appUrl}/l/${lander.slug}`,
+  })
+
+  schemas.push({
+    '@context': 'https://schema.org',
+    '@type': 'BreadcrumbList',
+    itemListElement: breadcrumbItems.map((item, i) => ({
+      '@type': 'ListItem',
+      position: i + 1,
+      name: item.name,
+      ...(item.url ? { item: item.url } : {}),
+    })),
+  })
+
   // FAQPage schema — separate graph node
   const faq = lander.custom_faq || (lander.ai_content as LanderAIContent | null)?.faq
   if (lander.show_faq && faq && faq.length > 0) {
