@@ -100,6 +100,8 @@ interface WorkQueueData {
     profile_optimizations: number
     stale_landers: number
   }
+  has_more?: boolean
+  offset?: number
   scope?: 'all' | 'mine'
   is_agency_admin?: boolean
 }
@@ -118,6 +120,7 @@ interface TeamMember {
 export function WorkQueue() {
   const [data, setData] = useState<WorkQueueData | null>(null)
   const [loading, setLoading] = useState(true)
+  const [loadingMore, setLoadingMore] = useState(false)
   const [filter, setFilter] = useState<FilterType>('all')
   const [scope, setScope] = useState<ScopeType>('all')
   const [selectedId, setSelectedId] = useState<string | null>(null)
@@ -128,6 +131,7 @@ export function WorkQueue() {
   const [editText, setEditText] = useState('')
   const [mobileDetailOpen, setMobileDetailOpen] = useState(false)
   const [teamMembers, setTeamMembers] = useState<TeamMember[]>([])
+  const sentinelRef = useRef<HTMLDivElement>(null)
 
   const fetchData = useCallback(async () => {
     try {
@@ -149,6 +153,27 @@ export function WorkQueue() {
       setLoading(false)
     }
   }, [filter, scope]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  const fetchMore = useCallback(async () => {
+    if (!data?.has_more || loadingMore) return
+    setLoadingMore(true)
+    try {
+      const offset = data.items.length
+      const res = await fetch(`/api/agency/work-queue?filter=${filter}&scope=${scope}&offset=${offset}`)
+      if (res.ok) {
+        const page: WorkQueueData = await res.json()
+        setData((prev) => prev ? {
+          ...prev,
+          items: [...prev.items, ...page.items],
+          has_more: page.has_more,
+        } : prev)
+      }
+    } catch {
+      // ignore
+    } finally {
+      setLoadingMore(false)
+    }
+  }, [data?.has_more, data?.items.length, loadingMore, filter, scope])
 
   useEffect(() => {
     setLoading(true)
@@ -212,6 +237,21 @@ export function WorkQueue() {
     window.addEventListener('keydown', handleKey)
     return () => window.removeEventListener('keydown', handleKey)
   }, [viewMode, rapidIndex, data, editMode]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Infinite scroll — load more when sentinel becomes visible
+  useEffect(() => {
+    const el = sentinelRef.current
+    if (!el) return
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries[0].isIntersecting) fetchMore()
+      },
+      { rootMargin: '200px' }
+    )
+    observer.observe(el)
+    return () => observer.disconnect()
+  }, [fetchMore])
 
   // ─── Actions ──────────────────────────────────────────────
 
@@ -611,6 +651,11 @@ export function WorkQueue() {
               <ListItemContent item={item} teamMembers={teamMembers} />
             </button>
           ))}
+          {/* Infinite scroll sentinel */}
+          <div ref={sentinelRef} className="h-1" />
+          {loadingMore && (
+            <div className="py-4 text-center text-xs text-warm-gray animate-pulse">Loading more...</div>
+          )}
         </div>
 
         {/* Detail Panel */}
