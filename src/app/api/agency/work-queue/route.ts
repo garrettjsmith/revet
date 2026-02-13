@@ -268,7 +268,10 @@ export async function GET(request: NextRequest) {
     items.push(formatStaleLanderItem(lander))
   }
 
-  // Count by type for filter badges
+  // Sort all items by date (newest first) so types are interleaved chronologically
+  items.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
+
+  // Count by type for filter badges (before pagination slice)
   const counts = {
     total: items.length,
     needs_reply: items.filter((i) => i.type === 'review_reply').length,
@@ -280,9 +283,15 @@ export async function GET(request: NextRequest) {
     stale_landers: items.filter((i) => i.type === 'stale_lander').length,
   }
 
+  const offset = Math.max(0, parseInt(searchParams.get('offset') || '0', 10))
+  const page = items.slice(offset, offset + limit)
+
   return NextResponse.json({
-    items: items.slice(0, limit),
+    items: page,
     counts,
+    total: items.length,
+    offset,
+    has_more: offset + limit < items.length,
     scope: scopedLocationIds ? 'mine' : 'all',
     is_agency_admin: isAgencyAdmin,
   })
