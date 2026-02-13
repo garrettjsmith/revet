@@ -15,7 +15,7 @@ export const dynamic = 'force-dynamic'
  *   - Account managers see only items from their assigned orgs
  *
  * Query params:
- *   filter: 'all' | 'needs_reply' | 'ai_drafts' | 'google_updates' | 'posts' | 'sync_errors'
+ *   filter: 'all' | 'needs_reply' | 'ai_drafts' | 'google_updates' | 'posts' | 'sync_errors' | 'profile_optimizations'
  *   scope: 'all' | 'mine' (only affects agency admins; managers always scoped)
  *   limit: number (default: 50)
  */
@@ -87,6 +87,7 @@ export async function GET(request: NextRequest) {
   const wantsGoogle = filter === 'all' || filter === 'google_updates'
   const wantsPosts = filter === 'all' || filter === 'posts'
   const wantsSyncErrors = filter === 'all' || filter === 'sync_errors'
+  const wantsProfileOpt = filter === 'all' || filter === 'profile_optimizations'
 
   // Helper to apply location scope to a query builder
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -105,6 +106,7 @@ export async function GET(request: NextRequest) {
     pendingPostResult,
     reviewSyncErrorResult,
     profileSyncErrorResult,
+    profileOptResult,
   ] = await Promise.all([
     // 1: Unreplied negative Google reviews (urgent)
     wantsReviews
@@ -174,6 +176,15 @@ export async function GET(request: NextRequest) {
         )
           .limit(limit)
       : Promise.resolve({ data: [] as any[] }),
+    // 7: Profile optimization recommendations (important)
+    wantsProfileOpt
+      ? adminClient
+          .from('profile_recommendations')
+          .select('id, location_id, batch_id, field, current_value, proposed_value, ai_rationale, status, requires_client_approval, edited_value, created_at, locations:location_id(name, org_id, organizations(name, slug))')
+          .in('status', ['pending', 'client_review'])
+          .order('created_at', { ascending: false })
+          .limit(limit)
+      : Promise.resolve({ data: [] as any[] }),
   ])
 
   // Build unified item list
@@ -220,6 +231,21 @@ export async function GET(request: NextRequest) {
     items.push(formatPostItem(post))
   }
 
+  // Profile optimization recommendations (important) — group by location
+  const profileOptLocations = new Set<string>()
+  for (const rec of profileOptResult.data || []) {
+    if (scopedLocationIds && !scopedLocationIds.includes(rec.location_id)) continue
+    if (profileOptLocations.has(rec.location_id)) continue
+    profileOptLocations.add(rec.location_id)
+
+    // Get all recs for this location from the result set
+    const locationRecs = (profileOptResult.data || []).filter(
+      (r: any) => r.location_id === rec.location_id
+    )
+
+    items.push(formatProfileOptItem(rec, locationRecs))
+  }
+
   // Count by type for filter badges
   const counts = {
     total: items.length,
@@ -228,6 +254,7 @@ export async function GET(request: NextRequest) {
     google_updates: items.filter((i) => i.type === 'google_update').length,
     posts: items.filter((i) => i.type === 'post_pending').length,
     sync_errors: items.filter((i) => i.type === 'sync_error').length,
+    profile_optimizations: items.filter((i) => i.type === 'profile_optimization').length,
   }
 
   return NextResponse.json({
@@ -341,6 +368,36 @@ function formatSyncErrorItem(source: any, sourceType: 'review_source' | 'gbp_pro
       platform: source.platform || 'google',
       sync_error: source.sync_error || source.metadata?.last_error || null,
       last_synced_at: source.last_synced_at,
+    },
+  }
+}
+
+function formatProfileOptItem(firstRec: any, allRecs: any[]) {
+  const loc = firstRec.locations
+  const org = loc?.organizations
+
+  return {
+    id: `profile_opt_${firstRec.location_id}`,
+    type: 'profile_optimization' as const,
+    priority: 'important' as const,
+    created_at: firstRec.created_at,
+    assigned_to: null,
+    location_id: firstRec.location_id,
+    location_name: loc?.name || 'Unknown',
+    org_name: org?.name || 'Unknown',
+    org_slug: org?.slug || '',
+    profile_optimization: {
+      batch_id: firstRec.batch_id,
+      recommendations: allRecs.map((r: any) => ({
+        id: r.id,
+        field: r.field,
+        current_value: r.current_value,
+        proposed_value: r.proposed_value,
+        ai_rationale: r.ai_rationale,
+        status: r.status,
+        requires_client_approval: r.requires_client_approval,
+        edited_value: r.edited_value,
+      })),
     },
   }
 }

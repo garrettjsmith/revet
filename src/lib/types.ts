@@ -56,6 +56,7 @@ export interface Location {
   country: string
   metadata: Record<string, unknown>
   service_tier: 'starter' | 'standard' | 'premium'
+  setup_status: 'pending' | 'audited' | 'optimizing' | 'optimized'
   active: boolean
   created_at: string
   updated_at: string
@@ -506,4 +507,54 @@ export interface ReviewReplyQueue {
   sent_at: string | null
   created_at: string
   updated_at: string
+}
+
+// Profile Optimization
+
+export type RecommendationStatus = 'pending' | 'approved' | 'client_review' | 'applied' | 'rejected'
+export type RecommendationField = 'description' | 'categories' | 'attributes' | 'hours'
+
+export interface ProfileRecommendation {
+  id: string
+  location_id: string
+  batch_id: string
+  field: RecommendationField
+  current_value: unknown
+  proposed_value: unknown
+  ai_rationale: string | null
+  status: RecommendationStatus
+  requires_client_approval: boolean
+  edited_value: unknown | null
+  approved_by: string | null
+  approved_at: string | null
+  applied_at: string | null
+  created_at: string
+}
+
+export interface AICorrection {
+  id: string
+  org_id: string
+  location_id: string | null
+  field: string
+  original_text: string
+  corrected_text: string
+  context: Record<string, unknown>
+  created_at: string
+}
+
+export interface AuditHistory {
+  id: string
+  location_id: string
+  score: number
+  sections: AuditSectionData[]
+  created_at: string
+}
+
+export interface AuditSectionData {
+  key: string
+  label: string
+  score: number
+  maxScore: number
+  status: 'good' | 'warning' | 'poor'
+  suggestion: string | null
 }
