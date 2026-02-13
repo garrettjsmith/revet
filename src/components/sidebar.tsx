@@ -118,6 +118,7 @@ export function Sidebar({ currentOrg, memberships, userEmail, isAgencyAdmin, loc
         { href: `${locationBasePath}/lander`, label: 'Lander', icon: LanderIcon },
         { href: `${locationBasePath}/gbp-profile`, label: 'GBP Profile', icon: IntegrationsIcon },
         { href: `${locationBasePath}/posts/topics`, label: 'Post Topics', icon: PostIcon },
+        { href: `${locationBasePath}/reports`, label: 'Reports', icon: ReportIcon },
         { href: `${locationBasePath}/notifications`, label: 'Notifications', icon: BellIcon },
       ],
     },
@@ -135,6 +136,7 @@ export function Sidebar({ currentOrg, memberships, userEmail, isAgencyAdmin, loc
         { href: `${basePath}/reviews`, label: 'Reviews', icon: ReviewIcon },
         { href: `${basePath}/posts/review`, label: 'Post Review', icon: PostIcon },
         { href: `${basePath}/forms`, label: 'Forms', icon: FormIcon },
+        { href: `${basePath}/reports`, label: 'Reports', icon: ReportIcon },
         { href: `${basePath}/brand`, label: 'Brand Config', icon: IntegrationsIcon },
       ],
     },
@@ -602,6 +604,15 @@ function PostIcon({ className }: { className?: string }) {
       <rect x="3" y="3" width="18" height="18" rx="2" />
       <path d="M3 9h18" />
       <path d="M9 21V9" />
+    </svg>
+  )
+}
+
+function ReportIcon({ className }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M3 3v18h18" />
+      <path d="M7 16l4-8 4 5 5-9" />
     </svg>
   )
 }
