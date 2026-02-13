@@ -46,15 +46,15 @@ export default async function AgencyLayout({
           userEmail={user.email || ''}
           isAgencyAdmin={true}
         />
-        <main className="flex-1 p-8 max-w-6xl">
+        <main className="flex-1 min-w-0 p-8">
           {children}
         </main>
+        <ChatPane
+          orgSlug={currentOrg.slug}
+          orgName={currentOrg.name}
+          isAgencyAdmin={true}
+        />
       </div>
-      <ChatPane
-        orgSlug={currentOrg.slug}
-        orgName={currentOrg.name}
-        isAgencyAdmin={true}
-      />
     </ChatProvider>
   )
 }
