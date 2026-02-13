@@ -1,5 +1,6 @@
 import { createAdminClient } from '@/lib/supabase/admin'
 import { LocalLanderPage } from '@/components/local-lander'
+import { LanderTracker } from '@/components/lander-tracker'
 import { generateJsonLd } from '@/lib/schema'
 import { notFound } from 'next/navigation'
 import type { Metadata } from 'next'
@@ -215,6 +216,7 @@ export default async function LanderPage({ params }: Props) {
         reviewStats={reviewStats}
         nearbyLocations={nearbyLocations}
       />
+      <LanderTracker landerId={lander.id} locationId={location.id} />
     </>
   )
 }

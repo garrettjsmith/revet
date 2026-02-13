@@ -80,6 +80,7 @@ export function LocalLanderPage({ lander, location, gbp, photos, reviews, review
   const aiServiceDescriptions = ai?.service_descriptions || null
   const faq = lander.custom_faq || ai?.faq || null
   const reviewHighlights = ai?.review_highlights || null
+  const directionsContext = ai?.directions_context || null
   const templateData = lander.template_data || {}
 
   const template = getTemplate(lander.template_id || 'general')
@@ -114,6 +115,12 @@ export function LocalLanderPage({ lander, location, gbp, photos, reviews, review
               {localContext && (
                 <div className={description ? 'mt-4' : ''}>
                   <p className="text-sm text-gray-600 leading-relaxed whitespace-pre-line">{localContext}</p>
+                </div>
+              )}
+              {directionsContext && location.type !== 'service_area' && (
+                <div className="mt-5">
+                  <h3 className="text-sm font-semibold text-gray-900 mb-1">How to Find Us</h3>
+                  <p className="text-sm text-gray-600 leading-relaxed">{directionsContext}</p>
                 </div>
               )}
             </section>
