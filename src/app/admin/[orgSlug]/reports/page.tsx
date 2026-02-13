@@ -20,6 +20,7 @@ interface LocationReport {
   gbp_actions_30d: number
   gbp_actions_trend: number
   gbp_impressions_30d: number
+  solv: number | null
   health: 'healthy' | 'attention' | 'at_risk'
 }
 
@@ -59,7 +60,7 @@ export default async function OrgReportsPage({
   sixtyDaysAgo.setDate(sixtyDaysAgo.getDate() - 60)
 
   // Parallel queries for all location data
-  const [reviewsResult, gbpCurrentResult, gbpPrevResult, gbpProfilesResult] = await Promise.all([
+  const [reviewsResult, gbpCurrentResult, gbpPrevResult, gbpProfilesResult, scansResult] = await Promise.all([
     // Reviews: all reviews for these locations (we'll aggregate in JS)
     adminClient
       .from('reviews')
@@ -88,12 +89,27 @@ export default async function OrgReportsPage({
       .from('gbp_profiles')
       .select('location_id, business_name, description, phone_number, website_url, categories, has_google_updated')
       .in('location_id', locationIds),
+
+    // Latest LocalFalcon scan per location (most recent scan for each)
+    adminClient
+      .from('local_falcon_scans')
+      .select('location_id, solv, arp, keyword, scanned_at')
+      .in('location_id', locationIds)
+      .order('scanned_at', { ascending: false }),
   ])
 
   const reviews = reviewsResult.data || []
   const gbpCurrent = gbpCurrentResult.data || []
   const gbpPrev = gbpPrevResult.data || []
   const gbpProfiles = gbpProfilesResult.data || []
+
+  // Get latest scan per location (first scan per location_id since ordered desc)
+  const scansByLoc: Record<string, { solv: number | null; arp: number | null; keyword: string }> = {}
+  for (const scan of scansResult.data || []) {
+    if (!scansByLoc[scan.location_id]) {
+      scansByLoc[scan.location_id] = { solv: scan.solv, arp: scan.arp, keyword: scan.keyword }
+    }
+  }
 
   // Also fetch daily aggregate for the chart
   const { data: dailyRaw } = await adminClient
@@ -204,6 +220,7 @@ export default async function OrgReportsPage({
       gbp_actions_30d: curActions,
       gbp_actions_trend: actionsTrend,
       gbp_impressions_30d: curImpressions,
+      solv: scansByLoc[loc.id]?.solv ?? null,
       health,
     }
   })
@@ -226,6 +243,12 @@ export default async function OrgReportsPage({
     : 0
   const totalImpressions = locationReports.reduce((sum, l) => sum + l.gbp_impressions_30d, 0)
 
+  // Compute average SoLV across locations that have scan data
+  const locsWithSolv = locationReports.filter((l) => l.solv !== null)
+  const avgSolv = locsWithSolv.length > 0
+    ? Math.round(locsWithSolv.reduce((sum, l) => sum + l.solv!, 0) / locsWithSolv.length)
+    : null
+
   const summary = {
     total_locations: locations.length,
     avg_rating: avgRatingOverall,
@@ -235,6 +258,8 @@ export default async function OrgReportsPage({
     total_gbp_actions: totalGbpActions,
     gbp_actions_trend: gbpActionsTrend,
     total_impressions: totalImpressions,
+    avg_solv: avgSolv,
+    locations_with_solv: locsWithSolv.length,
     locations_healthy: locationReports.filter((l) => l.health === 'healthy').length,
     locations_attention: locationReports.filter((l) => l.health === 'attention').length,
     locations_at_risk: locationReports.filter((l) => l.health === 'at_risk').length,

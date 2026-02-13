@@ -23,6 +23,11 @@ export default async function LocationReportPage({
   const ninetyDaysAgo = new Date(now)
   ninetyDaysAgo.setDate(ninetyDaysAgo.getDate() - 90)
 
+  // Current month for keyword query
+  const keywordMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1)
+  const kwYear = keywordMonth.getFullYear()
+  const kwMonth = keywordMonth.getMonth() + 1
+
   // Parallel queries
   const [
     locationResult,
@@ -30,6 +35,8 @@ export default async function LocationReportPage({
     recentReviewsResult,
     gbp90dResult,
     gbpProfileResult,
+    latestScanResult,
+    keywordsResult,
   ] = await Promise.all([
     adminClient
       .from('locations')
@@ -67,6 +74,24 @@ export default async function LocationReportPage({
       .select('business_name, description, phone_number, website_url, categories, primary_category, address_line1, city, state')
       .eq('location_id', locationId)
       .single(),
+
+    // Latest LocalFalcon geo-grid scan
+    adminClient
+      .from('local_falcon_scans')
+      .select('*')
+      .eq('location_id', locationId)
+      .order('scanned_at', { ascending: false })
+      .limit(1),
+
+    // Search keywords (previous month)
+    adminClient
+      .from('gbp_search_keywords')
+      .select('keyword, impressions, threshold')
+      .eq('location_id', locationId)
+      .eq('year', kwYear)
+      .eq('month', kwMonth)
+      .order('impressions', { ascending: false, nullsFirst: false })
+      .limit(30),
   ])
 
   const location = locationResult.data
@@ -82,6 +107,12 @@ export default async function LocationReportPage({
   const recentReviews = recentReviewsResult.data || []
   const gbpRaw = gbp90dResult.data || []
   const gbpProfile = gbpProfileResult.data
+  const latestScan = (latestScanResult.data || [])[0] || null
+  const searchKeywords = (keywordsResult.data || []) as Array<{
+    keyword: string
+    impressions: number | null
+    threshold: number | null
+  }>
 
   // Build daily time series
   const impressionTypes = [
@@ -210,6 +241,8 @@ export default async function LocationReportPage({
         profileComplete={profileComplete}
         profileTotal={profileTotal}
         platformCounts={platformCounts}
+        geoGridScan={latestScan}
+        searchKeywords={searchKeywords}
       />
     </div>
   )

@@ -24,6 +24,7 @@ interface LocationReport {
   gbp_actions_30d: number
   gbp_actions_trend: number
   gbp_impressions_30d: number
+  solv: number | null
   health: 'healthy' | 'attention' | 'at_risk'
 }
 
@@ -36,6 +37,8 @@ interface Summary {
   total_gbp_actions: number
   gbp_actions_trend: number
   total_impressions: number
+  avg_solv: number | null
+  locations_with_solv: number
   locations_healthy: number
   locations_attention: number
   locations_at_risk: number
@@ -58,7 +61,7 @@ interface Props {
   daily: DailyData[]
 }
 
-type SortField = 'name' | 'avg_rating' | 'reviews_30d' | 'gbp_actions_30d' | 'health'
+type SortField = 'name' | 'avg_rating' | 'reviews_30d' | 'gbp_actions_30d' | 'solv' | 'health'
 type SortDir = 'asc' | 'desc'
 type ChartMetric = 'impressions' | 'actions' | 'calls' | 'directions' | 'clicks'
 
@@ -90,6 +93,7 @@ export function OrgReportDashboard({ orgSlug, summary, sentimentCounts, location
     if (sortField === 'avg_rating') return dir * ((a.avg_rating || 0) - (b.avg_rating || 0))
     if (sortField === 'reviews_30d') return dir * (a.reviews_30d - b.reviews_30d)
     if (sortField === 'gbp_actions_30d') return dir * (a.gbp_actions_30d - b.gbp_actions_30d)
+    if (sortField === 'solv') return dir * ((a.solv || 0) - (b.solv || 0))
     if (sortField === 'health') return dir * (healthOrder[a.health] - healthOrder[b.health])
     return 0
   })
@@ -99,7 +103,15 @@ export function OrgReportDashboard({ orgSlug, summary, sentimentCounts, location
   return (
     <div className="space-y-8">
       {/* Hero Stats */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className={`grid grid-cols-2 gap-4 ${summary.avg_solv !== null ? 'lg:grid-cols-5' : 'lg:grid-cols-4'}`}>
+        {summary.avg_solv !== null && (
+          <HeroStat
+            label="Avg SoLV"
+            value={`${summary.avg_solv}%`}
+            sub={`Share of Local Voice · ${summary.locations_with_solv} tracked`}
+            solv={summary.avg_solv}
+          />
+        )}
         <HeroStat
           label="Total Actions"
           value={formatNumber(summary.total_gbp_actions)}
@@ -314,11 +326,12 @@ export function OrgReportDashboard({ orgSlug, summary, sentimentCounts, location
         </div>
 
         {/* Table header */}
-        <div className="hidden lg:grid grid-cols-[2fr_1fr_1fr_1fr_1fr_80px] gap-4 px-5 py-2 text-[10px] text-warm-gray uppercase tracking-wider border-b border-warm-border/50">
+        <div className="hidden lg:grid grid-cols-[2fr_1fr_1fr_1fr_80px_1fr_80px] gap-4 px-5 py-2 text-[10px] text-warm-gray uppercase tracking-wider border-b border-warm-border/50">
           <SortHeader label="Location" field="name" current={sortField} dir={sortDir} onSort={handleSort} />
           <SortHeader label="Rating" field="avg_rating" current={sortField} dir={sortDir} onSort={handleSort} />
           <SortHeader label="Reviews (30d)" field="reviews_30d" current={sortField} dir={sortDir} onSort={handleSort} />
           <SortHeader label="GBP Actions" field="gbp_actions_30d" current={sortField} dir={sortDir} onSort={handleSort} />
+          <SortHeader label="SoLV" field="solv" current={sortField} dir={sortDir} onSort={handleSort} />
           <div>Response Rate</div>
           <SortHeader label="Health" field="health" current={sortField} dir={sortDir} onSort={handleSort} />
         </div>
@@ -329,7 +342,7 @@ export function OrgReportDashboard({ orgSlug, summary, sentimentCounts, location
             <Link
               key={loc.id}
               href={`/admin/${orgSlug}/locations/${loc.id}/reports`}
-              className="grid grid-cols-1 lg:grid-cols-[2fr_1fr_1fr_1fr_1fr_80px] gap-2 lg:gap-4 px-5 py-3 hover:bg-warm-light/50 transition-colors no-underline items-center"
+              className="grid grid-cols-1 lg:grid-cols-[2fr_1fr_1fr_1fr_80px_1fr_80px] gap-2 lg:gap-4 px-5 py-3 hover:bg-warm-light/50 transition-colors no-underline items-center"
             >
               {/* Location name */}
               <div>
@@ -367,6 +380,17 @@ export function OrgReportDashboard({ orgSlug, summary, sentimentCounts, location
                 <span className="text-sm text-ink">{formatNumber(loc.gbp_actions_30d)}</span>
                 {loc.gbp_actions_trend !== 0 && (
                   <TrendBadge trend={loc.gbp_actions_trend} />
+                )}
+              </div>
+
+              {/* SoLV */}
+              <div>
+                {loc.solv !== null ? (
+                  <span className={`text-sm font-medium ${loc.solv >= 50 ? 'text-emerald-600' : loc.solv >= 25 ? 'text-amber-600' : 'text-red-500'}`}>
+                    {Math.round(loc.solv)}%
+                  </span>
+                ) : (
+                  <span className="text-[10px] text-warm-gray">--</span>
                 )}
               </div>
 
@@ -408,6 +432,7 @@ function HeroStat({
   trend,
   ratingStars,
   responseRate,
+  solv,
 }: {
   label: string
   value: string
@@ -415,6 +440,7 @@ function HeroStat({
   trend?: number
   ratingStars?: number | null
   responseRate?: number
+  solv?: number
 }) {
   return (
     <div className="border border-warm-border rounded-xl p-4">
@@ -428,6 +454,14 @@ function HeroStat({
           {[1, 2, 3, 4, 5].map((s) => (
             <span key={s} className={`text-xs ${s <= Math.round(ratingStars) ? 'text-amber-400' : 'text-warm-border'}`}>★</span>
           ))}
+        </div>
+      )}
+      {solv !== undefined && (
+        <div className="mt-1.5 h-1.5 bg-warm-light rounded-full overflow-hidden">
+          <div
+            className={`h-full rounded-full transition-all ${solv >= 50 ? 'bg-emerald-500' : solv >= 25 ? 'bg-amber-500' : 'bg-red-400'}`}
+            style={{ width: `${solv}%` }}
+          />
         </div>
       )}
       {responseRate !== undefined && (
