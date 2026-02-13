@@ -63,15 +63,15 @@ export default async function OrgLayout({
           isAgencyAdmin={isAgencyAdmin}
           locations={(orgLocations || []) as Pick<Location, 'id' | 'name' | 'city' | 'state' | 'type'>[]}
         />
-        <main className="flex-1 p-8 max-w-6xl">
+        <main className="flex-1 min-w-0 p-8">
           {children}
         </main>
+        <ChatPane
+          orgSlug={currentOrg.slug}
+          orgName={currentOrg.name}
+          isAgencyAdmin={isAgencyAdmin}
+        />
       </div>
-      <ChatPane
-        orgSlug={currentOrg.slug}
-        orgName={currentOrg.name}
-        isAgencyAdmin={isAgencyAdmin}
-      />
     </ChatProvider>
   )
 }

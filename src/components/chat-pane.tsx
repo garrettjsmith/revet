@@ -167,121 +167,136 @@ export function ChatPane({ orgSlug, orgName, locationId, locationName, isAgencyA
     setIsStreaming(false)
   }
 
+  const chatContent = (
+    <>
+      {/* Header */}
+      <div className="flex items-center justify-between px-4 py-3 border-b border-warm-border shrink-0">
+        <div className="flex items-center gap-2">
+          <SparkleIcon className="w-4 h-4 text-warm-gray" />
+          <span className="text-sm font-medium text-ink">Ask Revet</span>
+        </div>
+        <div className="flex items-center gap-2">
+          {messages.length > 0 && (
+            <button
+              onClick={handleClear}
+              className="text-xs text-warm-gray hover:text-ink transition-colors"
+            >
+              Clear
+            </button>
+          )}
+          <button
+            onClick={close}
+            className="p-1 rounded hover:bg-warm-light transition-colors"
+          >
+            <CloseIcon className="w-4 h-4 text-warm-gray" />
+          </button>
+        </div>
+      </div>
+
+      {/* Messages */}
+      <div className="flex-1 overflow-y-auto px-4 py-4 space-y-3">
+        {messages.length === 0 && (
+          <div className="flex flex-col items-center justify-center h-full text-center px-6">
+            <SparkleIcon className="w-8 h-8 text-warm-border mb-3" />
+            <p className="text-sm text-warm-gray">
+              Ask about your data, reviews, locations, or anything on screen.
+            </p>
+            <div className="mt-4 space-y-1.5 w-full">
+              {[
+                'How are my reviews trending?',
+                'Which location needs attention?',
+                'Summarize this week',
+              ].map((suggestion) => (
+                <button
+                  key={suggestion}
+                  onClick={() => {
+                    setInput(suggestion)
+                    setTimeout(() => inputRef.current?.focus(), 0)
+                  }}
+                  className="block w-full text-left text-xs text-warm-gray hover:text-ink px-3 py-1.5 rounded-lg hover:bg-warm-light transition-colors"
+                >
+                  {suggestion}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {messages.map((msg, i) => (
+          <div key={i} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+            <div
+              className={`max-w-[85%] rounded-xl px-3 py-2 text-sm whitespace-pre-wrap ${
+                msg.role === 'user'
+                  ? 'bg-ink text-cream'
+                  : 'bg-warm-light text-ink'
+              }`}
+            >
+              {msg.content}
+              {msg.role === 'assistant' && msg.content === '' && isStreaming && (
+                <span className="inline-block w-1.5 h-4 bg-warm-gray/50 animate-pulse" />
+              )}
+            </div>
+          </div>
+        ))}
+        <div ref={messagesEndRef} />
+      </div>
+
+      {/* Input */}
+      <div className="border-t border-warm-border p-3 shrink-0">
+        <div className="flex items-end gap-2">
+          <textarea
+            ref={inputRef}
+            value={input}
+            onChange={handleInputChange}
+            onKeyDown={handleKeyDown}
+            placeholder="Ask anything..."
+            rows={1}
+            className="flex-1 bg-warm-light/50 border border-warm-border rounded-lg px-3 py-2 text-sm text-ink placeholder:text-warm-gray resize-none outline-none focus:border-warm-gray transition-colors"
+          />
+          <button
+            onClick={sendMessage}
+            disabled={!input.trim() || isStreaming}
+            className="p-2 rounded-lg bg-ink text-cream disabled:opacity-30 hover:bg-ink/90 transition-colors shrink-0"
+          >
+            <SendIcon className="w-4 h-4" />
+          </button>
+        </div>
+        <div className="flex items-center justify-between mt-1.5 px-1">
+          <span className="text-[10px] text-warm-gray truncate">
+            {orgName && <>{orgName}{locationName ? ` / ${locationName}` : ''}</>}
+          </span>
+          <kbd className="text-[10px] font-mono text-warm-gray bg-warm-light rounded px-1.5 py-0.5 shrink-0">⌘J</kbd>
+        </div>
+      </div>
+    </>
+  )
+
   return (
     <>
-      {/* Backdrop on mobile */}
+      {/* Desktop: in-flow flex child that compresses main content */}
+      <div
+        className={`hidden lg:flex flex-col shrink-0 h-screen sticky top-0 bg-cream overflow-hidden transition-all duration-200 ease-in-out ${
+          isOpen ? 'w-96 border-l border-warm-border' : 'w-0'
+        }`}
+      >
+        <div className="w-96 h-full flex flex-col shrink-0">
+          {chatContent}
+        </div>
+      </div>
+
+      {/* Mobile/tablet: fixed overlay */}
       {isOpen && (
         <div
           className="fixed inset-0 bg-ink/20 z-40 lg:hidden"
           onClick={close}
         />
       )}
-
-      {/* Chat panel */}
       <div
-        className={`fixed top-0 right-0 h-screen w-full sm:w-96 z-50 flex flex-col bg-cream border-l border-warm-border shadow-xl transition-transform duration-200 ease-in-out ${
+        className={`lg:hidden fixed top-0 right-0 h-screen w-full sm:w-96 z-50 flex flex-col bg-cream border-l border-warm-border shadow-xl transition-transform duration-200 ease-in-out ${
           isOpen ? 'translate-x-0' : 'translate-x-full'
         }`}
       >
-        {/* Header */}
-        <div className="flex items-center justify-between px-4 py-3 border-b border-warm-border shrink-0">
-          <div className="flex items-center gap-2">
-            <SparkleIcon className="w-4 h-4 text-warm-gray" />
-            <span className="text-sm font-medium text-ink">Ask Revet</span>
-          </div>
-          <div className="flex items-center gap-2">
-            {messages.length > 0 && (
-              <button
-                onClick={handleClear}
-                className="text-xs text-warm-gray hover:text-ink transition-colors"
-              >
-                Clear
-              </button>
-            )}
-            <button
-              onClick={close}
-              className="p-1 rounded hover:bg-warm-light transition-colors"
-            >
-              <CloseIcon className="w-4 h-4 text-warm-gray" />
-            </button>
-          </div>
-        </div>
-
-        {/* Messages */}
-        <div className="flex-1 overflow-y-auto px-4 py-4 space-y-3">
-          {messages.length === 0 && (
-            <div className="flex flex-col items-center justify-center h-full text-center px-6">
-              <SparkleIcon className="w-8 h-8 text-warm-border mb-3" />
-              <p className="text-sm text-warm-gray">
-                Ask about your data, reviews, locations, or anything on screen.
-              </p>
-              <div className="mt-4 space-y-1.5 w-full">
-                {[
-                  'How are my reviews trending?',
-                  'Which location needs attention?',
-                  'Summarize this week',
-                ].map((suggestion) => (
-                  <button
-                    key={suggestion}
-                    onClick={() => {
-                      setInput(suggestion)
-                      setTimeout(() => inputRef.current?.focus(), 0)
-                    }}
-                    className="block w-full text-left text-xs text-warm-gray hover:text-ink px-3 py-1.5 rounded-lg hover:bg-warm-light transition-colors"
-                  >
-                    {suggestion}
-                  </button>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {messages.map((msg, i) => (
-            <div key={i} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-              <div
-                className={`max-w-[85%] rounded-xl px-3 py-2 text-sm whitespace-pre-wrap ${
-                  msg.role === 'user'
-                    ? 'bg-ink text-cream'
-                    : 'bg-warm-light text-ink'
-                }`}
-              >
-                {msg.content}
-                {msg.role === 'assistant' && msg.content === '' && isStreaming && (
-                  <span className="inline-block w-1.5 h-4 bg-warm-gray/50 animate-pulse" />
-                )}
-              </div>
-            </div>
-          ))}
-          <div ref={messagesEndRef} />
-        </div>
-
-        {/* Input */}
-        <div className="border-t border-warm-border p-3 shrink-0">
-          <div className="flex items-end gap-2">
-            <textarea
-              ref={inputRef}
-              value={input}
-              onChange={handleInputChange}
-              onKeyDown={handleKeyDown}
-              placeholder="Ask anything..."
-              rows={1}
-              className="flex-1 bg-warm-light/50 border border-warm-border rounded-lg px-3 py-2 text-sm text-ink placeholder:text-warm-gray resize-none outline-none focus:border-warm-gray transition-colors"
-            />
-            <button
-              onClick={sendMessage}
-              disabled={!input.trim() || isStreaming}
-              className="p-2 rounded-lg bg-ink text-cream disabled:opacity-30 hover:bg-ink/90 transition-colors shrink-0"
-            >
-              <SendIcon className="w-4 h-4" />
-            </button>
-          </div>
-          <div className="flex items-center justify-between mt-1.5 px-1">
-            <span className="text-[10px] text-warm-gray truncate">
-              {orgName && <>{orgName}{locationName ? ` / ${locationName}` : ''}</>}
-            </span>
-            <kbd className="text-[10px] font-mono text-warm-gray bg-warm-light rounded px-1.5 py-0.5 shrink-0">⌘J</kbd>
-          </div>
-        </div>
+        {chatContent}
       </div>
     </>
   )
