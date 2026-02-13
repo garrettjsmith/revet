@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { useRouter, usePathname } from 'next/navigation'
 import Link from 'next/link'
@@ -30,9 +30,18 @@ export function Sidebar({ currentOrg, memberships, userEmail, isAgencyAdmin, loc
   const router = useRouter()
   const pathname = usePathname()
   const supabase = createClient()
-  const { toggle: toggleChat } = useChatPane()
+  const { isOpen: isChatOpen, toggle: toggleChat } = useChatPane()
+  const collapsed = isChatOpen
   const [scopeSelectorOpen, setScopeSelectorOpen] = useState(false)
   const [locationSelectorOpen, setLocationSelectorOpen] = useState(false)
+
+  // Close dropdowns when sidebar collapses
+  useEffect(() => {
+    if (collapsed) {
+      setScopeSelectorOpen(false)
+      setLocationSelectorOpen(false)
+    }
+  }, [collapsed])
 
   const handleLogout = async () => {
     await supabase.auth.signOut()
@@ -152,149 +161,173 @@ export function Sidebar({ currentOrg, memberships, userEmail, isAgencyAdmin, loc
   )
 
   return (
-    <aside className="w-60 border-r border-warm-border h-screen flex flex-col bg-cream sticky top-0">
+    <aside className={`border-r border-warm-border h-screen flex flex-col bg-cream sticky top-0 transition-all duration-200 overflow-hidden shrink-0 ${collapsed ? 'w-14' : 'w-60'}`}>
       {/* Scope selector */}
-      <div className="p-4 border-b border-warm-border">
-        <button
-          onClick={() => setScopeSelectorOpen(!scopeSelectorOpen)}
-          className="w-full flex items-center gap-3 px-2 py-1.5 rounded-lg hover:bg-warm-light transition-colors text-left"
-        >
-          {scopeIcon}
-          <div className="min-w-0 flex-1">
-            <div className="text-sm font-medium text-ink truncate">{scopeDisplayName}</div>
-          </div>
-          <ChevronIcon className={`w-4 h-4 text-warm-gray transition-transform ${scopeSelectorOpen ? 'rotate-180' : ''}`} />
-        </button>
-
-        {/* Scope dropdown */}
-        {scopeSelectorOpen && (
-          <div className="mt-2 border border-warm-border rounded-lg bg-cream overflow-hidden">
-            {/* Agency option */}
-            {isAgencyAdmin && (
-              <>
-                <button
-                  onClick={() => handleScopeSwitch('agency')}
-                  className={`w-full flex items-center gap-3 px-3 py-2 text-sm text-left transition-colors ${
-                    currentScope === 'agency'
-                      ? 'bg-warm-light text-ink font-medium'
-                      : 'text-warm-gray hover:bg-warm-light hover:text-ink'
-                  }`}
-                >
-                  <div className="w-6 h-6 rounded bg-ink/10 flex items-center justify-center text-ink shrink-0">
-                    <BuildingIcon className="w-3.5 h-3.5" />
-                  </div>
-                  <span>Agency</span>
-                </button>
-                <div className="border-t border-warm-border" />
-              </>
-            )}
-
-            {/* Organization options */}
-            {memberships.map((m) => (
-              <button
-                key={m.org.id}
-                onClick={() => handleScopeSwitch(m.org.id)}
-                className={`w-full flex items-center gap-3 px-3 py-2 text-sm text-left transition-colors ${
-                  m.org.id === currentScope
-                    ? 'bg-warm-light text-ink font-medium'
-                    : 'text-warm-gray hover:bg-warm-light hover:text-ink'
-                }`}
-              >
-                <div className="w-6 h-6 rounded bg-ink flex items-center justify-center text-cream text-[10px] font-bold font-mono shrink-0">
-                  {m.org.name[0]}
-                </div>
-                <span className="truncate">{m.org.name}</span>
-              </button>
-            ))}
-
-            {/* New organization */}
-            <Link
-              href="/admin/orgs/new"
-              onClick={() => setScopeSelectorOpen(false)}
-              className="flex items-center gap-3 px-3 py-2 text-sm text-warm-gray hover:bg-warm-light hover:text-ink no-underline border-t border-warm-border transition-colors"
+      <div className={`border-b border-warm-border ${collapsed ? 'p-2 flex justify-center' : 'p-4'}`}>
+        {collapsed ? (
+          scopeIcon
+        ) : (
+          <>
+            <button
+              onClick={() => setScopeSelectorOpen(!scopeSelectorOpen)}
+              className="w-full flex items-center gap-3 px-2 py-1.5 rounded-lg hover:bg-warm-light transition-colors text-left"
             >
-              <div className="w-6 h-6 rounded border border-dashed border-warm-border flex items-center justify-center text-warm-gray text-xs">
-                +
+              {scopeIcon}
+              <div className="min-w-0 flex-1">
+                <div className="text-sm font-medium text-ink truncate">{scopeDisplayName}</div>
               </div>
-              <span>New Organization</span>
-            </Link>
-          </div>
+              <ChevronIcon className={`w-4 h-4 text-warm-gray transition-transform ${scopeSelectorOpen ? 'rotate-180' : ''}`} />
+            </button>
+
+            {/* Scope dropdown */}
+            {scopeSelectorOpen && (
+              <div className="mt-2 border border-warm-border rounded-lg bg-cream overflow-hidden">
+                {/* Agency option */}
+                {isAgencyAdmin && (
+                  <>
+                    <button
+                      onClick={() => handleScopeSwitch('agency')}
+                      className={`w-full flex items-center gap-3 px-3 py-2 text-sm text-left transition-colors ${
+                        currentScope === 'agency'
+                          ? 'bg-warm-light text-ink font-medium'
+                          : 'text-warm-gray hover:bg-warm-light hover:text-ink'
+                      }`}
+                    >
+                      <div className="w-6 h-6 rounded bg-ink/10 flex items-center justify-center text-ink shrink-0">
+                        <BuildingIcon className="w-3.5 h-3.5" />
+                      </div>
+                      <span>Agency</span>
+                    </button>
+                    <div className="border-t border-warm-border" />
+                  </>
+                )}
+
+                {/* Organization options */}
+                {memberships.map((m) => (
+                  <button
+                    key={m.org.id}
+                    onClick={() => handleScopeSwitch(m.org.id)}
+                    className={`w-full flex items-center gap-3 px-3 py-2 text-sm text-left transition-colors ${
+                      m.org.id === currentScope
+                        ? 'bg-warm-light text-ink font-medium'
+                        : 'text-warm-gray hover:bg-warm-light hover:text-ink'
+                    }`}
+                  >
+                    <div className="w-6 h-6 rounded bg-ink flex items-center justify-center text-cream text-[10px] font-bold font-mono shrink-0">
+                      {m.org.name[0]}
+                    </div>
+                    <span className="truncate">{m.org.name}</span>
+                  </button>
+                ))}
+
+                {/* New organization */}
+                <Link
+                  href="/admin/orgs/new"
+                  onClick={() => setScopeSelectorOpen(false)}
+                  className="flex items-center gap-3 px-3 py-2 text-sm text-warm-gray hover:bg-warm-light hover:text-ink no-underline border-t border-warm-border transition-colors"
+                >
+                  <div className="w-6 h-6 rounded border border-dashed border-warm-border flex items-center justify-center text-warm-gray text-xs">
+                    +
+                  </div>
+                  <span>New Organization</span>
+                </Link>
+              </div>
+            )}
+          </>
         )}
       </div>
 
       {/* Location selector (org scope only, when locations exist) */}
       {!isAgencyScope && locations.length > 0 && (
-        <div className="px-4 py-2 border-b border-warm-border">
-          <button
-            onClick={() => setLocationSelectorOpen(!locationSelectorOpen)}
-            className="w-full flex items-center gap-2.5 px-2 py-1.5 rounded-lg hover:bg-warm-light transition-colors text-left"
-          >
-            <LocationIcon className="w-4 h-4 text-warm-gray shrink-0" />
-            <div className="min-w-0 flex-1">
-              <div className="text-xs text-warm-gray truncate">
-                {currentLocation ? currentLocation.name : 'All locations'}
-              </div>
-            </div>
-            <ChevronIcon className={`w-3.5 h-3.5 text-warm-gray transition-transform ${locationSelectorOpen ? 'rotate-180' : ''}`} />
-          </button>
-
-          {locationSelectorOpen && (
-            <div className="mt-1.5 border border-warm-border rounded-lg bg-cream overflow-hidden max-h-64 overflow-y-auto">
-              {/* All locations option */}
+        <div className={`border-b border-warm-border ${collapsed ? 'p-2 flex justify-center' : 'px-4 py-2'}`}>
+          {collapsed ? (
+            <LocationIcon className="w-4 h-4 text-warm-gray" />
+          ) : (
+            <>
               <button
-                onClick={() => handleLocationSwitch(null)}
-                className={`w-full flex items-center gap-2.5 px-3 py-1.5 text-xs text-left transition-colors ${
-                  !currentLocationId
-                    ? 'bg-warm-light text-ink font-medium'
-                    : 'text-warm-gray hover:bg-warm-light hover:text-ink'
-                }`}
+                onClick={() => setLocationSelectorOpen(!locationSelectorOpen)}
+                className="w-full flex items-center gap-2.5 px-2 py-1.5 rounded-lg hover:bg-warm-light transition-colors text-left"
               >
-                All locations
+                <LocationIcon className="w-4 h-4 text-warm-gray shrink-0" />
+                <div className="min-w-0 flex-1">
+                  <div className="text-xs text-warm-gray truncate">
+                    {currentLocation ? currentLocation.name : 'All locations'}
+                  </div>
+                </div>
+                <ChevronIcon className={`w-3.5 h-3.5 text-warm-gray transition-transform ${locationSelectorOpen ? 'rotate-180' : ''}`} />
               </button>
-              <div className="border-t border-warm-border" />
-              {locations.map((loc) => (
-                <button
-                  key={loc.id}
-                  onClick={() => handleLocationSwitch(loc.id)}
-                  className={`w-full flex items-center gap-2.5 px-3 py-1.5 text-xs text-left transition-colors ${
-                    loc.id === currentLocationId
-                      ? 'bg-warm-light text-ink font-medium'
-                      : 'text-warm-gray hover:bg-warm-light hover:text-ink'
-                  }`}
-                >
-                  <span className="truncate">{loc.name}</span>
-                  {loc.city && (
-                    <span className="text-[10px] text-warm-gray/60 shrink-0">{loc.city}</span>
-                  )}
-                </button>
-              ))}
-            </div>
+
+              {locationSelectorOpen && (
+                <div className="mt-1.5 border border-warm-border rounded-lg bg-cream overflow-hidden max-h-64 overflow-y-auto">
+                  {/* All locations option */}
+                  <button
+                    onClick={() => handleLocationSwitch(null)}
+                    className={`w-full flex items-center gap-2.5 px-3 py-1.5 text-xs text-left transition-colors ${
+                      !currentLocationId
+                        ? 'bg-warm-light text-ink font-medium'
+                        : 'text-warm-gray hover:bg-warm-light hover:text-ink'
+                    }`}
+                  >
+                    All locations
+                  </button>
+                  <div className="border-t border-warm-border" />
+                  {locations.map((loc) => (
+                    <button
+                      key={loc.id}
+                      onClick={() => handleLocationSwitch(loc.id)}
+                      className={`w-full flex items-center gap-2.5 px-3 py-1.5 text-xs text-left transition-colors ${
+                        loc.id === currentLocationId
+                          ? 'bg-warm-light text-ink font-medium'
+                          : 'text-warm-gray hover:bg-warm-light hover:text-ink'
+                      }`}
+                    >
+                      <span className="truncate">{loc.name}</span>
+                      {loc.city && (
+                        <span className="text-[10px] text-warm-gray/60 shrink-0">{loc.city}</span>
+                      )}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </>
           )}
         </div>
       )}
 
       {/* Navigation */}
-      <nav className="flex-1 overflow-y-auto py-4 px-3">
+      <nav className={`flex-1 overflow-y-auto py-4 ${collapsed ? 'px-1.5' : 'px-3'}`}>
         {navGroups.map((group, gi) => (
           <div key={gi} className={gi > 0 ? 'mt-6' : ''}>
-            {group.label && (
+            {group.label && !collapsed && (
               <div className="px-2 mb-1.5 text-[10px] font-medium text-warm-gray uppercase tracking-wider">
                 {group.label}
               </div>
+            )}
+            {collapsed && gi > 0 && (
+              <div className="mx-1.5 mb-2 border-t border-warm-border" />
             )}
             <div className="space-y-0.5">
               {group.items.map((item) => (
                 <Link
                   key={item.href}
                   href={item.href}
-                  className={`flex items-center gap-2.5 px-2 py-1.5 rounded-md text-sm no-underline transition-colors ${
-                    isActive(item.href)
-                      ? 'bg-warm-light text-ink font-medium'
-                      : 'text-warm-gray hover:text-ink hover:bg-warm-light/50'
+                  title={collapsed ? item.label : undefined}
+                  className={`flex items-center rounded-md text-sm no-underline transition-colors ${
+                    collapsed
+                      ? `justify-center p-2 ${
+                          isActive(item.href)
+                            ? 'bg-warm-light text-ink'
+                            : 'text-warm-gray hover:text-ink hover:bg-warm-light/50'
+                        }`
+                      : `gap-2.5 px-2 py-1.5 ${
+                          isActive(item.href)
+                            ? 'bg-warm-light text-ink font-medium'
+                            : 'text-warm-gray hover:text-ink hover:bg-warm-light/50'
+                        }`
                   }`}
                 >
                   <item.icon className="w-4 h-4 shrink-0" />
-                  {item.label}
+                  {!collapsed && item.label}
                 </Link>
               ))}
             </div>
@@ -303,74 +336,85 @@ export function Sidebar({ currentOrg, memberships, userEmail, isAgencyAdmin, loc
       </nav>
 
       {/* Team + Notifications + Settings + User (only for org scope) */}
-      <div className="border-t border-warm-border p-3 space-y-1">
+      <div className={`border-t border-warm-border space-y-1 ${collapsed ? 'p-1.5' : 'p-3'}`}>
         {!isAgencyScope && !currentLocation && (
           <Link
             href={`${basePath}/team`}
-            className={`flex items-center gap-2.5 px-2 py-1.5 rounded-md text-sm no-underline transition-colors ${
-              pathname.includes('/team')
-                ? 'bg-warm-light text-ink font-medium'
-                : 'text-warm-gray hover:text-ink hover:bg-warm-light/50'
+            title={collapsed ? 'Team' : undefined}
+            className={`flex items-center rounded-md text-sm no-underline transition-colors ${
+              collapsed
+                ? `justify-center p-2 ${pathname.includes('/team') ? 'bg-warm-light text-ink' : 'text-warm-gray hover:text-ink hover:bg-warm-light/50'}`
+                : `gap-2.5 px-2 py-1.5 ${pathname.includes('/team') ? 'bg-warm-light text-ink font-medium' : 'text-warm-gray hover:text-ink hover:bg-warm-light/50'}`
             }`}
           >
             <TeamIcon className="w-4 h-4 shrink-0" />
-            Team
+            {!collapsed && 'Team'}
           </Link>
         )}
         {!isAgencyScope && !currentLocation && (
           <Link
             href={`${basePath}/notifications`}
-            className={`flex items-center gap-2.5 px-2 py-1.5 rounded-md text-sm no-underline transition-colors ${
-              pathname.includes('/notifications')
-                ? 'bg-warm-light text-ink font-medium'
-                : 'text-warm-gray hover:text-ink hover:bg-warm-light/50'
+            title={collapsed ? 'Notifications' : undefined}
+            className={`flex items-center rounded-md text-sm no-underline transition-colors ${
+              collapsed
+                ? `justify-center p-2 ${pathname.includes('/notifications') ? 'bg-warm-light text-ink' : 'text-warm-gray hover:text-ink hover:bg-warm-light/50'}`
+                : `gap-2.5 px-2 py-1.5 ${pathname.includes('/notifications') ? 'bg-warm-light text-ink font-medium' : 'text-warm-gray hover:text-ink hover:bg-warm-light/50'}`
             }`}
           >
             <BellIcon className="w-4 h-4 shrink-0" />
-            Notifications
+            {!collapsed && 'Notifications'}
           </Link>
         )}
         {!isAgencyScope && (
           <Link
             href={currentLocation && locationBasePath ? `${locationBasePath}/settings` : `${basePath}/settings`}
-            className={`flex items-center gap-2.5 px-2 py-1.5 rounded-md text-sm no-underline transition-colors ${
-              pathname.includes('/settings')
-                ? 'bg-warm-light text-ink font-medium'
-                : 'text-warm-gray hover:text-ink hover:bg-warm-light/50'
+            title={collapsed ? 'Settings' : undefined}
+            className={`flex items-center rounded-md text-sm no-underline transition-colors ${
+              collapsed
+                ? `justify-center p-2 ${pathname.includes('/settings') ? 'bg-warm-light text-ink' : 'text-warm-gray hover:text-ink hover:bg-warm-light/50'}`
+                : `gap-2.5 px-2 py-1.5 ${pathname.includes('/settings') ? 'bg-warm-light text-ink font-medium' : 'text-warm-gray hover:text-ink hover:bg-warm-light/50'}`
             }`}
           >
             <SettingsIcon className="w-4 h-4 shrink-0" />
-            Settings
+            {!collapsed && 'Settings'}
           </Link>
         )}
-        <div className="flex items-center justify-between px-2 py-1.5">
-          <span className="text-[11px] text-warm-gray font-mono truncate">{userEmail}</span>
-          <button
-            onClick={handleLogout}
-            className="text-[11px] text-warm-gray hover:text-ink transition-colors shrink-0 ml-2"
-          >
-            Sign out
-          </button>
-        </div>
+        {!collapsed && (
+          <div className="flex items-center justify-between px-2 py-1.5">
+            <span className="text-[11px] text-warm-gray font-mono truncate">{userEmail}</span>
+            <button
+              onClick={handleLogout}
+              className="text-[11px] text-warm-gray hover:text-ink transition-colors shrink-0 ml-2"
+            >
+              Sign out
+            </button>
+          </div>
+        )}
         {/* Ask Revet chat */}
         <button
           onClick={toggleChat}
-          className="flex items-center gap-2 px-2 py-1.5 rounded-md text-xs text-warm-gray hover:text-ink hover:bg-warm-light/50 transition-colors w-full"
+          title={collapsed ? 'Ask Revet' : undefined}
+          className={`flex items-center rounded-md text-warm-gray hover:text-ink hover:bg-warm-light/50 transition-colors w-full ${
+            collapsed ? 'justify-center p-2' : 'gap-2 px-2 py-1.5 text-xs'
+          }`}
         >
           <SparkleIcon className="w-3.5 h-3.5 shrink-0" />
-          <span className="flex-1 text-left">Ask Revet</span>
-          <kbd className="text-[10px] font-mono bg-warm-light rounded px-1.5 py-0.5">⌘J</kbd>
+          {!collapsed && <span className="flex-1 text-left">Ask Revet</span>}
+          {!collapsed && <kbd className="text-[10px] font-mono bg-warm-light rounded px-1.5 py-0.5">⌘J</kbd>}
         </button>
         {/* Cmd+K shortcut hint */}
         <button
           onClick={() => {
             window.dispatchEvent(new KeyboardEvent('keydown', { key: 'k', metaKey: true }))
           }}
-          className="flex items-center gap-2 px-2 py-1.5 rounded-md text-xs text-warm-gray hover:text-ink hover:bg-warm-light/50 transition-colors w-full"
+          title={collapsed ? 'Search' : undefined}
+          className={`flex items-center rounded-md text-warm-gray hover:text-ink hover:bg-warm-light/50 transition-colors w-full ${
+            collapsed ? 'justify-center p-2' : 'gap-2 px-2 py-1.5 text-xs'
+          }`}
         >
           <SearchIcon className="w-3.5 h-3.5 shrink-0" />
-          <span className="flex-1 text-left">Search</span>
-          <kbd className="text-[10px] font-mono bg-warm-light rounded px-1.5 py-0.5">⌘K</kbd>
+          {!collapsed && <span className="flex-1 text-left">Search</span>}
+          {!collapsed && <kbd className="text-[10px] font-mono bg-warm-light rounded px-1.5 py-0.5">⌘K</kbd>}
         </button>
       </div>
       <CommandPalette isAgencyAdmin={isAgencyAdmin} />
