@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createServerSupabase } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { checkAgencyAdmin } from '@/lib/locations'
+import { tierIncludes } from '@/lib/tiers'
+import type { ServiceTier } from '@/lib/types'
 
 /**
  * GET /api/locations/[locationId]/autopilot
@@ -80,15 +82,31 @@ export async function PUT(
 
   const adminClient = createAdminClient()
 
-  // Verify location exists
+  // Verify location exists and check tier
   const { data: location } = await adminClient
     .from('locations')
-    .select('id')
+    .select('id, service_tier')
     .eq('id', params.locationId)
     .single()
 
   if (!location) {
     return NextResponse.json({ error: 'Location not found' }, { status: 404 })
+  }
+
+  const tier = location.service_tier as ServiceTier
+
+  // AI reply drafts require standard+; auto-send (no approval) requires premium
+  if (enabled && !tierIncludes(tier, 'ai_reply_drafts')) {
+    return NextResponse.json(
+      { error: `AI reply drafts require Standard tier or above. Current tier: ${tier}` },
+      { status: 403 }
+    )
+  }
+  if (enabled && require_approval === false && !tierIncludes(tier, 'review_autopilot')) {
+    return NextResponse.json(
+      { error: `Auto-send replies (no approval) requires Premium tier. Current tier: ${tier}` },
+      { status: 403 }
+    )
   }
 
   const { data, error } = await adminClient

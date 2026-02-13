@@ -3,6 +3,7 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { generateGBPPost } from '@/lib/ai/generate-post'
 import { generateTopicPool } from '@/lib/ai/generate-topics'
 import { generatePostImage } from '@/lib/ideogram'
+import { tiersWithFeature } from '@/lib/tiers'
 
 export const maxDuration = 300
 
@@ -40,9 +41,10 @@ export async function GET(request: NextRequest) {
   // Get locations with posts_per_month > 0 and active GBP profiles
   const { data: locations } = await supabase
     .from('locations')
-    .select('id, name, city, state, org_id, posts_per_month, brand_voice, design_style, primary_color, secondary_color')
+    .select('id, name, city, state, org_id, posts_per_month, brand_voice, design_style, primary_color, secondary_color, service_tier')
     .gt('posts_per_month', 0)
     .eq('active', true)
+    .in('service_tier', tiersWithFeature('post_generation'))
 
   if (!locations || locations.length === 0) {
     return NextResponse.json({ ok: true, generated: 0, message: 'No locations with posts configured' })
