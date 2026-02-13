@@ -1,6 +1,8 @@
 import { createServerSupabase } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
 import { Sidebar } from '@/components/sidebar'
+import { ChatProvider } from '@/components/chat-context'
+import { ChatPane } from '@/components/chat-pane'
 import type { Organization, OrgMember } from '@/lib/types'
 
 export const dynamic = 'force-dynamic'
@@ -36,16 +38,23 @@ export default async function AgencyLayout({
   if (!currentOrg) redirect('/admin')
 
   return (
-    <div className="flex min-h-screen">
-      <Sidebar
-        currentOrg={currentOrg}
-        memberships={allMemberships}
-        userEmail={user.email || ''}
+    <ChatProvider>
+      <div className="flex min-h-screen">
+        <Sidebar
+          currentOrg={currentOrg}
+          memberships={allMemberships}
+          userEmail={user.email || ''}
+          isAgencyAdmin={true}
+        />
+        <main className="flex-1 p-8 max-w-6xl">
+          {children}
+        </main>
+      </div>
+      <ChatPane
+        orgSlug={currentOrg.slug}
+        orgName={currentOrg.name}
         isAgencyAdmin={true}
       />
-      <main className="flex-1 p-8 max-w-6xl">
-        {children}
-      </main>
-    </div>
+    </ChatProvider>
   )
 }
