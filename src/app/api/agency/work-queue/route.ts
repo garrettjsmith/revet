@@ -143,13 +143,13 @@ export async function GET(request: NextRequest) {
         )
           .limit(limit)
       : Promise.resolve({ data: [] as any[] }),
-    // 4: Pending posts in queue (info)
+    // 4: Draft posts needing agency review (important)
     wantsPosts
       ? applyScope(
           adminClient
             .from('gbp_post_queue')
-            .select('id, location_id, topic_type, summary, scheduled_for, status, assigned_to, created_at, locations(name, org_id, organizations(name, slug))')
-            .eq('status', 'pending')
+            .select('id, location_id, topic_type, summary, media_url, scheduled_for, status, assigned_to, source, topic_id, created_at, locations(name, org_id, organizations(name, slug))')
+            .in('status', ['draft', 'client_review', 'pending'])
         )
           .order('created_at', { ascending: false })
           .limit(limit)
@@ -298,11 +298,12 @@ function formatGoogleUpdateItem(profile: any) {
 function formatPostItem(post: any) {
   const loc = post.locations
   const org = loc?.organizations
+  const isDraft = post.status === 'draft'
 
   return {
     id: post.id,
     type: 'post_pending' as const,
-    priority: 'info' as const,
+    priority: isDraft ? 'important' as const : 'info' as const,
     created_at: post.created_at,
     assigned_to: post.assigned_to || null,
     location_id: post.location_id,
@@ -313,7 +314,10 @@ function formatPostItem(post: any) {
       id: post.id,
       topic_type: post.topic_type,
       summary: post.summary,
+      media_url: post.media_url || null,
       scheduled_for: post.scheduled_for,
+      status: post.status,
+      source: post.source || 'manual',
     },
   }
 }

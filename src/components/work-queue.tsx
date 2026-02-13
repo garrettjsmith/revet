@@ -27,7 +27,10 @@ interface WorkItemPost {
   id: string
   topic_type: string
   summary: string
+  media_url: string | null
   scheduled_for: string | null
+  status: string
+  source: string
 }
 
 interface WorkItemSyncError {
@@ -296,6 +299,54 @@ export function WorkQueue() {
   }
 
   // Post actions
+  const handleApprovePost = async (item: WorkItem) => {
+    if (!item.post) return
+    setActionLoading('approve_post')
+    try {
+      const res = await fetch(`/api/posts/${item.post.id}/approve`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'agency_approve' }),
+      })
+      if (res.ok) removeItem(item.id)
+    } catch { /* ignore */ }
+    setActionLoading(null)
+  }
+
+  const handleEditPost = async (item: WorkItem) => {
+    if (!item.post || !editText.trim()) return
+    setActionLoading('edit_post')
+    try {
+      const res = await fetch(`/api/posts/${item.post.id}/approve`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'edit', summary: editText.trim() }),
+      })
+      if (res.ok && data) {
+        const newItems = data.items.map((i) =>
+          i.id === item.id ? { ...i, post: { ...i.post!, summary: editText.trim() } } : i
+        )
+        setData({ ...data, items: newItems })
+        setEditMode(false)
+      }
+    } catch { /* ignore */ }
+    setActionLoading(null)
+  }
+
+  const handleRejectPost = async (item: WorkItem) => {
+    if (!item.post) return
+    setActionLoading('reject_post')
+    try {
+      const res = await fetch(`/api/posts/${item.post.id}/approve`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'reject' }),
+      })
+      if (res.ok) removeItem(item.id)
+    } catch { /* ignore */ }
+    setActionLoading(null)
+  }
+
   const handleDeletePost = async (item: WorkItem) => {
     if (!item.post) return
     setActionLoading('delete_post')
@@ -395,6 +446,9 @@ export function WorkQueue() {
               onSkipReview={() => handleSkipReview(rapidItem)}
               onRejectReview={() => handleRejectReview(rapidItem)}
               onGoogleAction={(action) => handleGoogleAction(rapidItem, action)}
+              onApprovePost={() => handleApprovePost(rapidItem)}
+              onEditPost={() => handleEditPost(rapidItem)}
+              onRejectPost={() => handleRejectPost(rapidItem)}
               onDeletePost={() => handleDeletePost(rapidItem)}
               onDismiss={() => removeItem(rapidItem.id)}
               teamMembers={teamMembers}
@@ -467,6 +521,9 @@ export function WorkQueue() {
                 onSkipReview={() => handleSkipReview(selectedItem)}
                 onRejectReview={() => handleRejectReview(selectedItem)}
                 onGoogleAction={(action) => handleGoogleAction(selectedItem, action)}
+                onApprovePost={() => handleApprovePost(selectedItem)}
+                onEditPost={() => handleEditPost(selectedItem)}
+                onRejectPost={() => handleRejectPost(selectedItem)}
                 onDeletePost={() => handleDeletePost(selectedItem)}
                 onDismiss={() => removeItem(selectedItem.id)}
                 teamMembers={teamMembers}
@@ -559,8 +616,8 @@ function ListItemContent({ item, teamMembers = [] }: { item: WorkItem; teamMembe
   }
 
   if (item.type === 'post_pending' && item.post) {
-    const topicLabels: Record<string, string> = {
-      STANDARD: 'Update', EVENT: 'Event', OFFER: 'Offer', ALERT: 'Alert',
+    const postStatusLabels: Record<string, string> = {
+      draft: 'Draft', client_review: 'Client Review', pending: 'Approved',
     }
     return (
       <div className="flex items-start gap-3">
@@ -568,8 +625,11 @@ function ListItemContent({ item, teamMembers = [] }: { item: WorkItem; teamMembe
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2 mb-0.5">
             <span className="text-sm font-medium text-ink truncate">
-              {topicLabels[item.post.topic_type] || 'Post'} pending
+              Post {postStatusLabels[item.post.status] || 'Pending'}
             </span>
+            {item.post.source === 'ai' && (
+              <span className="text-[10px] text-violet-600 font-medium">AI</span>
+            )}
           </div>
           <div className="text-xs text-warm-gray truncate mb-1">
             {item.location_name} · {item.org_name}
@@ -639,6 +699,9 @@ function ItemDetail({
   onSkipReview,
   onRejectReview,
   onGoogleAction,
+  onApprovePost,
+  onEditPost,
+  onRejectPost,
   onDeletePost,
   onDismiss,
   teamMembers,
@@ -656,6 +719,9 @@ function ItemDetail({
   onSkipReview: () => void
   onRejectReview: () => void
   onGoogleAction: (action: 'accept' | 'reject') => void
+  onApprovePost: () => void
+  onEditPost: () => void
+  onRejectPost: () => void
   onDeletePost: () => void
   onDismiss: () => void
   teamMembers: TeamMember[]
@@ -696,7 +762,14 @@ function ItemDetail({
       {item.type === 'post_pending' && item.post && (
         <PostDetail
           item={item}
+          editMode={editMode}
+          editText={editText}
+          setEditMode={setEditMode}
+          setEditText={setEditText}
           actionLoading={actionLoading}
+          onApprove={onApprovePost}
+          onEditPost={onEditPost}
+          onReject={onRejectPost}
           onDelete={onDeletePost}
           onDismiss={onDismiss}
         />
@@ -942,12 +1015,26 @@ function GoogleUpdateDetail({
 
 function PostDetail({
   item,
+  editMode,
+  editText,
+  setEditMode,
+  setEditText,
   actionLoading,
+  onApprove,
+  onEditPost,
+  onReject,
   onDelete,
   onDismiss,
 }: {
   item: WorkItem
+  editMode: boolean
+  editText: string
+  setEditMode: (v: boolean) => void
+  setEditText: (v: string) => void
   actionLoading: string | null
+  onApprove: () => void
+  onEditPost: () => void
+  onReject: () => void
   onDelete: () => void
   onDismiss: () => void
 }) {
@@ -959,6 +1046,16 @@ function PostDetail({
     ALERT: { label: 'Alert', classes: 'bg-red-50 text-red-600' },
   }
   const style = topicStyles[post.topic_type] || topicStyles.STANDARD
+  const isDraft = post.status === 'draft'
+  const isClientReview = post.status === 'client_review'
+  const isAI = post.source === 'ai'
+
+  const statusLabels: Record<string, { label: string; classes: string }> = {
+    draft: { label: 'Draft', classes: 'text-amber-600 bg-amber-50' },
+    client_review: { label: 'Client Review', classes: 'text-blue-600 bg-blue-50' },
+    pending: { label: 'Approved', classes: 'text-emerald-600 bg-emerald-50' },
+  }
+  const statusStyle = statusLabels[post.status] || statusLabels.draft
 
   return (
     <div>
@@ -968,10 +1065,20 @@ function PostDetail({
         </div>
         <div>
           <div className="flex items-center gap-2">
-            <span className="text-sm font-medium text-ink">Pending Post</span>
+            <span className="text-sm font-medium text-ink">
+              {isDraft ? 'Post Draft' : isClientReview ? 'Awaiting Client' : 'Scheduled Post'}
+            </span>
             <span className={`text-[10px] px-2 py-0.5 rounded-full font-medium ${style.classes}`}>
               {style.label}
             </span>
+            <span className={`text-[10px] px-2 py-0.5 rounded-full font-medium ${statusStyle.classes}`}>
+              {statusStyle.label}
+            </span>
+            {isAI && (
+              <span className="text-[10px] px-2 py-0.5 rounded-full font-medium text-violet-600 bg-violet-50">
+                AI Generated
+              </span>
+            )}
           </div>
           <div className="text-[10px] text-warm-gray mt-0.5">{item.location_name}</div>
         </div>
@@ -979,9 +1086,48 @@ function PostDetail({
 
       <div className="text-xs text-warm-gray mb-4">{item.location_name} · {item.org_name}</div>
 
-      <div className="bg-warm-light/50 rounded-xl p-4 mb-4 border border-warm-border/50">
-        <p className="text-sm text-ink leading-relaxed">{post.summary}</p>
-      </div>
+      {/* Image preview */}
+      {post.media_url && (
+        <div className="mb-4">
+          <img
+            src={post.media_url}
+            alt=""
+            className="w-full rounded-xl border border-warm-border/50 object-cover"
+            style={{ aspectRatio: '4/3' }}
+          />
+        </div>
+      )}
+
+      {/* Post content */}
+      {!editMode && (
+        <div className="bg-warm-light/50 rounded-xl p-4 mb-4 border border-warm-border/50">
+          <p className="text-sm text-ink leading-relaxed">{post.summary}</p>
+        </div>
+      )}
+
+      {/* Edit mode */}
+      {editMode && (
+        <div className="mb-4">
+          <div className="text-[10px] text-warm-gray uppercase tracking-wider font-medium mb-2">Edit Post</div>
+          <textarea
+            value={editText}
+            onChange={(e) => setEditText(e.target.value)}
+            rows={4}
+            maxLength={300}
+            className="w-full px-4 py-3 border border-warm-border rounded-xl text-sm text-ink outline-none focus:ring-2 focus:ring-ink/20 resize-y placeholder:text-warm-gray"
+            autoFocus
+          />
+          <div className="flex items-center justify-between mt-2">
+            <span className="text-[10px] text-warm-gray">{editText.length}/300</span>
+            <div className="flex items-center gap-2">
+              <button onClick={onEditPost} disabled={actionLoading === 'edit_post' || !editText.trim()} className="px-4 py-2 bg-ink hover:bg-ink/90 text-cream text-xs font-medium rounded-full transition-colors disabled:opacity-50">
+                {actionLoading === 'edit_post' ? 'Saving...' : 'Save'}
+              </button>
+              <button onClick={() => setEditMode(false)} className="px-4 py-2 text-xs text-warm-gray hover:text-ink transition-colors">Cancel</button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {post.scheduled_for && (
         <div className="text-xs text-warm-gray mb-4">
@@ -992,18 +1138,37 @@ function PostDetail({
         </div>
       )}
 
-      <div className="flex items-center gap-2">
-        <button onClick={onDismiss} className="px-4 py-2.5 border border-warm-border text-xs text-warm-gray rounded-full hover:text-ink hover:border-ink transition-colors">
-          Dismiss
-        </button>
-        <button
-          onClick={onDelete}
-          disabled={actionLoading === 'delete_post'}
-          className="px-4 py-2.5 text-xs text-warm-gray hover:text-red-600 transition-colors disabled:opacity-50"
-        >
-          {actionLoading === 'delete_post' ? 'Deleting...' : 'Delete Post'}
-        </button>
-      </div>
+      {/* Actions */}
+      {!editMode && (
+        <div className="flex items-center gap-2 flex-wrap">
+          {isDraft && (
+            <button
+              onClick={onApprove}
+              disabled={actionLoading === 'approve_post'}
+              className="px-5 py-2.5 bg-ink hover:bg-ink/90 text-cream text-xs font-medium rounded-full transition-colors disabled:opacity-50"
+            >
+              {actionLoading === 'approve_post' ? 'Sending...' : 'Approve & Send to Client'}
+            </button>
+          )}
+          <button
+            onClick={() => { setEditMode(true); setEditText(post.summary) }}
+            className="px-4 py-2.5 border border-warm-border text-xs text-ink rounded-full hover:border-ink transition-colors"
+          >
+            Edit
+          </button>
+          <div className="flex-1" />
+          {isDraft && (
+            <button onClick={onReject} disabled={actionLoading === 'reject_post'} className="px-4 py-2.5 text-xs text-warm-gray hover:text-red-600 transition-colors disabled:opacity-50">
+              {actionLoading === 'reject_post' ? 'Rejecting...' : 'Reject'}
+            </button>
+          )}
+          {!isDraft && (
+            <button onClick={onDismiss} className="px-4 py-2.5 text-xs text-warm-gray hover:text-ink transition-colors">
+              Dismiss
+            </button>
+          )}
+        </div>
+      )}
     </div>
   )
 }
