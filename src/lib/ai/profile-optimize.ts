@@ -18,6 +18,8 @@ export async function generateProfileDescription({
   state,
   services,
   currentDescription,
+  brandVoice,
+  correctionsContext,
 }: {
   businessName: string
   category: string | null
@@ -25,10 +27,12 @@ export async function generateProfileDescription({
   state: string | null
   services: string[]
   currentDescription: string | null
+  brandVoice?: string | null
+  correctionsContext?: string
 }): Promise<string> {
   const location = [city, state].filter(Boolean).join(', ')
 
-  const systemPrompt = `You are a local SEO expert writing Google Business Profile descriptions.
+  let systemPrompt = `You are a local SEO expert writing Google Business Profile descriptions.
 
 Rules:
 - Write exactly one description, 500-750 characters
@@ -40,6 +44,14 @@ Rules:
 - Do not include phone numbers, URLs, or promotional language
 - Do not mention prices or special offers
 - Focus on what makes the business valuable to customers`
+
+  if (brandVoice) {
+    systemPrompt += `\n\nBrand voice guidelines: ${brandVoice}`
+  }
+
+  if (correctionsContext) {
+    systemPrompt += `\n\nPrevious edits made by the team (match this tone and style):\n${correctionsContext}`
+  }
 
   const userMessage = `Write an optimized GBP description for:
 Business: ${businessName}

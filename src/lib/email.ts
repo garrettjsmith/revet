@@ -482,6 +482,56 @@ export function buildPostReviewEmail({
 }
 
 /**
+ * Build an HTML email for profile recommendation client approval.
+ */
+export function buildProfileRecommendationEmail({
+  locationName,
+  orgName,
+  field,
+  proposedValue,
+  reviewUrl,
+}: {
+  locationName: string
+  orgName: string
+  field: string
+  proposedValue: string
+  reviewUrl: string
+}) {
+  const fieldLabel = field === 'description' ? 'Business Description' : field.charAt(0).toUpperCase() + field.slice(1)
+  const escapedValue = proposedValue.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+
+  return `
+<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8"></head>
+<body style="margin:0;padding:0;background:#FAF8F5;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;">
+  <div style="max-width:560px;margin:0 auto;padding:32px 16px;">
+    <div style="background:#ffffff;border:1px solid #e8e4dc;border-radius:12px;overflow:hidden;">
+      <div style="background:#1a1a1a;padding:20px 24px;">
+        <h1 style="margin:0;color:#FAF8F5;font-size:16px;font-weight:600;">Profile Update for Review</h1>
+        <p style="margin:4px 0 0;color:#9b9590;font-size:12px;">${locationName} &middot; ${orgName}</p>
+      </div>
+      <div style="padding:20px 24px;">
+        <p style="margin:0 0 8px;color:#6b6560;font-size:12px;font-weight:600;text-transform:uppercase;letter-spacing:0.5px;">
+          ${fieldLabel}
+        </p>
+        <div style="background:#faf8f5;border:1px solid #e8e4dc;border-radius:8px;padding:16px;margin-bottom:20px;">
+          <p style="margin:0;color:#1a1a1a;font-size:14px;line-height:1.6;">${escapedValue}</p>
+        </div>
+        <a href="${reviewUrl}" style="display:inline-block;padding:10px 20px;background:#1a1a1a;color:#FAF8F5;text-decoration:none;border-radius:999px;font-size:13px;font-weight:500;">
+          Review &amp; Approve
+        </a>
+      </div>
+    </div>
+    <p style="text-align:center;margin:16px 0 0;color:#c4bfb8;font-size:10px;">
+      Sent by revet.app
+    </p>
+  </div>
+</body>
+</html>`
+}
+
+/**
  * Build an HTML email for the work queue digest.
  * Sent to agency admins summarizing pending queue items.
  */
@@ -493,6 +543,7 @@ export function buildQueueDigestEmail({
   googleUpdateCount,
   postCount,
   syncErrorCount,
+  profileOptCount,
   queueUrl,
 }: {
   recipientName: string | null
@@ -502,6 +553,7 @@ export function buildQueueDigestEmail({
   googleUpdateCount: number
   postCount: number
   syncErrorCount: number
+  profileOptCount?: number
   queueUrl: string
 }) {
   const urgentCount = reviewCount + googleUpdateCount
@@ -512,6 +564,7 @@ export function buildQueueDigestEmail({
     googleUpdateCount > 0 ? `<tr><td style="padding:6px 0;color:#1a1a1a;font-size:14px;">Google profile updates</td><td style="padding:6px 0;color:#2563eb;font-size:14px;text-align:right;font-weight:600;">${googleUpdateCount}</td></tr>` : '',
     draftCount > 0 ? `<tr><td style="padding:6px 0;color:#1a1a1a;font-size:14px;">AI drafts ready</td><td style="padding:6px 0;color:#d97706;font-size:14px;text-align:right;font-weight:600;">${draftCount}</td></tr>` : '',
     postCount > 0 ? `<tr><td style="padding:6px 0;color:#1a1a1a;font-size:14px;">Posts pending review</td><td style="padding:6px 0;color:#6b6560;font-size:14px;text-align:right;font-weight:600;">${postCount}</td></tr>` : '',
+    (profileOptCount || 0) > 0 ? `<tr><td style="padding:6px 0;color:#1a1a1a;font-size:14px;">Profile optimizations</td><td style="padding:6px 0;color:#7c3aed;font-size:14px;text-align:right;font-weight:600;">${profileOptCount}</td></tr>` : '',
     syncErrorCount > 0 ? `<tr><td style="padding:6px 0;color:#1a1a1a;font-size:14px;">Sync errors</td><td style="padding:6px 0;color:#dc2626;font-size:14px;text-align:right;font-weight:600;">${syncErrorCount}</td></tr>` : '',
   ].filter(Boolean).join('')
 

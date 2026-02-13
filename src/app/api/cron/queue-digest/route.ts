@@ -12,6 +12,7 @@ interface QueueCounts {
   googleUpdateCount: number
   postCount: number
   syncErrorCount: number
+  profileOptCount: number
   totalItems: number
 }
 
@@ -28,7 +29,7 @@ async function countQueueItems(
     return query
   }
 
-  const [negativeResult, aiDraftResult, googleResult, postResult, reviewSyncResult, profileSyncResult] = await Promise.all([
+  const [negativeResult, aiDraftResult, googleResult, postResult, reviewSyncResult, profileSyncResult, profileOptResult] = await Promise.all([
     scope(
       supabase
         .from('reviews')
@@ -70,6 +71,12 @@ async function countQueueItems(
         .select('location_id', { count: 'exact', head: true })
         .eq('sync_status', 'error')
     ),
+    scope(
+      supabase
+        .from('profile_recommendations')
+        .select('id', { count: 'exact', head: true })
+        .in('status', ['pending', 'client_review'])
+    ),
   ])
 
   const reviewCount = negativeResult.count || 0
@@ -77,9 +84,10 @@ async function countQueueItems(
   const googleUpdateCount = googleResult.count || 0
   const postCount = postResult.count || 0
   const syncErrorCount = (reviewSyncResult.count || 0) + (profileSyncResult.count || 0)
-  const totalItems = reviewCount + draftCount + googleUpdateCount + postCount + syncErrorCount
+  const profileOptCount = profileOptResult.count || 0
+  const totalItems = reviewCount + draftCount + googleUpdateCount + postCount + syncErrorCount + profileOptCount
 
-  return { reviewCount, draftCount, googleUpdateCount, postCount, syncErrorCount, totalItems }
+  return { reviewCount, draftCount, googleUpdateCount, postCount, syncErrorCount, profileOptCount, totalItems }
 }
 
 /**

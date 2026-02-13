@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createServerSupabase } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
+import { tierIncludes } from '@/lib/tiers'
+import type { ServiceTier } from '@/lib/types'
 
 export const dynamic = 'force-dynamic'
 
@@ -9,6 +11,10 @@ export const dynamic = 'force-dynamic'
  *
  * Updates a location's service tier. Agency admin only.
  * Body: { service_tier: 'starter' | 'standard' | 'premium' }
+ *
+ * On downgrade, disables features not included in the new tier:
+ * - Starter: disables autopilot, sets posts_per_month to 0
+ * - Standard: disables auto-send (sets require_approval to true), sets posts_per_month to 0
  */
 export async function PATCH(
   request: NextRequest,
@@ -40,15 +46,45 @@ export async function PATCH(
     return NextResponse.json({ error: 'Invalid service tier' }, { status: 400 })
   }
 
+  const newTier = service_tier as ServiceTier
   const adminClient = createAdminClient()
+
+  // Update the tier
+  const locationUpdate: Record<string, unknown> = { service_tier: newTier }
+
+  // If post generation not included in new tier, zero out posts_per_month
+  if (!tierIncludes(newTier, 'post_generation')) {
+    locationUpdate.posts_per_month = 0
+  }
+
   const { error } = await adminClient
     .from('locations')
-    .update({ service_tier })
+    .update(locationUpdate)
     .eq('id', locationId)
 
   if (error) {
     return NextResponse.json({ error: error.message }, { status: 500 })
   }
 
-  return NextResponse.json({ ok: true, service_tier })
+  // Disable features not included in the new tier
+  const disabled: string[] = []
+
+  // If AI drafts not included, disable autopilot entirely
+  if (!tierIncludes(newTier, 'ai_reply_drafts')) {
+    await adminClient
+      .from('review_autopilot_config')
+      .update({ enabled: false })
+      .eq('location_id', locationId)
+    disabled.push('autopilot')
+  }
+  // If autopilot auto-send not included, force require_approval
+  else if (!tierIncludes(newTier, 'review_autopilot')) {
+    await adminClient
+      .from('review_autopilot_config')
+      .update({ require_approval: true })
+      .eq('location_id', locationId)
+    disabled.push('auto-send')
+  }
+
+  return NextResponse.json({ ok: true, service_tier: newTier, disabled })
 }

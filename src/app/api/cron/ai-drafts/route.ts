@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { generateReviewReply } from '@/lib/ai/generate-reply'
+import { tiersWithFeature } from '@/lib/tiers'
 
 export const maxDuration = 60
 
@@ -41,14 +42,21 @@ export async function GET(request: NextRequest) {
 
   const locationIds = configs.map((c) => c.location_id)
 
-  // Get location names for AI context
+  // Get location names for AI context — filter to tiers that include AI drafts
   const { data: locations } = await supabase
     .from('locations')
-    .select('id, name')
+    .select('id, name, service_tier')
     .in('id', locationIds)
+    .in('service_tier', tiersWithFeature('ai_reply_drafts'))
 
-  const locationMap = new Map(locations?.map((l) => [l.id, l.name]) || [])
+  const locationMap = new Map(locations?.map((l) => [l.id, l]) || [])
   const configMap = new Map(configs.map((c) => [c.location_id, c]))
+
+  // Only process locations that passed the tier filter
+  const eligibleLocationIds = locations?.map((l) => l.id) || []
+  if (eligibleLocationIds.length === 0) {
+    return NextResponse.json({ ok: true, generated: 0, message: 'No eligible locations (tier filter)' })
+  }
 
   // Find Google reviews needing AI drafts:
   // - status = 'new' (not yet handled)
@@ -61,7 +69,7 @@ export async function GET(request: NextRequest) {
   const { data: reviews } = await supabase
     .from('reviews')
     .select('id, location_id, reviewer_name, rating, body')
-    .in('location_id', locationIds)
+    .in('location_id', eligibleLocationIds)
     .eq('status', 'new')
     .eq('platform', 'google')
     .is('reply_body', null)
@@ -89,7 +97,8 @@ export async function GET(request: NextRequest) {
       continue
     }
 
-    const businessName = locationMap.get(review.location_id) || 'the business'
+    const loc = locationMap.get(review.location_id)
+    const businessName = loc?.name || 'the business'
 
     try {
       const draft = await generateReviewReply({
@@ -112,8 +121,9 @@ export async function GET(request: NextRequest) {
 
       generated++
 
-      // If require_approval is false, also queue for auto-send with delay
-      if (!config.require_approval) {
+      // If require_approval is false AND tier is premium, queue for auto-send with delay
+      const isPremium = loc?.service_tier === 'premium'
+      if (!config.require_approval && isPremium) {
         const delayMin = config.delay_min_minutes || 30
         const delayMax = config.delay_max_minutes || 180
         const delayMs = (delayMin + Math.random() * (delayMax - delayMin)) * 60 * 1000

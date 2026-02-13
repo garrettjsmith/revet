@@ -40,7 +40,23 @@ interface WorkItemSyncError {
   last_synced_at: string | null
 }
 
-type WorkItemType = 'review_reply' | 'ai_draft_review' | 'google_update' | 'post_pending' | 'sync_error'
+interface WorkItemProfileOptRec {
+  id: string
+  field: string
+  current_value: unknown
+  proposed_value: unknown
+  ai_rationale: string | null
+  status: string
+  requires_client_approval: boolean
+  edited_value: unknown | null
+}
+
+interface WorkItemProfileOpt {
+  batch_id: string
+  recommendations: WorkItemProfileOptRec[]
+}
+
+type WorkItemType = 'review_reply' | 'ai_draft_review' | 'google_update' | 'post_pending' | 'sync_error' | 'profile_optimization'
 
 interface WorkItem {
   id: string
@@ -56,6 +72,7 @@ interface WorkItem {
   google_update?: WorkItemGoogleUpdate
   post?: WorkItemPost
   sync_error?: WorkItemSyncError
+  profile_optimization?: WorkItemProfileOpt
 }
 
 interface FieldDiff {
@@ -74,12 +91,13 @@ interface WorkQueueData {
     google_updates: number
     posts: number
     sync_errors: number
+    profile_optimizations: number
   }
   scope?: 'all' | 'mine'
   is_agency_admin?: boolean
 }
 
-type FilterType = 'all' | 'needs_reply' | 'ai_drafts' | 'google_updates' | 'posts' | 'sync_errors'
+type FilterType = 'all' | 'needs_reply' | 'ai_drafts' | 'google_updates' | 'posts' | 'sync_errors' | 'profile_optimizations'
 type ScopeType = 'all' | 'mine'
 type ViewMode = 'inbox' | 'rapid'
 
@@ -359,6 +377,65 @@ export function WorkQueue() {
     setActionLoading(null)
   }
 
+  // Profile optimization actions
+  const handleApproveRec = async (item: WorkItem, recId: string, editedValue?: unknown) => {
+    setActionLoading(`approve_rec_${recId}`)
+    try {
+      const res = await fetch(`/api/locations/${item.location_id}/recommendations`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'approve', recommendation_id: recId, edited_value: editedValue }),
+      })
+      if (res.ok) fetchData()
+    } catch { /* ignore */ }
+    setActionLoading(null)
+  }
+
+  const handleApproveBatch = async (item: WorkItem) => {
+    if (!item.profile_optimization) return
+    setActionLoading('approve_batch')
+    try {
+      const firstRec = item.profile_optimization.recommendations[0]
+      const res = await fetch(`/api/locations/${item.location_id}/recommendations`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'approve_batch',
+          recommendation_id: firstRec.id,
+          batch_id: item.profile_optimization.batch_id,
+        }),
+      })
+      if (res.ok) removeItem(item.id)
+    } catch { /* ignore */ }
+    setActionLoading(null)
+  }
+
+  const handleRejectRec = async (item: WorkItem, recId: string) => {
+    setActionLoading(`reject_rec_${recId}`)
+    try {
+      const res = await fetch(`/api/locations/${item.location_id}/recommendations`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'reject', recommendation_id: recId }),
+      })
+      if (res.ok) fetchData()
+    } catch { /* ignore */ }
+    setActionLoading(null)
+  }
+
+  const handleEditRec = async (item: WorkItem, recId: string, editedValue: unknown) => {
+    setActionLoading(`edit_rec_${recId}`)
+    try {
+      await fetch(`/api/locations/${item.location_id}/recommendations`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'edit', recommendation_id: recId, edited_value: editedValue }),
+      })
+      fetchData()
+    } catch { /* ignore */ }
+    setActionLoading(null)
+  }
+
   // Assignment
   const handleAssign = async (item: WorkItem, userId: string | null) => {
     try {
@@ -451,6 +528,10 @@ export function WorkQueue() {
               onRejectPost={() => handleRejectPost(rapidItem)}
               onDeletePost={() => handleDeletePost(rapidItem)}
               onDismiss={() => removeItem(rapidItem.id)}
+              onApproveRec={(recId, editedValue) => handleApproveRec(rapidItem, recId, editedValue)}
+              onApproveBatch={() => handleApproveBatch(rapidItem)}
+              onRejectRec={(recId) => handleRejectRec(rapidItem, recId)}
+              onEditRec={(recId, editedValue) => handleEditRec(rapidItem, recId, editedValue)}
               teamMembers={teamMembers}
               onAssign={(userId) => handleAssign(rapidItem, userId)}
             />
@@ -526,6 +607,10 @@ export function WorkQueue() {
                 onRejectPost={() => handleRejectPost(selectedItem)}
                 onDeletePost={() => handleDeletePost(selectedItem)}
                 onDismiss={() => removeItem(selectedItem.id)}
+                onApproveRec={(recId, editedValue) => handleApproveRec(selectedItem, recId, editedValue)}
+                onApproveBatch={() => handleApproveBatch(selectedItem)}
+                onRejectRec={(recId) => handleRejectRec(selectedItem, recId)}
+                onEditRec={(recId, editedValue) => handleEditRec(selectedItem, recId, editedValue)}
                 teamMembers={teamMembers}
                 onAssign={(userId) => handleAssign(selectedItem, userId)}
               />
@@ -681,6 +766,42 @@ function ListItemContent({ item, teamMembers = [] }: { item: WorkItem; teamMembe
     )
   }
 
+  if (item.type === 'profile_optimization' && item.profile_optimization) {
+    const recCount = item.profile_optimization.recommendations.length
+    const fields = item.profile_optimization.recommendations.map((r) => r.field)
+    const hasClientReview = item.profile_optimization.recommendations.some((r) => r.status === 'client_review')
+    return (
+      <div className="flex items-start gap-3">
+        <PriorityDot priority={item.priority} />
+        <div className="min-w-0 flex-1">
+          <div className="flex items-center gap-2 mb-0.5">
+            <span className="text-sm font-medium text-ink truncate">
+              Profile Optimization
+            </span>
+            <span className="text-[10px] text-violet-600 font-medium">AI</span>
+          </div>
+          <div className="text-xs text-warm-gray truncate mb-1">
+            {item.location_name} · {item.org_name}
+          </div>
+          <div className="text-xs text-ink/60">
+            {recCount} recommendation{recCount !== 1 ? 's' : ''}: {fields.join(', ')}
+          </div>
+          <div className="flex items-center gap-2 mt-1.5">
+            <TypeBadge type="profile_optimization" />
+            {hasClientReview && (
+              <>
+                <span className="text-warm-border">·</span>
+                <span className="text-[10px] text-emerald-600 font-medium">Awaiting client</span>
+              </>
+            )}
+            <span className="text-warm-border">·</span>
+            <span className="text-[10px] text-warm-gray">{timeAgo(item.created_at)}</span>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
   return null
 }
 
@@ -704,6 +825,10 @@ function ItemDetail({
   onRejectPost,
   onDeletePost,
   onDismiss,
+  onApproveRec,
+  onApproveBatch,
+  onRejectRec,
+  onEditRec,
   teamMembers,
   onAssign,
 }: {
@@ -724,6 +849,10 @@ function ItemDetail({
   onRejectPost: () => void
   onDeletePost: () => void
   onDismiss: () => void
+  onApproveRec: (recId: string, editedValue?: unknown) => void
+  onApproveBatch: () => void
+  onRejectRec: (recId: string) => void
+  onEditRec: (recId: string, editedValue: unknown) => void
   teamMembers: TeamMember[]
   onAssign: (userId: string | null) => void
 }) {
@@ -779,6 +908,17 @@ function ItemDetail({
         <SyncErrorDetail
           item={item}
           onDismiss={onDismiss}
+        />
+      )}
+
+      {item.type === 'profile_optimization' && item.profile_optimization && (
+        <ProfileOptDetail
+          item={item}
+          actionLoading={actionLoading}
+          onApproveRec={onApproveRec}
+          onApproveBatch={onApproveBatch}
+          onRejectRec={onRejectRec}
+          onEditRec={onEditRec}
         />
       )}
     </div>
@@ -1231,6 +1371,207 @@ function SyncErrorDetail({
   )
 }
 
+// ─── Profile Optimization Detail ─────────────────────────────
+
+function ProfileOptDetail({
+  item,
+  actionLoading,
+  onApproveRec,
+  onApproveBatch,
+  onRejectRec,
+  onEditRec,
+}: {
+  item: WorkItem
+  actionLoading: string | null
+  onApproveRec: (recId: string, editedValue?: unknown) => void
+  onApproveBatch: () => void
+  onRejectRec: (recId: string) => void
+  onEditRec: (recId: string, editedValue: unknown) => void
+}) {
+  const opt = item.profile_optimization!
+  const [editingId, setEditingId] = useState<string | null>(null)
+  const [editValue, setEditValue] = useState('')
+
+  const pendingRecs = opt.recommendations.filter((r) => r.status === 'pending')
+  const clientReviewRecs = opt.recommendations.filter((r) => r.status === 'client_review')
+
+  const fieldLabels: Record<string, string> = {
+    description: 'Business Description',
+    categories: 'Additional Categories',
+    attributes: 'Business Attributes',
+    hours: 'Business Hours',
+  }
+
+  return (
+    <div>
+      <div className="flex items-center gap-3 mb-4">
+        <div className="w-10 h-10 rounded-full bg-violet-100 flex items-center justify-center">
+          <OptimizeIcon className="w-5 h-5 text-violet-600" />
+        </div>
+        <div>
+          <div className="text-base font-medium text-ink">Profile Optimization</div>
+          <div className="text-xs text-warm-gray">{item.location_name} · {item.org_name}</div>
+        </div>
+      </div>
+
+      {pendingRecs.length > 0 && (
+        <>
+          <div className="text-[11px] text-warm-gray uppercase tracking-wider font-medium mb-3">
+            Pending Review ({pendingRecs.length})
+          </div>
+
+          {pendingRecs.map((rec) => (
+            <div key={rec.id} className="bg-warm-light rounded-xl p-4 mb-3 border border-warm-border">
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-xs font-medium text-ink">{fieldLabels[rec.field] || rec.field}</span>
+                {rec.requires_client_approval && (
+                  <span className="text-[10px] text-amber-600 bg-amber-50 px-1.5 py-0.5 rounded">Needs client approval</span>
+                )}
+              </div>
+
+              {rec.ai_rationale && (
+                <p className="text-xs text-warm-gray mb-3">{rec.ai_rationale}</p>
+              )}
+
+              {rec.field === 'description' && (
+                <div className="mb-3">
+                  {rec.current_value != null && (
+                    <div className="mb-2">
+                      <div className="text-[10px] text-warm-gray uppercase tracking-wider mb-1">Current</div>
+                      <p className="text-xs text-ink/60 leading-relaxed">{String(rec.current_value)}</p>
+                    </div>
+                  )}
+                  <div>
+                    <div className="text-[10px] text-emerald-600 uppercase tracking-wider mb-1">Proposed</div>
+                    {editingId === rec.id ? (
+                      <div>
+                        <textarea
+                          value={editValue}
+                          onChange={(e) => setEditValue(e.target.value)}
+                          className="w-full text-xs text-ink leading-relaxed p-3 border border-warm-border rounded-lg bg-white resize-none focus:outline-none focus:border-ink"
+                          rows={6}
+                        />
+                        <div className="flex items-center gap-2 mt-2">
+                          <span className="text-[10px] text-warm-gray font-mono">{editValue.length} chars</span>
+                          <div className="flex-1" />
+                          <button
+                            onClick={() => setEditingId(null)}
+                            className="text-xs text-warm-gray hover:text-ink transition-colors"
+                          >
+                            Cancel
+                          </button>
+                          <button
+                            onClick={() => {
+                              onEditRec(rec.id, editValue)
+                              setEditingId(null)
+                            }}
+                            className="px-3 py-1.5 text-xs bg-ink text-cream rounded-full hover:bg-ink/80 transition-colors"
+                          >
+                            Save Edit
+                          </button>
+                        </div>
+                      </div>
+                    ) : (
+                      <p className="text-xs text-ink leading-relaxed">
+                        {String(rec.edited_value || rec.proposed_value)}
+                      </p>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {rec.field === 'categories' && (
+                <div className="mb-3">
+                  <div className="text-[10px] text-emerald-600 uppercase tracking-wider mb-1">Suggested Categories</div>
+                  <div className="flex flex-wrap gap-1.5">
+                    {(rec.proposed_value as string[] || []).map((cat, i) => (
+                      <span key={i} className="text-xs bg-white border border-warm-border rounded-full px-2.5 py-1 text-ink">
+                        {cat}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {rec.field === 'hours' && (
+                <div className="mb-3">
+                  <p className="text-xs text-ink">Business hours need to be set manually.</p>
+                </div>
+              )}
+
+              <div className="flex items-center gap-2 pt-2 border-t border-warm-border/50">
+                {rec.field !== 'hours' && (
+                  <button
+                    onClick={() => onApproveRec(rec.id, rec.edited_value || undefined)}
+                    disabled={actionLoading === `approve_rec_${rec.id}`}
+                    className="px-3 py-1.5 text-xs bg-ink text-cream rounded-full hover:bg-ink/80 transition-colors disabled:opacity-50"
+                  >
+                    {actionLoading === `approve_rec_${rec.id}` ? 'Approving...' : (rec.requires_client_approval ? 'Approve & Send to Client' : 'Approve & Apply')}
+                  </button>
+                )}
+                {rec.field === 'description' && editingId !== rec.id && (
+                  <button
+                    onClick={() => {
+                      setEditingId(rec.id)
+                      setEditValue(String(rec.edited_value || rec.proposed_value || ''))
+                    }}
+                    className="px-3 py-1.5 text-xs border border-warm-border text-ink rounded-full hover:border-ink transition-colors"
+                  >
+                    Edit
+                  </button>
+                )}
+                <button
+                  onClick={() => onRejectRec(rec.id)}
+                  disabled={actionLoading === `reject_rec_${rec.id}`}
+                  className="px-3 py-1.5 text-xs text-warm-gray hover:text-red-600 transition-colors disabled:opacity-50"
+                >
+                  Reject
+                </button>
+              </div>
+            </div>
+          ))}
+
+          {pendingRecs.length > 1 && (
+            <button
+              onClick={onApproveBatch}
+              disabled={actionLoading === 'approve_batch'}
+              className="w-full py-2.5 text-xs bg-ink text-cream rounded-full hover:bg-ink/80 transition-colors disabled:opacity-50 mb-4"
+            >
+              {actionLoading === 'approve_batch' ? 'Approving all...' : `Approve All ${pendingRecs.length} Recommendations`}
+            </button>
+          )}
+        </>
+      )}
+
+      {clientReviewRecs.length > 0 && (
+        <>
+          <div className="text-[11px] text-emerald-600 uppercase tracking-wider font-medium mb-3 mt-4">
+            Awaiting Client Approval ({clientReviewRecs.length})
+          </div>
+          {clientReviewRecs.map((rec) => (
+            <div key={rec.id} className="bg-emerald-50 rounded-xl p-4 mb-3 border border-emerald-200">
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-xs font-medium text-ink">{fieldLabels[rec.field] || rec.field}</span>
+                <span className="text-[10px] text-emerald-600 font-medium">Sent to client</span>
+              </div>
+              <p className="text-xs text-ink/60 leading-relaxed">
+                {String(rec.edited_value || rec.proposed_value)}
+              </p>
+            </div>
+          ))}
+        </>
+      )}
+
+      <a
+        href={`/admin/${item.org_slug}/locations/${item.location_id}/gbp-profile`}
+        className="inline-block mt-2 px-4 py-2.5 border border-warm-border text-xs text-ink rounded-full hover:border-ink transition-colors no-underline"
+      >
+        View Full Profile
+      </a>
+    </div>
+  )
+}
+
 // ─── Shared Components ──────────────────────────────────────
 
 function QueueHeader({
@@ -1303,6 +1644,7 @@ function QueueHeader({
         <FilterTab active={filter === 'needs_reply'} onClick={() => setFilter('needs_reply')} label="Reviews" count={(counts?.needs_reply || 0) + (counts?.ai_drafts || 0)} />
         <FilterTab active={filter === 'google_updates'} onClick={() => setFilter('google_updates')} label="Profiles" count={counts?.google_updates} />
         <FilterTab active={filter === 'posts'} onClick={() => setFilter('posts')} label="Posts" count={counts?.posts} />
+        <FilterTab active={filter === 'profile_optimizations'} onClick={() => setFilter('profile_optimizations')} label="Optimize" count={counts?.profile_optimizations} />
         <FilterTab active={filter === 'sync_errors'} onClick={() => setFilter('sync_errors')} label="Errors" count={counts?.sync_errors} />
       </div>
     </div>
@@ -1401,6 +1743,7 @@ function TypeBadge({ type }: { type: string }) {
     google_update: { label: 'Profile', classes: 'text-blue-600 bg-blue-50' },
     post_pending: { label: 'Post', classes: 'text-amber-600 bg-amber-50' },
     sync_error: { label: 'Error', classes: 'text-red-600 bg-red-50' },
+    profile_optimization: { label: 'Optimize', classes: 'text-violet-600 bg-violet-50' },
   }
   const c = config[type]
   if (!c) return null
@@ -1485,6 +1828,16 @@ function ChevronIcon({ className }: { className?: string }) {
   return (
     <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
       <polyline points="6 9 12 15 18 9" />
+    </svg>
+  )
+}
+
+function OptimizeIcon({ className }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M12 20V10" />
+      <path d="M18 20V4" />
+      <path d="M6 20v-4" />
     </svg>
   )
 }
