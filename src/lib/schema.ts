@@ -1,4 +1,5 @@
-import type { Location, GBPProfile, GBPHoursPeriod, LocalLander } from '@/lib/types'
+import type { Location, GBPProfile, GBPHoursPeriod, GBPMedia, LocalLander } from '@/lib/types'
+import type { LanderAIContent } from '@/lib/ai/generate-lander-content'
 import { getTemplate } from '@/lib/lander-templates'
 
 /**
@@ -84,12 +85,14 @@ interface SchemaInput {
   gbp: GBPProfile | null
   lander: LocalLander
   reviewStats?: { averageRating: number; reviewCount: number } | null
+  photos?: GBPMedia[]
 }
 
 /**
  * Generate JSON-LD structured data for a local lander page.
+ * Returns an array: [LocalBusiness schema, optional FAQPage schema]
  */
-export function generateJsonLd({ location, gbp, lander, reviewStats }: SchemaInput): object {
+export function generateJsonLd({ location, gbp, lander, reviewStats, photos }: SchemaInput): object[] {
   // Determine Schema.org @type — prefer template's type, then GBP category, then fallback
   const template = getTemplate(lander.template_id || 'general')
   let schemaType = template.schemaType
@@ -177,13 +180,58 @@ export function generateJsonLd({ location, gbp, lander, reviewStats }: SchemaInp
   // Maps link
   if (gbp?.maps_uri) schema.hasMap = gbp.maps_uri
 
-  // Logo
-  if (lander.logo_url) schema.image = lander.logo_url
+  // Images — photos from GBP, fallback to logo
+  if (photos && photos.length > 0) {
+    schema.image = photos
+      .filter((p) => p.google_url)
+      .map((p) => p.google_url)
+  } else if (lander.logo_url) {
+    schema.image = lander.logo_url
+  }
 
   // Primary category name
   if (gbp?.primary_category_name) {
     schema.additionalType = gbp.primary_category_name
   }
 
-  return schema
+  // Services — hasOfferCatalog
+  const services = lander.custom_services
+  if (services && services.length > 0) {
+    const ai = lander.ai_content as LanderAIContent | null
+    schema.hasOfferCatalog = {
+      '@type': 'OfferCatalog',
+      name: 'Services',
+      itemListElement: services.map((svc) => ({
+        '@type': 'Offer',
+        itemOffered: {
+          '@type': 'Service',
+          name: svc.name,
+          ...(svc.description || ai?.service_descriptions?.[svc.name]
+            ? { description: svc.description || ai?.service_descriptions?.[svc.name] }
+            : {}),
+        },
+      })),
+    }
+  }
+
+  const schemas: object[] = [schema]
+
+  // FAQPage schema — separate graph node
+  const faq = lander.custom_faq || (lander.ai_content as LanderAIContent | null)?.faq
+  if (lander.show_faq && faq && faq.length > 0) {
+    schemas.push({
+      '@context': 'https://schema.org',
+      '@type': 'FAQPage',
+      mainEntity: faq.map((item) => ({
+        '@type': 'Question',
+        name: item.question,
+        acceptedAnswer: {
+          '@type': 'Answer',
+          text: item.answer,
+        },
+      })),
+    })
+  }
+
+  return schemas
 }
