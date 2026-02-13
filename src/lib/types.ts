@@ -457,8 +457,42 @@ export interface BrandConfig {
   secondary_color: string | null
   font_style: string | null
   sample_image_urls: string[]
+  voice_selections: VoiceSelections
+  style_selections: StyleSelections
+  logo_url: string | null
+  post_approval_mode: 'approve_first' | 'auto_post'
   created_at: string
   updated_at: string
+}
+
+export interface VoiceSelections {
+  personality?: string
+  tone?: string[]
+  formality?: string
+  notes?: string
+}
+
+export interface StyleSelections {
+  aesthetic?: string
+  color_mood?: string
+  typography?: string
+  notes?: string
+}
+
+export interface IntakeData {
+  keywords?: string[]
+  services?: { name: string; description: string }[]
+  target_cities?: string[]
+  highlights?: string[]
+  founding_year?: string
+  founding_city?: string
+  service_radius?: string
+  hours_of_operation?: string
+  holiday_closures?: string
+  business_description?: string
+  additional_notes?: string
+  cloud_folder_url?: string
+  client_contact_phone?: string
 }
 
 // GBP Performance
