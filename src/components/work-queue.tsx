@@ -56,7 +56,12 @@ interface WorkItemProfileOpt {
   recommendations: WorkItemProfileOptRec[]
 }
 
-type WorkItemType = 'review_reply' | 'ai_draft_review' | 'google_update' | 'post_pending' | 'sync_error' | 'profile_optimization'
+interface WorkItemStaleLander {
+  lander_id: string
+  slug: string
+}
+
+type WorkItemType = 'review_reply' | 'ai_draft_review' | 'google_update' | 'post_pending' | 'sync_error' | 'profile_optimization' | 'stale_lander'
 
 interface WorkItem {
   id: string
@@ -73,6 +78,7 @@ interface WorkItem {
   post?: WorkItemPost
   sync_error?: WorkItemSyncError
   profile_optimization?: WorkItemProfileOpt
+  stale_lander?: WorkItemStaleLander
 }
 
 interface FieldDiff {
@@ -92,12 +98,13 @@ interface WorkQueueData {
     posts: number
     sync_errors: number
     profile_optimizations: number
+    stale_landers: number
   }
   scope?: 'all' | 'mine'
   is_agency_admin?: boolean
 }
 
-type FilterType = 'all' | 'needs_reply' | 'ai_drafts' | 'google_updates' | 'posts' | 'sync_errors' | 'profile_optimizations'
+type FilterType = 'all' | 'needs_reply' | 'ai_drafts' | 'google_updates' | 'posts' | 'sync_errors' | 'profile_optimizations' | 'stale_landers'
 type ScopeType = 'all' | 'mine'
 type ViewMode = 'inbox' | 'rapid'
 
@@ -436,6 +443,33 @@ export function WorkQueue() {
     setActionLoading(null)
   }
 
+  // Stale lander actions
+  const handleRegenerateLander = async (item: WorkItem) => {
+    if (!item.stale_lander) return
+    setActionLoading('regenerate_lander')
+    try {
+      const res = await fetch(`/api/landers/ai-content`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ location_id: item.location_id }),
+      })
+      if (res.ok) removeItem(item.id)
+    } catch { /* ignore */ }
+    setActionLoading(null)
+  }
+
+  const handleDismissLander = async (item: WorkItem) => {
+    if (!item.stale_lander) return
+    setActionLoading('dismiss_lander')
+    try {
+      const res = await fetch(`/api/landers/${item.stale_lander.lander_id}/dismiss-stale`, {
+        method: 'POST',
+      })
+      if (res.ok) removeItem(item.id)
+    } catch { /* ignore */ }
+    setActionLoading(null)
+  }
+
   // Assignment
   const handleAssign = async (item: WorkItem, userId: string | null) => {
     try {
@@ -532,6 +566,8 @@ export function WorkQueue() {
               onApproveBatch={() => handleApproveBatch(rapidItem)}
               onRejectRec={(recId) => handleRejectRec(rapidItem, recId)}
               onEditRec={(recId, editedValue) => handleEditRec(rapidItem, recId, editedValue)}
+              onRegenerateLander={() => handleRegenerateLander(rapidItem)}
+              onDismissLander={() => handleDismissLander(rapidItem)}
               teamMembers={teamMembers}
               onAssign={(userId) => handleAssign(rapidItem, userId)}
             />
@@ -611,6 +647,8 @@ export function WorkQueue() {
                 onApproveBatch={() => handleApproveBatch(selectedItem)}
                 onRejectRec={(recId) => handleRejectRec(selectedItem, recId)}
                 onEditRec={(recId, editedValue) => handleEditRec(selectedItem, recId, editedValue)}
+                onRegenerateLander={() => handleRegenerateLander(selectedItem)}
+                onDismissLander={() => handleDismissLander(selectedItem)}
                 teamMembers={teamMembers}
                 onAssign={(userId) => handleAssign(selectedItem, userId)}
               />
@@ -802,6 +840,30 @@ function ListItemContent({ item, teamMembers = [] }: { item: WorkItem; teamMembe
     )
   }
 
+  if (item.type === 'stale_lander' && item.stale_lander) {
+    return (
+      <div className="flex items-start gap-3">
+        <PriorityDot priority={item.priority} />
+        <div className="min-w-0 flex-1">
+          <div className="flex items-center gap-2 mb-0.5">
+            <span className="text-sm font-medium text-ink truncate">Stale Lander Content</span>
+          </div>
+          <div className="text-xs text-warm-gray truncate mb-1">
+            {item.location_name} · {item.org_name}
+          </div>
+          <div className="text-xs text-amber-600">
+            AI content needs regeneration
+          </div>
+          <div className="flex items-center gap-2 mt-1.5">
+            <TypeBadge type="stale_lander" />
+            <span className="text-warm-border">·</span>
+            <span className="text-[10px] text-warm-gray">{timeAgo(item.created_at)}</span>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
   return null
 }
 
@@ -829,6 +891,8 @@ function ItemDetail({
   onApproveBatch,
   onRejectRec,
   onEditRec,
+  onRegenerateLander,
+  onDismissLander,
   teamMembers,
   onAssign,
 }: {
@@ -853,6 +917,8 @@ function ItemDetail({
   onApproveBatch: () => void
   onRejectRec: (recId: string) => void
   onEditRec: (recId: string, editedValue: unknown) => void
+  onRegenerateLander: () => void
+  onDismissLander: () => void
   teamMembers: TeamMember[]
   onAssign: (userId: string | null) => void
 }) {
@@ -919,6 +985,15 @@ function ItemDetail({
           onApproveBatch={onApproveBatch}
           onRejectRec={onRejectRec}
           onEditRec={onEditRec}
+        />
+      )}
+
+      {item.type === 'stale_lander' && item.stale_lander && (
+        <StaleLanderDetail
+          item={item}
+          actionLoading={actionLoading}
+          onRegenerate={onRegenerateLander}
+          onDismiss={onDismissLander}
         />
       )}
     </div>
@@ -1572,6 +1647,78 @@ function ProfileOptDetail({
   )
 }
 
+// ─── Stale Lander Detail ─────────────────────────────────────
+
+function StaleLanderDetail({
+  item,
+  actionLoading,
+  onRegenerate,
+  onDismiss,
+}: {
+  item: WorkItem
+  actionLoading: string | null
+  onRegenerate: () => void
+  onDismiss: () => void
+}) {
+  const lander = item.stale_lander!
+  const landerUrl = `/l/${lander.slug}`
+
+  return (
+    <div>
+      <div className="flex items-center gap-3 mb-4">
+        <div className="w-10 h-10 rounded-full bg-amber-100 flex items-center justify-center shrink-0">
+          <LanderIcon className="w-5 h-5 text-amber-600" />
+        </div>
+        <div>
+          <div className="flex items-center gap-2">
+            <span className="text-sm font-medium text-ink">Stale Lander Content</span>
+            <PriorityBadge priority="important" />
+          </div>
+          <div className="text-[10px] text-warm-gray mt-0.5">{item.location_name}</div>
+        </div>
+      </div>
+
+      <div className="text-xs text-warm-gray mb-4">{item.location_name} · {item.org_name}</div>
+
+      <div className="bg-amber-50 rounded-xl p-4 mb-4 border border-amber-200">
+        <div className="text-[10px] text-amber-600 uppercase tracking-wider font-medium mb-2">Content Outdated</div>
+        <p className="text-sm text-ink leading-relaxed">
+          The GBP profile for this location has been updated since the lander content was last generated.
+          Regenerate to keep the landing page accurate and aligned with the latest business information.
+        </p>
+      </div>
+
+      <div className="text-xs text-warm-gray mb-4">
+        Landing page: <a href={landerUrl} target="_blank" rel="noopener noreferrer" className="text-ink underline">{landerUrl}</a>
+      </div>
+
+      <div className="flex items-center gap-2">
+        <button
+          onClick={onRegenerate}
+          disabled={actionLoading === 'regenerate_lander'}
+          className="px-5 py-2.5 bg-ink hover:bg-ink/90 text-cream text-xs font-medium rounded-full transition-colors disabled:opacity-50"
+        >
+          {actionLoading === 'regenerate_lander' ? 'Regenerating...' : 'Regenerate Content'}
+        </button>
+        <a
+          href={`/admin/${item.org_slug}/locations/${item.location_id}/lander`}
+          className="px-4 py-2.5 border border-warm-border text-xs text-ink rounded-full hover:border-ink transition-colors no-underline"
+        >
+          View Lander
+        </a>
+        <div className="flex-1" />
+        <button
+          onClick={onDismiss}
+          disabled={actionLoading === 'dismiss_lander'}
+          className="px-4 py-2.5 text-xs text-warm-gray hover:text-ink transition-colors disabled:opacity-50"
+        >
+          Dismiss
+        </button>
+      </div>
+    </div>
+  )
+}
+
 // ─── Shared Components ──────────────────────────────────────
 
 function QueueHeader({
@@ -1645,6 +1792,7 @@ function QueueHeader({
         <FilterTab active={filter === 'google_updates'} onClick={() => setFilter('google_updates')} label="Profiles" count={counts?.google_updates} />
         <FilterTab active={filter === 'posts'} onClick={() => setFilter('posts')} label="Posts" count={counts?.posts} />
         <FilterTab active={filter === 'profile_optimizations'} onClick={() => setFilter('profile_optimizations')} label="Optimize" count={counts?.profile_optimizations} />
+        <FilterTab active={filter === 'stale_landers'} onClick={() => setFilter('stale_landers')} label="Landers" count={counts?.stale_landers} />
         <FilterTab active={filter === 'sync_errors'} onClick={() => setFilter('sync_errors')} label="Errors" count={counts?.sync_errors} />
       </div>
     </div>
@@ -1744,6 +1892,7 @@ function TypeBadge({ type }: { type: string }) {
     post_pending: { label: 'Post', classes: 'text-amber-600 bg-amber-50' },
     sync_error: { label: 'Error', classes: 'text-red-600 bg-red-50' },
     profile_optimization: { label: 'Optimize', classes: 'text-violet-600 bg-violet-50' },
+    stale_lander: { label: 'Lander', classes: 'text-amber-600 bg-amber-50' },
   }
   const c = config[type]
   if (!c) return null
@@ -1838,6 +1987,15 @@ function OptimizeIcon({ className }: { className?: string }) {
       <path d="M12 20V10" />
       <path d="M18 20V4" />
       <path d="M6 20v-4" />
+    </svg>
+  )
+}
+
+function LanderIcon({ className }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z" />
+      <path d="M2 10h20" />
     </svg>
   )
 }

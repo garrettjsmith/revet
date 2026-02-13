@@ -141,6 +141,22 @@ export async function GET(request: NextRequest) {
         }),
       }))
 
+    // Count AI drafts ready for review and replies sent in last 24h
+    const { count: aiDraftsReady } = await supabase
+      .from('reviews')
+      .select('id', { count: 'exact', head: true })
+      .in('location_id', orgLocationIds)
+      .not('ai_draft', 'is', null)
+      .is('reply_body', null)
+      .neq('status', 'archived')
+
+    const { count: repliesSent } = await supabase
+      .from('reviews')
+      .select('id', { count: 'exact', head: true })
+      .in('location_id', orgLocationIds)
+      .not('reply_body', 'is', null)
+      .gte('reply_update_time', since)
+
     sendEmail({
       to: Array.from(allEmails),
       subject: `${orgName}: ${totalReviews} review${totalReviews === 1 ? '' : 's'} yesterday`,
@@ -154,6 +170,8 @@ export async function GET(request: NextRequest) {
         negativeCount,
         locations: locationSummaries,
         needsAttention,
+        aiDraftsReady: aiDraftsReady || 0,
+        repliesSent: repliesSent || 0,
       }),
     }).catch((err) => {
       console.error(`[cron/review-digest] Email failed for org ${orgId}:`, err)

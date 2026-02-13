@@ -13,6 +13,7 @@ interface QueueCounts {
   postCount: number
   syncErrorCount: number
   profileOptCount: number
+  staleLanderCount: number
   totalItems: number
 }
 
@@ -29,7 +30,7 @@ async function countQueueItems(
     return query
   }
 
-  const [negativeResult, aiDraftResult, googleResult, postResult, reviewSyncResult, profileSyncResult, profileOptResult] = await Promise.all([
+  const [negativeResult, aiDraftResult, googleResult, postResult, reviewSyncResult, profileSyncResult, profileOptResult, staleLanderResult] = await Promise.all([
     scope(
       supabase
         .from('reviews')
@@ -77,6 +78,13 @@ async function countQueueItems(
         .select('id', { count: 'exact', head: true })
         .in('status', ['pending', 'client_review'])
     ),
+    scope(
+      supabase
+        .from('local_landers')
+        .select('id', { count: 'exact', head: true })
+        .eq('active', true)
+        .eq('ai_content_stale', true)
+    ),
   ])
 
   const reviewCount = negativeResult.count || 0
@@ -85,9 +93,10 @@ async function countQueueItems(
   const postCount = postResult.count || 0
   const syncErrorCount = (reviewSyncResult.count || 0) + (profileSyncResult.count || 0)
   const profileOptCount = profileOptResult.count || 0
-  const totalItems = reviewCount + draftCount + googleUpdateCount + postCount + syncErrorCount + profileOptCount
+  const staleLanderCount = staleLanderResult.count || 0
+  const totalItems = reviewCount + draftCount + googleUpdateCount + postCount + syncErrorCount + profileOptCount + staleLanderCount
 
-  return { reviewCount, draftCount, googleUpdateCount, postCount, syncErrorCount, profileOptCount, totalItems }
+  return { reviewCount, draftCount, googleUpdateCount, postCount, syncErrorCount, profileOptCount, staleLanderCount, totalItems }
 }
 
 /**
