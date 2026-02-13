@@ -32,10 +32,6 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
 
-  if (!process.env.ANTHROPIC_API_KEY) {
-    return NextResponse.json({ error: 'AI not configured' }, { status: 503 })
-  }
-
   const supabase = createAdminClient()
 
   // Get locations with posts_per_month > 0 and active GBP profiles
@@ -48,6 +44,10 @@ export async function GET(request: NextRequest) {
 
   if (!locations || locations.length === 0) {
     return NextResponse.json({ ok: true, generated: 0, message: 'No locations with posts configured' })
+  }
+
+  if (!process.env.ANTHROPIC_API_KEY) {
+    return NextResponse.json({ error: 'AI not configured' }, { status: 503 })
   }
 
   const locationIds = locations.map((l) => l.id)
