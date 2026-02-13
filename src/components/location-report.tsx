@@ -34,6 +34,23 @@ interface RecentReview {
   status: string
 }
 
+interface GeoGridScan {
+  keyword: string
+  grid_size: number
+  solv: number | null
+  arp: number | null
+  atrp: number | null
+  grid_data: Array<{ lat: number; lng: number; rank: number }>
+  competitors: Array<{ name: string; solv?: number; arp?: number; review_count?: number; rating?: number }>
+  scanned_at: string
+}
+
+interface SearchKeyword {
+  keyword: string
+  impressions: number | null
+  threshold: number | null
+}
+
 interface Props {
   orgSlug: string
   locationId: string
@@ -58,6 +75,8 @@ interface Props {
   profileComplete: number
   profileTotal: number
   platformCounts: Record<string, number>
+  geoGridScan?: GeoGridScan | null
+  searchKeywords?: SearchKeyword[]
 }
 
 type ChartMetric = 'actions' | 'impressions' | 'calls' | 'directions' | 'clicks'
@@ -82,6 +101,8 @@ export function LocationReportView({
   profileComplete,
   profileTotal,
   platformCounts,
+  geoGridScan,
+  searchKeywords = [],
 }: Props) {
   const [chartMetric, setChartMetric] = useState<ChartMetric>('actions')
 
@@ -167,6 +188,120 @@ export function LocationReportView({
             No GBP data yet. Metrics sync daily.
           </div>
         )}
+      </div>
+
+      {/* Rank Tracking + Search Keywords Row */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        {/* Geo-Grid Rank Visualization */}
+        <div className="border border-warm-border rounded-xl p-5">
+          <h2 className="text-sm font-medium text-ink mb-1">Local Rank Grid</h2>
+          {geoGridScan ? (
+            <>
+              <p className="text-[10px] text-warm-gray mb-4">
+                Keyword: <span className="text-ink">{geoGridScan.keyword}</span>
+                {' · '}
+                {new Date(geoGridScan.scanned_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+              </p>
+
+              {/* SoLV + ARP metrics */}
+              <div className="grid grid-cols-3 gap-3 mb-4">
+                <div className="text-center">
+                  <div className="text-2xl font-serif text-ink">
+                    {geoGridScan.solv != null ? `${Math.round(geoGridScan.solv)}%` : '--'}
+                  </div>
+                  <div className="text-[10px] text-warm-gray">SoLV</div>
+                </div>
+                <div className="text-center">
+                  <div className="text-2xl font-serif text-ink">
+                    {geoGridScan.arp != null ? geoGridScan.arp.toFixed(1) : '--'}
+                  </div>
+                  <div className="text-[10px] text-warm-gray">Avg Rank</div>
+                </div>
+                <div className="text-center">
+                  <div className="text-2xl font-serif text-ink">
+                    {geoGridScan.atrp != null ? geoGridScan.atrp.toFixed(1) : '--'}
+                  </div>
+                  <div className="text-[10px] text-warm-gray">ATRP</div>
+                </div>
+              </div>
+
+              {/* Grid visualization */}
+              <GeoGrid points={geoGridScan.grid_data} gridSize={geoGridScan.grid_size} />
+
+              {/* Competitors */}
+              {geoGridScan.competitors && geoGridScan.competitors.length > 0 && (
+                <div className="mt-4 pt-3 border-t border-warm-border/50">
+                  <div className="text-[10px] text-warm-gray uppercase tracking-wider mb-2">Top Competitors</div>
+                  <div className="space-y-1.5">
+                    {geoGridScan.competitors.slice(0, 5).map((c, i) => (
+                      <div key={i} className="flex items-center justify-between text-xs">
+                        <span className="text-ink truncate flex-1">{c.name}</span>
+                        {c.solv != null && <span className="text-warm-gray ml-2">{Math.round(c.solv)}% SoLV</span>}
+                        {c.rating != null && <span className="text-amber-400 ml-2">{c.rating.toFixed(1)} ★</span>}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </>
+          ) : (
+            <div className="h-[280px] flex flex-col items-center justify-center text-xs text-warm-gray">
+              <p>No rank tracking data yet.</p>
+              <p className="text-[10px] mt-1">Connect LocalFalcon to see geo-grid rankings.</p>
+            </div>
+          )}
+        </div>
+
+        {/* Search Keywords */}
+        <div className="border border-warm-border rounded-xl p-5">
+          <h2 className="text-sm font-medium text-ink mb-1">Top Search Keywords</h2>
+          <p className="text-[10px] text-warm-gray mb-4">What people searched to find this business</p>
+          {searchKeywords.length > 0 ? (
+            <div className="space-y-0">
+              {/* Header */}
+              <div className="flex items-center justify-between pb-2 border-b border-warm-border/50 text-[10px] text-warm-gray uppercase tracking-wider">
+                <span>Keyword</span>
+                <span>Impressions</span>
+              </div>
+              {searchKeywords.map((kw, i) => {
+                const maxImpressions = searchKeywords[0]?.impressions || 1
+                const barWidth = kw.impressions != null ? (kw.impressions / maxImpressions) * 100 : 0
+                return (
+                  <div
+                    key={i}
+                    className="flex items-center gap-3 py-1.5 border-b border-warm-border/20"
+                  >
+                    <span className="text-xs text-ink flex-1 truncate">{kw.keyword}</span>
+                    <div className="flex items-center gap-2 w-[120px] shrink-0 justify-end">
+                      {kw.impressions != null ? (
+                        <>
+                          <div className="w-[60px] h-1.5 bg-warm-light rounded-full overflow-hidden">
+                            <div
+                              className="h-full bg-ink/40 rounded-full"
+                              style={{ width: `${barWidth}%` }}
+                            />
+                          </div>
+                          <span className="text-xs font-mono text-warm-gray w-10 text-right">
+                            {formatNumber(kw.impressions)}
+                          </span>
+                        </>
+                      ) : (
+                        <span className="text-[10px] text-warm-gray">
+                          &lt; {kw.threshold || 15}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+          ) : (
+            <div className="h-[280px] flex flex-col items-center justify-center text-xs text-warm-gray">
+              <p>No keyword data yet.</p>
+              <p className="text-[10px] mt-1">Keywords sync monthly from GBP.</p>
+            </div>
+          )}
+        </div>
       </div>
 
       {/* Review Health Section */}
@@ -414,6 +549,50 @@ function StatRow({ label, value, warn }: { label: string; value: string; warn?: 
     <div className="flex items-center justify-between">
       <span className="text-xs text-warm-gray">{label}</span>
       <span className={`text-xs font-mono ${warn ? 'text-red-500' : 'text-ink'}`}>{value}</span>
+    </div>
+  )
+}
+
+/**
+ * Geo-grid visualization — shows rank positions as a color-coded grid.
+ * Green = top 3 (local pack), yellow = 4-10, red = 11+, gray = not found.
+ */
+function GeoGrid({ points, gridSize }: { points: Array<{ lat: number; lng: number; rank: number }>; gridSize: number }) {
+  if (!points || points.length === 0) return null
+
+  // Determine grid dimensions (e.g. 49 = 7x7)
+  const side = Math.round(Math.sqrt(gridSize || points.length))
+
+  // Sort points into a grid by lat (desc) then lng (asc) to match map orientation
+  const sorted = [...points].sort((a, b) => {
+    if (Math.abs(a.lat - b.lat) > 0.001) return b.lat - a.lat // top to bottom
+    return a.lng - b.lng // left to right
+  })
+
+  const rankColor = (rank: number) => {
+    if (rank <= 0 || rank > 20) return 'bg-warm-gray/20 text-warm-gray' // not found
+    if (rank <= 3) return 'bg-emerald-500 text-white' // local pack
+    if (rank <= 10) return 'bg-amber-400 text-ink' // page 1
+    return 'bg-red-400 text-white' // page 2+
+  }
+
+  return (
+    <div
+      className="grid gap-1 mx-auto"
+      style={{
+        gridTemplateColumns: `repeat(${side}, 1fr)`,
+        maxWidth: side * 40,
+      }}
+    >
+      {sorted.slice(0, side * side).map((p, i) => (
+        <div
+          key={i}
+          className={`aspect-square rounded flex items-center justify-center text-[10px] font-bold ${rankColor(p.rank)}`}
+          title={`Rank ${p.rank > 20 ? '20+' : p.rank} at ${p.lat.toFixed(3)}, ${p.lng.toFixed(3)}`}
+        >
+          {p.rank > 0 && p.rank <= 20 ? p.rank : ''}
+        </div>
+      ))}
     </div>
   )
 }
