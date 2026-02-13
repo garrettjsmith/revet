@@ -1,16 +1,25 @@
-'use client'
-
-import type { Location, GBPProfile, GBPHoursPeriod, LocalLander, Review } from '@/lib/types'
+import type { Location, GBPProfile, GBPHoursPeriod, GBPMedia, LocalLander, Review } from '@/lib/types'
 import type { LanderAIContent } from '@/lib/ai/generate-lander-content'
 import { getTemplate } from '@/lib/lander-templates'
 import type { TemplateSection, TemplateField } from '@/lib/lander-templates'
+import { GoogleMapEmbed } from '@/components/google-map-embed'
+
+interface NearbyLocation {
+  id: string
+  name: string
+  city: string | null
+  state: string | null
+  lander_slug: string
+}
 
 interface LanderProps {
   lander: LocalLander
   location: Location
   gbp: GBPProfile | null
+  photos: GBPMedia[]
   reviews: Review[]
   reviewStats: { averageRating: number; reviewCount: number } | null
+  nearbyLocations: NearbyLocation[]
 }
 
 const DAY_ORDER = ['MONDAY', 'TUESDAY', 'WEDNESDAY', 'THURSDAY', 'FRIDAY', 'SATURDAY', 'SUNDAY']
@@ -56,7 +65,7 @@ function StarRating({ rating, size = 'sm' }: { rating: number; size?: 'sm' | 'lg
   )
 }
 
-export function LocalLanderPage({ lander, location, gbp, reviews, reviewStats }: LanderProps) {
+export function LocalLanderPage({ lander, location, gbp, photos, reviews, reviewStats, nearbyLocations }: LanderProps) {
   const primary = lander.primary_color || '#1B4965'
   const address = formatAddress(location)
   const phone = gbp?.phone_primary || location.phone
@@ -201,14 +210,10 @@ export function LocalLanderPage({ lander, location, gbp, reviews, reviewStats }:
             <section key={index}>
               <h2 className="text-lg font-semibold text-gray-900 mb-3">{section.label}</h2>
               <div className="rounded-lg overflow-hidden border border-gray-100">
-                <iframe
+                <GoogleMapEmbed
                   title={`Map of ${name}`}
-                  width="100%"
-                  height="300"
-                  style={{ border: 0 }}
-                  loading="lazy"
-                  referrerPolicy="no-referrer-when-downgrade"
-                  src={`https://www.google.com/maps/embed/v1/place?key=${process.env.NEXT_PUBLIC_GOOGLE_MAPS_KEY || ''}&q=${gbp.latitude},${gbp.longitude}&zoom=15`}
+                  latitude={gbp.latitude}
+                  longitude={gbp.longitude}
                 />
               </div>
             </section>
@@ -334,6 +339,52 @@ export function LocalLanderPage({ lander, location, gbp, reviews, reviewStats }:
 
       <main className="max-w-3xl mx-auto px-6 py-8 space-y-10">
         {template.sections.map((section, i) => renderSection(section, i))}
+
+        {/* Photos — rendered after template sections, before nearby */}
+        {photos.length > 0 && (
+          <section>
+            <h2 className="text-lg font-semibold text-gray-900 mb-3">Photos</h2>
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+              {photos.map((photo) => (
+                <div key={photo.id} className="aspect-square rounded-lg overflow-hidden bg-gray-50">
+                  <img
+                    src={photo.google_url || photo.thumbnail_url || ''}
+                    alt={photo.description || name}
+                    className="w-full h-full object-cover"
+                    loading="lazy"
+                    width={photo.width_px || 400}
+                    height={photo.height_px || 400}
+                  />
+                </div>
+              ))}
+            </div>
+          </section>
+        )}
+
+        {/* Nearby locations — internal link graph */}
+        {nearbyLocations.length > 0 && (
+          <section>
+            <h2 className="text-lg font-semibold text-gray-900 mb-3">Other Locations</h2>
+            <div className="grid sm:grid-cols-2 gap-2">
+              {nearbyLocations.map((loc) => {
+                const geo = [loc.city, loc.state].filter(Boolean).join(', ')
+                return (
+                  <a
+                    key={loc.id}
+                    href={`/l/${loc.lander_slug}`}
+                    className="flex items-center gap-3 border border-gray-100 rounded-lg p-3 no-underline transition-colors hover:border-gray-300"
+                  >
+                    <MapPinIcon className="w-4 h-4 text-gray-400 shrink-0" />
+                    <div>
+                      <span className="text-sm font-medium text-gray-900">{loc.name}</span>
+                      {geo && <p className="text-xs text-gray-500">{geo}</p>}
+                    </div>
+                  </a>
+                )
+              })}
+            </div>
+          </section>
+        )}
       </main>
 
       {/* Footer */}
