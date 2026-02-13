@@ -4,6 +4,7 @@ import { getLocation, checkAgencyAdmin } from '@/lib/locations'
 import { getTemplate } from '@/lib/lander-templates'
 import { notFound } from 'next/navigation'
 import Link from 'next/link'
+import { GenerateAIContentCard } from './generate-ai-content'
 
 export const dynamic = 'force-dynamic'
 
@@ -100,6 +101,15 @@ export default async function LanderDashboardPage({
         <InfoCard label="Map" value={lander.show_map ? 'Shown' : 'Hidden'} />
         <InfoCard label="FAQ" value={lander.show_faq ? 'Shown' : 'Hidden'} />
       </div>
+
+      {/* AI Content */}
+      {isAgencyAdmin && (
+        <GenerateAIContentCard
+          landerId={lander.id}
+          generatedAt={lander.ai_content_generated_at}
+          hasContent={!!lander.ai_content}
+        />
+      )}
 
       {/* Last updated */}
       <div className="border border-warm-border rounded-xl p-4">

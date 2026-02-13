@@ -1,6 +1,7 @@
 'use client'
 
 import type { Location, GBPProfile, GBPHoursPeriod, LocalLander, Review } from '@/lib/types'
+import type { LanderAIContent } from '@/lib/ai/generate-lander-content'
 import { getTemplate } from '@/lib/lander-templates'
 import type { TemplateSection, TemplateField } from '@/lib/lander-templates'
 
@@ -59,13 +60,17 @@ export function LocalLanderPage({ lander, location, gbp, reviews, reviewStats }:
   const primary = lander.primary_color || '#1B4965'
   const address = formatAddress(location)
   const phone = gbp?.phone_primary || location.phone
+  const ai = lander.ai_content as LanderAIContent | null
   const description = lander.custom_about || lander.description || gbp?.description
+  const localContext = ai?.local_context || null
   const hours = (lander.custom_hours || gbp?.regular_hours) as { periods?: GBPHoursPeriod[] } | null
   const name = lander.heading || gbp?.business_name || location.name
   const website = gbp?.website_uri || null
   const mapsUri = gbp?.maps_uri || null
   const services = lander.custom_services || null
-  const faq = lander.custom_faq || null
+  const aiServiceDescriptions = ai?.service_descriptions || null
+  const faq = lander.custom_faq || ai?.faq || null
+  const reviewHighlights = ai?.review_highlights || null
   const templateData = lander.template_data || {}
 
   const template = getTemplate(lander.template_id || 'general')
@@ -93,10 +98,15 @@ export function LocalLanderPage({ lander, location, gbp, reviews, reviewStats }:
         case 'contact':
           return <ContactSection key={index} address={address} phone={phone} email={location.email} website={website} locationType={location.type} directionsUrl={directionsUrl} primary={primary} />
         case 'about':
-          return description ? (
+          return description || localContext ? (
             <section key={index}>
               <h2 className="text-lg font-semibold text-gray-900 mb-3">{section.label}</h2>
-              <p className="text-sm text-gray-600 leading-relaxed whitespace-pre-line">{description}</p>
+              {description && <p className="text-sm text-gray-600 leading-relaxed whitespace-pre-line">{description}</p>}
+              {localContext && (
+                <div className={description ? 'mt-4' : ''}>
+                  <p className="text-sm text-gray-600 leading-relaxed whitespace-pre-line">{localContext}</p>
+                </div>
+              )}
             </section>
           ) : null
         case 'hours':
@@ -128,12 +138,15 @@ export function LocalLanderPage({ lander, location, gbp, reviews, reviewStats }:
             <section key={index}>
               <h2 className="text-lg font-semibold text-gray-900 mb-3">{section.label}</h2>
               <div className="grid sm:grid-cols-2 gap-3">
-                {services.map((svc, i) => (
-                  <div key={i} className="border border-gray-100 rounded-lg p-4">
-                    <h3 className="text-sm font-semibold text-gray-900 mb-1">{svc.name}</h3>
-                    {svc.description && <p className="text-xs text-gray-500 leading-relaxed">{svc.description}</p>}
-                  </div>
-                ))}
+                {services.map((svc, i) => {
+                  const desc = svc.description || aiServiceDescriptions?.[svc.name] || null
+                  return (
+                    <div key={i} className="border border-gray-100 rounded-lg p-4">
+                      <h3 className="text-sm font-semibold text-gray-900 mb-1">{svc.name}</h3>
+                      {desc && <p className="text-xs text-gray-500 leading-relaxed">{desc}</p>}
+                    </div>
+                  )
+                })}
               </div>
             </section>
           ) : null
@@ -148,6 +161,9 @@ export function LocalLanderPage({ lander, location, gbp, reviews, reviewStats }:
                   <p className="text-xs text-gray-500 mt-0.5">{reviewStats.reviewCount} reviews</p>
                 </div>
               </div>
+              {reviewHighlights && (
+                <p className="text-sm text-gray-600 leading-relaxed mb-5">{reviewHighlights}</p>
+              )}
               {reviews.length > 0 && (
                 <div className="space-y-4">
                   {reviews.map((review) => (
