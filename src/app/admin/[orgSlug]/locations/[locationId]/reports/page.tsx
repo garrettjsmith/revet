@@ -35,12 +35,12 @@ export default async function LocationReportPage({
     recentReviewsResult,
     gbp90dResult,
     gbpProfileResult,
-    latestScanResult,
+    allScansResult,
     keywordsResult,
   ] = await Promise.all([
     adminClient
       .from('locations')
-      .select('id, name, city, state, type, email, phone, address_line1')
+      .select('id, name, city, state, type, email, phone, address_line1, intake_data')
       .eq('id', locationId)
       .eq('org_id', org.id)
       .single(),
@@ -75,13 +75,12 @@ export default async function LocationReportPage({
       .eq('location_id', locationId)
       .single(),
 
-    // Latest LocalFalcon geo-grid scan
+    // All LocalFalcon geo-grid scans (for multi-keyword switching + history)
     adminClient
       .from('local_falcon_scans')
-      .select('*')
+      .select('keyword, grid_size, solv, arp, atrp, grid_data, competitors, scanned_at')
       .eq('location_id', locationId)
-      .order('scanned_at', { ascending: false })
-      .limit(1),
+      .order('scanned_at', { ascending: false }),
 
     // Search keywords (previous month)
     adminClient
@@ -107,12 +106,43 @@ export default async function LocationReportPage({
   const recentReviews = recentReviewsResult.data || []
   const gbpRaw = gbp90dResult.data || []
   const gbpProfile = gbpProfileResult.data
-  const latestScan = (latestScanResult.data || [])[0] || null
+  const allScans = (allScansResult.data || []) as Array<{
+    keyword: string
+    grid_size: number
+    solv: number | null
+    arp: number | null
+    atrp: number | null
+    grid_data: Array<{ lat: number; lng: number; rank: number }>
+    competitors: Array<{ name: string; solv?: number; arp?: number; review_count?: number; rating?: number }>
+    scanned_at: string
+  }>
   const searchKeywords = (keywordsResult.data || []) as Array<{
     keyword: string
     impressions: number | null
     threshold: number | null
   }>
+
+  // Group scans by keyword — each keyword has its latest scan + SoLV history
+  const scansByKeyword: Record<string, typeof allScans> = {}
+  for (const scan of allScans) {
+    if (!scansByKeyword[scan.keyword]) scansByKeyword[scan.keyword] = []
+    scansByKeyword[scan.keyword].push(scan)
+  }
+
+  // Build keyword scan list: latest scan per keyword + history for trend
+  const keywordScans = Object.entries(scansByKeyword).map(([keyword, scans]) => ({
+    keyword,
+    latest: scans[0], // already sorted desc by scanned_at
+    history: scans.map((s) => ({
+      date: s.scanned_at,
+      solv: s.solv,
+      arp: s.arp,
+    })).reverse(), // chronological order for chart
+  }))
+
+  // Target keywords from intake form
+  const intakeData = location.intake_data as { keywords?: string[] } | null
+  const targetKeywords = intakeData?.keywords || []
 
   // Build daily time series
   const impressionTypes = [
@@ -241,8 +271,9 @@ export default async function LocationReportPage({
         profileComplete={profileComplete}
         profileTotal={profileTotal}
         platformCounts={platformCounts}
-        geoGridScan={latestScan}
+        keywordScans={keywordScans}
         searchKeywords={searchKeywords}
+        targetKeywords={targetKeywords}
       />
     </div>
   )

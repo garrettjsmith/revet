@@ -45,6 +45,12 @@ interface GeoGridScan {
   scanned_at: string
 }
 
+interface KeywordScan {
+  keyword: string
+  latest: GeoGridScan
+  history: Array<{ date: string; solv: number | null; arp: number | null }>
+}
+
 interface SearchKeyword {
   keyword: string
   impressions: number | null
@@ -75,8 +81,9 @@ interface Props {
   profileComplete: number
   profileTotal: number
   platformCounts: Record<string, number>
-  geoGridScan?: GeoGridScan | null
+  keywordScans?: KeywordScan[]
   searchKeywords?: SearchKeyword[]
+  targetKeywords?: string[]
 }
 
 type ChartMetric = 'actions' | 'impressions' | 'calls' | 'directions' | 'clicks'
@@ -101,10 +108,15 @@ export function LocationReportView({
   profileComplete,
   profileTotal,
   platformCounts,
-  geoGridScan,
+  keywordScans = [],
   searchKeywords = [],
+  targetKeywords = [],
 }: Props) {
   const [chartMetric, setChartMetric] = useState<ChartMetric>('actions')
+  const [selectedKeyword, setSelectedKeyword] = useState(0) // index into keywordScans
+
+  const activeKeywordScan = keywordScans[selectedKeyword] || null
+  const geoGridScan = activeKeywordScan?.latest || null
 
   const sentimentTotal = sentimentCounts.positive + sentimentCounts.neutral + sentimentCounts.negative
   const maxRatingCount = Math.max(...ratingDist.map((d) => d.count), 1)
@@ -194,13 +206,29 @@ export function LocationReportView({
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* Geo-Grid Rank Visualization */}
         <div className="border border-warm-border rounded-xl p-5">
-          <h2 className="text-sm font-medium text-ink mb-1">Local Rank Grid</h2>
+          <div className="flex items-center justify-between mb-1">
+            <h2 className="text-sm font-medium text-ink">Local Rank Grid</h2>
+            {/* Keyword selector */}
+            {keywordScans.length > 1 && (
+              <select
+                value={selectedKeyword}
+                onChange={(e) => setSelectedKeyword(Number(e.target.value))}
+                className="text-xs bg-transparent border border-warm-border rounded-lg px-2 py-1 text-ink focus:outline-none focus:ring-1 focus:ring-ink/20"
+              >
+                {keywordScans.map((ks, i) => (
+                  <option key={i} value={i}>{ks.keyword}</option>
+                ))}
+              </select>
+            )}
+          </div>
           {geoGridScan ? (
             <>
               <p className="text-[10px] text-warm-gray mb-4">
-                Keyword: <span className="text-ink">{geoGridScan.keyword}</span>
-                {' · '}
+                {keywordScans.length <= 1 && <>Keyword: <span className="text-ink">{geoGridScan.keyword}</span>{' · '}</>}
                 {new Date(geoGridScan.scanned_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+                {keywordScans.length > 1 && (
+                  <span className="ml-1 text-warm-gray">· {keywordScans.length} keywords tracked</span>
+                )}
               </p>
 
               {/* SoLV + ARP metrics */}
@@ -210,6 +238,19 @@ export function LocationReportView({
                     {geoGridScan.solv != null ? `${Math.round(geoGridScan.solv)}%` : '--'}
                   </div>
                   <div className="text-[10px] text-warm-gray">SoLV</div>
+                  {activeKeywordScan && activeKeywordScan.history.length > 1 && (() => {
+                    const first = activeKeywordScan.history[0]
+                    const last = activeKeywordScan.history[activeKeywordScan.history.length - 1]
+                    if (first.solv != null && last.solv != null) {
+                      const delta = Math.round(last.solv - first.solv)
+                      if (delta !== 0) return (
+                        <div className={`text-[10px] font-medium ${delta > 0 ? 'text-emerald-600' : 'text-red-500'}`}>
+                          {delta > 0 ? '+' : ''}{delta}%
+                        </div>
+                      )
+                    }
+                    return null
+                  })()}
                 </div>
                 <div className="text-center">
                   <div className="text-2xl font-serif text-ink">
@@ -224,6 +265,58 @@ export function LocationReportView({
                   <div className="text-[10px] text-warm-gray">ATRP</div>
                 </div>
               </div>
+
+              {/* SoLV history chart (if multiple scans for this keyword) */}
+              {activeKeywordScan && activeKeywordScan.history.length > 1 && (
+                <div className="mb-4">
+                  <div className="text-[10px] text-warm-gray uppercase tracking-wider mb-2">SoLV Trend</div>
+                  <ResponsiveContainer width="100%" height={80}>
+                    <AreaChart
+                      data={activeKeywordScan.history.filter((h) => h.solv != null).map((h) => ({
+                        date: h.date,
+                        solv: h.solv,
+                      }))}
+                      margin={{ top: 4, right: 4, bottom: 0, left: 0 }}
+                    >
+                      <defs>
+                        <linearGradient id="solvGrad" x1="0" y1="0" x2="0" y2="1">
+                          <stop offset="0%" stopColor="#10B981" stopOpacity={0.2} />
+                          <stop offset="100%" stopColor="#10B981" stopOpacity={0} />
+                        </linearGradient>
+                      </defs>
+                      <XAxis
+                        dataKey="date"
+                        tickFormatter={(d) => new Date(d).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+                        tick={{ fontSize: 9, fill: '#9A9488' }}
+                        axisLine={false}
+                        tickLine={false}
+                        interval="preserveStartEnd"
+                      />
+                      <YAxis
+                        domain={[0, 100]}
+                        tick={{ fontSize: 9, fill: '#9A9488' }}
+                        axisLine={false}
+                        tickLine={false}
+                        width={30}
+                        tickFormatter={(v) => `${v}%`}
+                      />
+                      <Tooltip
+                        contentStyle={{ fontSize: 11, borderRadius: 8, border: '1px solid #D5CFC5' }}
+                        labelFormatter={(d) => new Date(d).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+                        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                        formatter={(value: any) => [`${Math.round(Number(value))}%`, 'SoLV']}
+                      />
+                      <Area
+                        type="monotone"
+                        dataKey="solv"
+                        stroke="#10B981"
+                        strokeWidth={1.5}
+                        fill="url(#solvGrad)"
+                      />
+                    </AreaChart>
+                  </ResponsiveContainer>
+                </div>
+              )}
 
               {/* Grid visualization */}
               <GeoGrid points={geoGridScan.grid_data} gridSize={geoGridScan.grid_size} />
@@ -252,55 +345,99 @@ export function LocationReportView({
           )}
         </div>
 
-        {/* Search Keywords */}
-        <div className="border border-warm-border rounded-xl p-5">
-          <h2 className="text-sm font-medium text-ink mb-1">Top Search Keywords</h2>
-          <p className="text-[10px] text-warm-gray mb-4">What people searched to find this business</p>
-          {searchKeywords.length > 0 ? (
-            <div className="space-y-0">
-              {/* Header */}
-              <div className="flex items-center justify-between pb-2 border-b border-warm-border/50 text-[10px] text-warm-gray uppercase tracking-wider">
-                <span>Keyword</span>
-                <span>Impressions</span>
+        {/* Search Keywords + Target Keywords */}
+        <div className="space-y-6">
+          {/* Target Keywords from intake */}
+          {targetKeywords.length > 0 && (
+            <div className="border border-warm-border rounded-xl p-5">
+              <h2 className="text-sm font-medium text-ink mb-1">Target Keywords</h2>
+              <p className="text-[10px] text-warm-gray mb-3">From intake — keywords this location wants to rank for</p>
+              <div className="flex flex-wrap gap-1.5">
+                {targetKeywords.map((kw, i) => {
+                  // Check if this keyword has a LocalFalcon scan
+                  const hasRankData = keywordScans.some(
+                    (ks) => ks.keyword.toLowerCase() === kw.toLowerCase()
+                  )
+                  // Check if it appears in GBP search keywords
+                  const inSearchData = searchKeywords.some(
+                    (sk) => sk.keyword.toLowerCase().includes(kw.toLowerCase()) || kw.toLowerCase().includes(sk.keyword.toLowerCase())
+                  )
+                  return (
+                    <span
+                      key={i}
+                      className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] border ${
+                        hasRankData
+                          ? 'border-emerald-300 bg-emerald-50 text-emerald-700'
+                          : inSearchData
+                          ? 'border-amber-300 bg-amber-50 text-amber-700'
+                          : 'border-warm-border bg-warm-light text-warm-gray'
+                      }`}
+                    >
+                      {kw}
+                      {hasRankData && <span title="Rank tracked">R</span>}
+                      {inSearchData && !hasRankData && <span title="Found in GBP searches">S</span>}
+                    </span>
+                  )
+                })}
               </div>
-              {searchKeywords.map((kw, i) => {
-                const maxImpressions = searchKeywords[0]?.impressions || 1
-                const barWidth = kw.impressions != null ? (kw.impressions / maxImpressions) * 100 : 0
-                return (
-                  <div
-                    key={i}
-                    className="flex items-center gap-3 py-1.5 border-b border-warm-border/20"
-                  >
-                    <span className="text-xs text-ink flex-1 truncate">{kw.keyword}</span>
-                    <div className="flex items-center gap-2 w-[120px] shrink-0 justify-end">
-                      {kw.impressions != null ? (
-                        <>
-                          <div className="w-[60px] h-1.5 bg-warm-light rounded-full overflow-hidden">
-                            <div
-                              className="h-full bg-ink/40 rounded-full"
-                              style={{ width: `${barWidth}%` }}
-                            />
-                          </div>
-                          <span className="text-xs font-mono text-warm-gray w-10 text-right">
-                            {formatNumber(kw.impressions)}
-                          </span>
-                        </>
-                      ) : (
-                        <span className="text-[10px] text-warm-gray">
-                          &lt; {kw.threshold || 15}
-                        </span>
-                      )}
-                    </div>
-                  </div>
-                )
-              })}
-            </div>
-          ) : (
-            <div className="h-[280px] flex flex-col items-center justify-center text-xs text-warm-gray">
-              <p>No keyword data yet.</p>
-              <p className="text-[10px] mt-1">Keywords sync monthly from GBP.</p>
+              <div className="flex gap-3 mt-2 text-[9px] text-warm-gray">
+                <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-emerald-200 inline-block" /> Rank tracked</span>
+                <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-amber-200 inline-block" /> In GBP searches</span>
+                <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-warm-light border border-warm-border inline-block" /> Not yet tracked</span>
+              </div>
             </div>
           )}
+
+          {/* Search Keywords */}
+          <div className="border border-warm-border rounded-xl p-5">
+            <h2 className="text-sm font-medium text-ink mb-1">Top Search Keywords</h2>
+            <p className="text-[10px] text-warm-gray mb-4">What people searched to find this business</p>
+            {searchKeywords.length > 0 ? (
+              <div className="space-y-0">
+                {/* Header */}
+                <div className="flex items-center justify-between pb-2 border-b border-warm-border/50 text-[10px] text-warm-gray uppercase tracking-wider">
+                  <span>Keyword</span>
+                  <span>Impressions</span>
+                </div>
+                {searchKeywords.map((kw, i) => {
+                  const maxImpressions = searchKeywords[0]?.impressions || 1
+                  const barWidth = kw.impressions != null ? (kw.impressions / maxImpressions) * 100 : 0
+                  return (
+                    <div
+                      key={i}
+                      className="flex items-center gap-3 py-1.5 border-b border-warm-border/20"
+                    >
+                      <span className="text-xs text-ink flex-1 truncate">{kw.keyword}</span>
+                      <div className="flex items-center gap-2 w-[120px] shrink-0 justify-end">
+                        {kw.impressions != null ? (
+                          <>
+                            <div className="w-[60px] h-1.5 bg-warm-light rounded-full overflow-hidden">
+                              <div
+                                className="h-full bg-ink/40 rounded-full"
+                                style={{ width: `${barWidth}%` }}
+                              />
+                            </div>
+                            <span className="text-xs font-mono text-warm-gray w-10 text-right">
+                              {formatNumber(kw.impressions)}
+                            </span>
+                          </>
+                        ) : (
+                          <span className="text-[10px] text-warm-gray">
+                            &lt; {kw.threshold || 15}
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  )
+                })}
+              </div>
+            ) : (
+              <div className="h-[200px] flex flex-col items-center justify-center text-xs text-warm-gray">
+                <p>No keyword data yet.</p>
+                <p className="text-[10px] mt-1">Keywords sync monthly from GBP.</p>
+              </div>
+            )}
+          </div>
         </div>
       </div>
 
