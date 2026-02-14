@@ -377,24 +377,21 @@ Uses Anthropic Claude API (already integrated via `@anthropic-ai/sdk`). The agen
 
 ### Environment Variables
 
-Falcon uses the existing Revet environment plus:
+All variables are documented in `.env.example`. Falcon adds two new variables to the existing Revet environment:
 
-```bash
-# Existing (already in .env.example)
-NEXT_PUBLIC_SUPABASE_URL=           # Supabase project URL
-NEXT_PUBLIC_SUPABASE_ANON_KEY=      # Supabase anon key (client-side)
-SUPABASE_SERVICE_ROLE_KEY=          # Supabase service role (server-side, no RLS)
-NEXT_PUBLIC_APP_URL=                # App base URL
-ANTHROPIC_API_KEY=                  # Claude API for AI agent
+| Variable | Required | Description |
+|----------|----------|-------------|
+| `NEXT_PUBLIC_SUPABASE_URL` | Yes | Supabase project URL |
+| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Yes | Supabase anon key (client-side) |
+| `SUPABASE_SERVICE_ROLE_KEY` | Yes | Supabase service role key (server-side, bypasses RLS) |
+| `NEXT_PUBLIC_APP_URL` | Yes | App base URL (e.g. `https://lseo.app`) |
+| `ANTHROPIC_API_KEY` | Yes | Claude API key — used for review reply generation and Falcon agent tasks |
+| `RESEND_API_KEY` | Yes | Resend API key for transactional email (review alerts, reports, notifications) |
+| `LOCALFALCON_API_KEY` | Yes | LocalFalcon Data Retrieval API key for rank tracking |
+| `FALCON_AGENT_MODEL` | No | Claude model ID for Falcon agent tasks. Default: `claude-sonnet-4-5-20250929` |
+| `FALCON_CRON_SECRET` | Yes* | Secret token to authenticate cron job endpoints. Required in production to prevent unauthorized triggering of agent tasks. |
 
-# Existing (in use, needs adding to .env.example)
-RESEND_API_KEY=                     # Transactional email via Resend
-LOCALFALCON_API_KEY=                # LocalFalcon rank tracking API
-
-# New for Falcon
-FALCON_AGENT_MODEL=                 # Claude model for agent tasks (default: claude-sonnet-4-5-20250929)
-FALCON_CRON_SECRET=                 # Secret to authenticate cron job endpoints
-```
+*`FALCON_CRON_SECRET` is required in production but optional for local development.
 
 No new external services required. Falcon runs on the existing stack: Supabase for data, Anthropic for AI, Resend for email, Vercel for compute, LocalFalcon for rank data.
 
