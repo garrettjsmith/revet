@@ -131,6 +131,9 @@ export function WorkQueue() {
   const [editText, setEditText] = useState('')
   const [mobileDetailOpen, setMobileDetailOpen] = useState(false)
   const [teamMembers, setTeamMembers] = useState<TeamMember[]>([])
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
+  const [bulkActionLoading, setBulkActionLoading] = useState<string | null>(null)
+  const [bulkProgress, setBulkProgress] = useState<{ current: number; total: number } | null>(null)
   const sentinelRef = useRef<HTMLDivElement>(null)
 
   const fetchData = useCallback(async () => {
@@ -237,6 +240,11 @@ export function WorkQueue() {
     window.addEventListener('keydown', handleKey)
     return () => window.removeEventListener('keydown', handleKey)
   }, [viewMode, rapidIndex, data, editMode]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Clear bulk selection when filter or scope changes
+  useEffect(() => {
+    setSelectedIds(new Set())
+  }, [filter, scope])
 
   // Infinite scroll — load more when sentinel becomes visible
   useEffect(() => {
@@ -527,6 +535,55 @@ export function WorkQueue() {
     } catch { /* ignore */ }
   }
 
+  // Bulk review actions
+  const handleBulkApproveDrafts = async () => {
+    const reviewItems = items.filter((i) => selectedIds.has(i.id) && isReviewItem(i) && i.review?.ai_draft)
+    if (reviewItems.length === 0) return
+
+    setBulkActionLoading('approve')
+    setBulkProgress({ current: 0, total: reviewItems.length })
+
+    for (let idx = 0; idx < reviewItems.length; idx++) {
+      setBulkProgress({ current: idx + 1, total: reviewItems.length })
+      try {
+        await fetch(`/api/reviews/${reviewItems[idx].review!.id}/reply`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ reply_body: reviewItems[idx].review!.ai_draft }),
+        })
+      } catch { /* ignore */ }
+    }
+
+    setSelectedIds(new Set())
+    setBulkActionLoading(null)
+    setBulkProgress(null)
+    fetchData()
+  }
+
+  const handleBulkSkip = async () => {
+    const reviewItems = items.filter((i) => selectedIds.has(i.id) && isReviewItem(i) && i.review)
+    if (reviewItems.length === 0) return
+
+    setBulkActionLoading('skip')
+    setBulkProgress({ current: 0, total: reviewItems.length })
+
+    for (let idx = 0; idx < reviewItems.length; idx++) {
+      setBulkProgress({ current: idx + 1, total: reviewItems.length })
+      try {
+        await fetch(`/api/reviews/${reviewItems[idx].review!.id}/status`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ status: 'seen' }),
+        })
+      } catch { /* ignore */ }
+    }
+
+    setSelectedIds(new Set())
+    setBulkActionLoading(null)
+    setBulkProgress(null)
+    fetchData()
+  }
+
   // ─── Derived state ────────────────────────────────────────
 
   const items = data?.items || []
@@ -636,20 +693,78 @@ export function WorkQueue() {
       <div className="flex-1 flex overflow-hidden">
         {/* Item List */}
         <div className={`w-full lg:w-[380px] lg:border-r lg:border-warm-border overflow-y-auto ${mobileDetailOpen ? 'hidden lg:block' : ''}`}>
+          {(filter === 'all' || filter === 'needs_reply' || filter === 'ai_drafts') && (() => {
+            const reviewItems = items.filter((i) => isReviewItem(i))
+            if (reviewItems.length === 0) return null
+            const allReviewsSelected = reviewItems.every((i) => selectedIds.has(i.id))
+            const someReviewsSelected = reviewItems.some((i) => selectedIds.has(i.id))
+            return (
+              <div className="flex items-center gap-2 px-5 py-2 border-b border-warm-border/50 bg-warm-light/30">
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={allReviewsSelected}
+                    ref={(el) => { if (el) el.indeterminate = someReviewsSelected && !allReviewsSelected }}
+                    onChange={() => {
+                      if (allReviewsSelected) {
+                        setSelectedIds((prev) => {
+                          const next = new Set(prev)
+                          reviewItems.forEach((i) => next.delete(i.id))
+                          return next
+                        })
+                      } else {
+                        setSelectedIds((prev) => {
+                          const next = new Set(prev)
+                          reviewItems.forEach((i) => next.add(i.id))
+                          return next
+                        })
+                      }
+                    }}
+                    className="w-4 h-4 rounded border border-warm-border accent-ink cursor-pointer"
+                  />
+                  <span className="text-xs text-warm-gray">Select all reviews</span>
+                </label>
+              </div>
+            )
+          })()}
           {items.map((item) => (
-            <button
+            <div
               key={item.id}
-              onClick={() => {
-                setSelectedId(item.id)
-                setEditMode(false)
-                setMobileDetailOpen(true)
-              }}
-              className={`w-full text-left px-5 py-4 border-b border-warm-border/50 transition-colors ${
+              className={`flex items-start border-b border-warm-border/50 transition-colors ${
                 item.id === selectedId ? 'bg-warm-light' : 'hover:bg-warm-light/50'
               }`}
             >
-              <ListItemContent item={item} teamMembers={teamMembers} />
-            </button>
+              {isReviewItem(item) && (
+                <label
+                  className="flex items-center pl-5 pt-4 pr-0 cursor-pointer shrink-0"
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  <input
+                    type="checkbox"
+                    checked={selectedIds.has(item.id)}
+                    onChange={() => {
+                      setSelectedIds((prev) => {
+                        const next = new Set(prev)
+                        if (next.has(item.id)) next.delete(item.id)
+                        else next.add(item.id)
+                        return next
+                      })
+                    }}
+                    className="w-4 h-4 rounded border border-warm-border accent-ink cursor-pointer"
+                  />
+                </label>
+              )}
+              <button
+                onClick={() => {
+                  setSelectedId(item.id)
+                  setEditMode(false)
+                  setMobileDetailOpen(true)
+                }}
+                className={`w-full text-left py-4 ${isReviewItem(item) ? 'pl-2 pr-5' : 'px-5'}`}
+              >
+                <ListItemContent item={item} teamMembers={teamMembers} />
+              </button>
+            </div>
           ))}
           {/* Infinite scroll sentinel */}
           <div ref={sentinelRef} className="h-1" />
@@ -705,6 +820,38 @@ export function WorkQueue() {
           )}
         </div>
       </div>
+
+      {/* Floating bulk action bar */}
+      {selectedIds.size > 0 && (
+        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 bg-ink text-cream rounded-full shadow-lg px-6 py-3 flex items-center gap-4">
+          <span className="text-sm text-cream/70">
+            {bulkProgress
+              ? `${bulkActionLoading === 'approve' ? 'Sending' : 'Skipping'} ${bulkProgress.current} of ${bulkProgress.total}...`
+              : `${selectedIds.size} selected`}
+          </span>
+          <button
+            onClick={handleBulkApproveDrafts}
+            disabled={!!bulkActionLoading || !items.some((i) => selectedIds.has(i.id) && isReviewItem(i) && i.review?.ai_draft)}
+            className="px-4 py-1.5 bg-cream text-ink text-xs font-medium rounded-full hover:bg-cream/90 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+          >
+            Approve Drafts
+          </button>
+          <button
+            onClick={handleBulkSkip}
+            disabled={!!bulkActionLoading}
+            className="px-4 py-1.5 border border-cream/30 text-xs text-cream font-medium rounded-full hover:border-cream/60 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+          >
+            Skip All
+          </button>
+          <button
+            onClick={() => setSelectedIds(new Set())}
+            disabled={!!bulkActionLoading}
+            className="text-xs text-cream/50 hover:text-cream transition-colors disabled:opacity-40"
+          >
+            Clear
+          </button>
+        </div>
+      )}
     </div>
   )
 }

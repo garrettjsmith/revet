@@ -34,6 +34,7 @@ export function Sidebar({ currentOrg, memberships, userEmail, isAgencyAdmin, loc
   const collapsed = isChatOpen
   const [scopeSelectorOpen, setScopeSelectorOpen] = useState(false)
   const [locationSelectorOpen, setLocationSelectorOpen] = useState(false)
+  const [moreOpen, setMoreOpen] = useState(false)
 
   // Close dropdowns when sidebar collapses
   useEffect(() => {
@@ -102,6 +103,14 @@ export function Sidebar({ currentOrg, memberships, userEmail, isAgencyAdmin, loc
   const locationBasePath = currentLocationId ? `${basePath}/locations/${currentLocationId}` : null
 
   // Nav items for org scope — with optional location scoping
+  const locationSecondaryItems = currentLocation && locationBasePath ? [
+    { href: `${locationBasePath}/review-funnels`, label: 'Review Funnels', icon: FunnelIcon },
+    { href: `${locationBasePath}/forms`, label: 'Forms', icon: FormIcon },
+    { href: `${locationBasePath}/lander`, label: 'Lander', icon: LanderIcon },
+    { href: `${locationBasePath}/posts/topics`, label: 'Post Topics', icon: PostIcon },
+    { href: `${locationBasePath}/notifications`, label: 'Notifications', icon: BellIcon },
+  ] : null
+
   const orgNavGroups = currentLocation && locationBasePath ? [
     {
       label: null,
@@ -113,13 +122,8 @@ export function Sidebar({ currentOrg, memberships, userEmail, isAgencyAdmin, loc
       label: 'Manage',
       items: [
         { href: `${locationBasePath}/reviews`, label: 'Reviews', icon: ReviewIcon },
-        { href: `${locationBasePath}/review-funnels`, label: 'Review Funnels', icon: FunnelIcon },
-        { href: `${locationBasePath}/forms`, label: 'Forms', icon: FormIcon },
-        { href: `${locationBasePath}/lander`, label: 'Lander', icon: LanderIcon },
         { href: `${locationBasePath}/gbp-profile`, label: 'GBP Profile', icon: IntegrationsIcon },
-        { href: `${locationBasePath}/posts/topics`, label: 'Post Topics', icon: PostIcon },
         { href: `${locationBasePath}/reports`, label: 'Reports', icon: ReportIcon },
-        { href: `${locationBasePath}/notifications`, label: 'Notifications', icon: BellIcon },
       ],
     },
   ] : [
@@ -150,6 +154,8 @@ export function Sidebar({ currentOrg, memberships, userEmail, isAgencyAdmin, loc
     if (locationBasePath && href === locationBasePath) return pathname === locationBasePath
     return pathname.startsWith(href)
   }
+
+  const secondaryActive = currentLocation && locationSecondaryItems?.some(item => isActive(item.href))
 
   // Get display info for current scope
   const scopeDisplayName = isAgencyScope ? 'Agency' : currentOrg.name
@@ -338,6 +344,57 @@ export function Sidebar({ currentOrg, memberships, userEmail, isAgencyAdmin, loc
             </div>
           </div>
         ))}
+        {/* Secondary location nav items — collapsed under "More" toggle */}
+        {currentLocation && locationSecondaryItems && !collapsed && (
+          <div className="mt-2">
+            <button
+              onClick={() => setMoreOpen(!moreOpen)}
+              className="flex items-center gap-2.5 px-2 py-1.5 w-full text-left rounded-md text-xs text-warm-gray hover:text-ink hover:bg-warm-light/50 transition-colors"
+            >
+              <MoreIcon className="w-4 h-4 shrink-0" />
+              <span className="flex-1">More</span>
+              <ChevronIcon className={`w-3.5 h-3.5 transition-transform ${moreOpen || secondaryActive ? 'rotate-180' : ''}`} />
+            </button>
+            {(moreOpen || secondaryActive) && (
+              <div className="space-y-0.5 mt-0.5">
+                {locationSecondaryItems.map((item) => (
+                  <Link
+                    key={item.href}
+                    href={item.href}
+                    className={`flex items-center gap-2.5 px-2 py-1.5 rounded-md text-sm no-underline transition-colors ${
+                      isActive(item.href)
+                        ? 'bg-warm-light text-ink font-medium'
+                        : 'text-warm-gray hover:text-ink hover:bg-warm-light/50'
+                    }`}
+                  >
+                    <item.icon className="w-4 h-4 shrink-0" />
+                    {item.label}
+                  </Link>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+        {/* Secondary location nav items — collapsed sidebar (icons only with separator) */}
+        {currentLocation && locationSecondaryItems && collapsed && (
+          <div className="mt-2">
+            <div className="mx-1.5 mb-2 border-t border-warm-border" />
+            {locationSecondaryItems.map((item) => (
+              <Link
+                key={item.href}
+                href={item.href}
+                title={item.label}
+                className={`flex items-center justify-center p-2 rounded-md text-sm no-underline transition-colors ${
+                  isActive(item.href)
+                    ? 'bg-warm-light text-ink'
+                    : 'text-warm-gray hover:text-ink hover:bg-warm-light/50'
+                }`}
+              >
+                <item.icon className="w-4 h-4 shrink-0" />
+              </Link>
+            ))}
+          </div>
+        )}
       </nav>
 
       {/* Team + Notifications + Settings + User (only for org scope) */}
@@ -613,6 +670,16 @@ function ReportIcon({ className }: { className?: string }) {
     <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
       <path d="M3 3v18h18" />
       <path d="M7 16l4-8 4 5 5-9" />
+    </svg>
+  )
+}
+
+function MoreIcon({ className }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <circle cx="12" cy="12" r="1" />
+      <circle cx="19" cy="12" r="1" />
+      <circle cx="5" cy="12" r="1" />
     </svg>
   )
 }
