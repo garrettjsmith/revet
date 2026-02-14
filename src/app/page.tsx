@@ -1,6 +1,9 @@
+import { RecoveryRedirect } from '@/components/recovery-redirect'
+
 export default function Home() {
   return (
     <div className="min-h-screen bg-cream text-ink flex items-center justify-center relative">
+      <RecoveryRedirect />
       {/* Blueprint grid overlay */}
       <div className="absolute inset-0 blueprint-grid pointer-events-none" />
 
