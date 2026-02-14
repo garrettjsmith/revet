@@ -1,4 +1,4 @@
-# Falcon Sprint Plan — Full Platform Audit + Build
+# Revet Sprint Plan — Full Platform Audit + Build
 
 Based on a full-codebase audit by two reviewers: a senior UX designer (8+ years, B2B SaaS) and a veteran GBP manager (6 years, 600 locations, used BrightLocal/Yext/SOCi/Uberall).
 
