@@ -201,21 +201,69 @@ export default async function LocationDetailPage({
 
       {/* Health Status */}
       <div className={`border rounded-xl px-5 py-4 mb-8 ${hc.classes}`}>
-        <div className="flex items-center justify-between">
+        <div className="flex items-center justify-between mb-3">
           <div className="flex items-center gap-2.5">
             <div className={`w-2.5 h-2.5 rounded-full ${hc.dotClass}`} />
             <span className={`text-sm font-medium ${hc.textClass}`}>{hc.label}</span>
-            {healthReasons.length > 0 && (
-              <span className="text-xs text-warm-gray">
-                {healthReasons.join(' · ')}
-              </span>
-            )}
           </div>
           <div className="flex items-center gap-4 text-xs text-warm-gray">
             <span>{responseRate}% response rate</span>
             {daysSinceLastReview !== null && (
               <span>Last review {daysSinceLastReview}d ago</span>
             )}
+          </div>
+        </div>
+        {/* Factor breakdown */}
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+          {/* Rating factor */}
+          <div className="flex items-start gap-2">
+            <div className={`w-1.5 h-1.5 rounded-full mt-1.5 shrink-0 ${
+              avgRating === null ? 'bg-warm-border' : avgRating >= 4.0 ? 'bg-emerald-500' : avgRating >= 3.0 ? 'bg-amber-500' : 'bg-red-500'
+            }`} />
+            <div>
+              <div className="text-xs text-ink font-medium">
+                Rating: {avgRating !== null ? avgRating.toFixed(1) : 'N/A'}
+              </div>
+              <div className="text-[10px] text-warm-gray">
+                {avgRating === null ? 'No rating data yet'
+                  : avgRating >= 4.0 ? 'Above 4.0 target'
+                  : avgRating >= 3.0 ? 'Below 4.0 — aim for more positive reviews'
+                  : 'Below 3.0 — address negative reviews urgently'}
+              </div>
+            </div>
+          </div>
+          {/* Recency factor */}
+          <div className="flex items-start gap-2">
+            <div className={`w-1.5 h-1.5 rounded-full mt-1.5 shrink-0 ${
+              daysSinceLastReview === null ? 'bg-warm-border' : daysSinceLastReview <= 30 ? 'bg-emerald-500' : daysSinceLastReview <= 60 ? 'bg-amber-500' : 'bg-red-500'
+            }`} />
+            <div>
+              <div className="text-xs text-ink font-medium">
+                Recency: {daysSinceLastReview !== null ? `${daysSinceLastReview}d ago` : 'No reviews'}
+              </div>
+              <div className="text-[10px] text-warm-gray">
+                {daysSinceLastReview === null ? 'No reviews to measure'
+                  : daysSinceLastReview <= 30 ? 'Recent activity within 30 days'
+                  : daysSinceLastReview <= 60 ? 'No reviews in 30+ days — request new reviews'
+                  : 'No reviews in 60+ days — review generation needed'}
+              </div>
+            </div>
+          </div>
+          {/* Response rate factor */}
+          <div className="flex items-start gap-2">
+            <div className={`w-1.5 h-1.5 rounded-full mt-1.5 shrink-0 ${
+              totalRevs === 0 ? 'bg-warm-border' : responseRate >= 50 ? 'bg-emerald-500' : 'bg-amber-500'
+            }`} />
+            <div>
+              <div className="text-xs text-ink font-medium">
+                Response rate: {responseRate}%
+              </div>
+              <div className="text-[10px] text-warm-gray">
+                {totalRevs === 0 ? 'No reviews to respond to'
+                  : responseRate >= 50 ? `Replying to ${repliedCount} of ${totalRevs} reviews`
+                  : `Only ${repliedCount} of ${totalRevs} replied — reply to pending reviews`}
+              </div>
+            </div>
           </div>
         </div>
       </div>
