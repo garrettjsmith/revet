@@ -108,7 +108,6 @@ interface WorkQueueData {
 
 type FilterType = 'all' | 'needs_reply' | 'ai_drafts' | 'google_updates' | 'posts' | 'sync_errors' | 'profile_optimizations' | 'stale_landers'
 type ScopeType = 'all' | 'mine'
-type ViewMode = 'inbox' | 'rapid'
 
 interface TeamMember {
   id: string
@@ -124,16 +123,11 @@ export function WorkQueue() {
   const [filter, setFilter] = useState<FilterType>('all')
   const [scope, setScope] = useState<ScopeType>('all')
   const [selectedId, setSelectedId] = useState<string | null>(null)
-  const [viewMode, setViewMode] = useState<ViewMode>('inbox')
-  const [rapidIndex, setRapidIndex] = useState(0)
   const [actionLoading, setActionLoading] = useState<string | null>(null)
   const [editMode, setEditMode] = useState(false)
   const [editText, setEditText] = useState('')
   const [mobileDetailOpen, setMobileDetailOpen] = useState(false)
   const [teamMembers, setTeamMembers] = useState<TeamMember[]>([])
-  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
-  const [bulkActionLoading, setBulkActionLoading] = useState<string | null>(null)
-  const [bulkProgress, setBulkProgress] = useState<{ current: number; total: number } | null>(null)
   const sentinelRef = useRef<HTMLDivElement>(null)
 
   const fetchData = useCallback(async () => {
@@ -200,52 +194,6 @@ export function WorkQueue() {
       .catch(() => {})
   }, [])
 
-  // Keyboard shortcuts for rapid review mode
-  useEffect(() => {
-    if (viewMode !== 'rapid') return
-
-    const handleKey = (e: KeyboardEvent) => {
-      if (e.target instanceof HTMLTextAreaElement) return
-
-      const item = data?.items[rapidIndex]
-      if (!item) return
-
-      if (isReviewItem(item)) {
-        switch (e.key) {
-          case 'a':
-            handleApproveReview(item)
-            break
-          case 's':
-            handleSkipReview(item)
-            break
-          case 'e':
-            setEditMode(true)
-            setEditText(item.review?.ai_draft || '')
-            break
-          case 'r':
-            handleRejectReview(item)
-            break
-        }
-      }
-
-      if (e.key === 'Escape') {
-        if (editMode) {
-          setEditMode(false)
-        } else {
-          setViewMode('inbox')
-        }
-      }
-    }
-
-    window.addEventListener('keydown', handleKey)
-    return () => window.removeEventListener('keydown', handleKey)
-  }, [viewMode, rapidIndex, data, editMode]) // eslint-disable-line react-hooks/exhaustive-deps
-
-  // Clear bulk selection when filter or scope changes
-  useEffect(() => {
-    setSelectedIds(new Set())
-  }, [filter, scope])
-
   // Infinite scroll — load more when sentinel becomes visible
   useEffect(() => {
     const el = sentinelRef.current
@@ -268,16 +216,9 @@ export function WorkQueue() {
     const newItems = data.items.filter((i) => i.id !== itemId)
     setData({ ...data, items: newItems, counts: { ...data.counts, total: newItems.length } })
 
-    if (viewMode === 'inbox') {
-      const currentIdx = data.items.findIndex((i) => i.id === itemId)
-      const nextItem = newItems[currentIdx] || newItems[currentIdx - 1]
-      setSelectedId(nextItem?.id || null)
-    } else {
-      if (rapidIndex >= newItems.length) {
-        setRapidIndex(Math.max(0, newItems.length - 1))
-      }
-    }
-
+    const currentIdx = data.items.findIndex((i) => i.id === itemId)
+    const nextItem = newItems[currentIdx] || newItems[currentIdx - 1]
+    setSelectedId(nextItem?.id || null)
     setEditMode(false)
   }
 
@@ -535,60 +476,10 @@ export function WorkQueue() {
     } catch { /* ignore */ }
   }
 
-  // Bulk review actions
-  const handleBulkApproveDrafts = async () => {
-    const reviewItems = items.filter((i) => selectedIds.has(i.id) && isReviewItem(i) && i.review?.ai_draft)
-    if (reviewItems.length === 0) return
-
-    setBulkActionLoading('approve')
-    setBulkProgress({ current: 0, total: reviewItems.length })
-
-    for (let idx = 0; idx < reviewItems.length; idx++) {
-      setBulkProgress({ current: idx + 1, total: reviewItems.length })
-      try {
-        await fetch(`/api/reviews/${reviewItems[idx].review!.id}/reply`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ reply_body: reviewItems[idx].review!.ai_draft }),
-        })
-      } catch { /* ignore */ }
-    }
-
-    setSelectedIds(new Set())
-    setBulkActionLoading(null)
-    setBulkProgress(null)
-    fetchData()
-  }
-
-  const handleBulkSkip = async () => {
-    const reviewItems = items.filter((i) => selectedIds.has(i.id) && isReviewItem(i) && i.review)
-    if (reviewItems.length === 0) return
-
-    setBulkActionLoading('skip')
-    setBulkProgress({ current: 0, total: reviewItems.length })
-
-    for (let idx = 0; idx < reviewItems.length; idx++) {
-      setBulkProgress({ current: idx + 1, total: reviewItems.length })
-      try {
-        await fetch(`/api/reviews/${reviewItems[idx].review!.id}/status`, {
-          method: 'PATCH',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ status: 'seen' }),
-        })
-      } catch { /* ignore */ }
-    }
-
-    setSelectedIds(new Set())
-    setBulkActionLoading(null)
-    setBulkProgress(null)
-    fetchData()
-  }
-
   // ─── Derived state ────────────────────────────────────────
 
   const items = data?.items || []
   const selectedItem = items.find((i) => i.id === selectedId)
-  const rapidItem = items[rapidIndex]
 
   // ─── Loading state ────────────────────────────────────────
 
@@ -605,7 +496,7 @@ export function WorkQueue() {
   if (items.length === 0) {
     return (
       <div className="h-screen flex flex-col">
-        <QueueHeader counts={data?.counts} filter={filter} setFilter={setFilter} scope={scope} setScope={setScope} isAgencyAdmin={!!data?.is_agency_admin} viewMode={viewMode} setViewMode={setViewMode} itemCount={0} />
+        <QueueHeader counts={data?.counts} filter={filter} setFilter={setFilter} scope={scope} setScope={setScope} isAgencyAdmin={!!data?.is_agency_admin} itemCount={0} />
         <div className="flex-1 flex items-center justify-center">
           <div className="text-center">
             <div className="w-12 h-12 rounded-full bg-emerald-100 flex items-center justify-center mx-auto mb-3">
@@ -619,152 +510,29 @@ export function WorkQueue() {
     )
   }
 
-  // ─── Rapid Review Mode ────────────────────────────────────
-
-  if (viewMode === 'rapid') {
-    if (!rapidItem) {
-      setViewMode('inbox')
-      return null
-    }
-
-    return (
-      <div className="h-screen flex flex-col">
-        <QueueHeader counts={data?.counts} filter={filter} setFilter={setFilter} scope={scope} setScope={setScope} isAgencyAdmin={!!data?.is_agency_admin} viewMode={viewMode} setViewMode={setViewMode} itemCount={items.length} />
-
-        <div className="px-6 py-3 border-b border-warm-border flex items-center justify-between">
-          <span className="text-xs text-warm-gray font-mono">{rapidIndex + 1} of {items.length}</span>
-          <div className="flex-1 mx-4 h-1 bg-warm-light rounded-full overflow-hidden">
-            <div className="h-full bg-ink rounded-full transition-all" style={{ width: `${((rapidIndex + 1) / items.length) * 100}%` }} />
-          </div>
-          <button onClick={() => setViewMode('inbox')} className="text-xs text-warm-gray hover:text-ink transition-colors">Exit</button>
-        </div>
-
-        <div className="flex-1 overflow-y-auto">
-          <div className="max-w-2xl mx-auto p-8">
-            <ItemDetail
-              item={rapidItem}
-              editMode={editMode}
-              editText={editText}
-              setEditMode={setEditMode}
-              setEditText={setEditText}
-              actionLoading={actionLoading}
-              onApproveReview={() => handleApproveReview(rapidItem)}
-              onEditAndSendReview={() => handleEditAndSendReview(rapidItem)}
-              onRegenerateReview={() => handleRegenerateReview(rapidItem)}
-              onSkipReview={() => handleSkipReview(rapidItem)}
-              onRejectReview={() => handleRejectReview(rapidItem)}
-              onGoogleAction={(action) => handleGoogleAction(rapidItem, action)}
-              onApprovePost={() => handleApprovePost(rapidItem)}
-              onEditPost={() => handleEditPost(rapidItem)}
-              onRejectPost={() => handleRejectPost(rapidItem)}
-              onDeletePost={() => handleDeletePost(rapidItem)}
-              onDismiss={() => removeItem(rapidItem.id)}
-              onApproveRec={(recId, editedValue) => handleApproveRec(rapidItem, recId, editedValue)}
-              onApproveBatch={() => handleApproveBatch(rapidItem)}
-              onRejectRec={(recId) => handleRejectRec(rapidItem, recId)}
-              onEditRec={(recId, editedValue) => handleEditRec(rapidItem, recId, editedValue)}
-              onRegenerateLander={() => handleRegenerateLander(rapidItem)}
-              onDismissLander={() => handleDismissLander(rapidItem)}
-              teamMembers={teamMembers}
-              onAssign={(userId) => handleAssign(rapidItem, userId)}
-            />
-
-            {!editMode && isReviewItem(rapidItem) && (
-              <div className="mt-6 flex items-center justify-center gap-4">
-                {rapidItem.review?.ai_draft && <KbdHint label="Approve" shortcut="a" />}
-                <KbdHint label="Edit" shortcut="e" />
-                <KbdHint label="Skip" shortcut="s" />
-                <KbdHint label="Reject" shortcut="r" />
-                <KbdHint label="Exit" shortcut="esc" />
-              </div>
-            )}
-          </div>
-        </div>
-      </div>
-    )
-  }
-
   // ─── Inbox Mode ───────────────────────────────────────────
 
   return (
     <div className="h-screen flex flex-col">
-      <QueueHeader counts={data?.counts} filter={filter} setFilter={setFilter} scope={scope} setScope={setScope} isAgencyAdmin={!!data?.is_agency_admin} viewMode={viewMode} setViewMode={setViewMode} itemCount={items.length} />
+      <QueueHeader counts={data?.counts} filter={filter} setFilter={setFilter} scope={scope} setScope={setScope} isAgencyAdmin={!!data?.is_agency_admin} itemCount={items.length} />
 
       <div className="flex-1 flex overflow-hidden">
         {/* Item List */}
         <div className={`w-full lg:w-[380px] lg:border-r lg:border-warm-border overflow-y-auto ${mobileDetailOpen ? 'hidden lg:block' : ''}`}>
-          {(filter === 'all' || filter === 'needs_reply' || filter === 'ai_drafts') && (() => {
-            const reviewItems = items.filter((i) => isReviewItem(i))
-            if (reviewItems.length === 0) return null
-            const allReviewsSelected = reviewItems.every((i) => selectedIds.has(i.id))
-            const someReviewsSelected = reviewItems.some((i) => selectedIds.has(i.id))
-            return (
-              <div className="flex items-center gap-2 px-5 py-2 border-b border-warm-border/50 bg-warm-light/30">
-                <label className="flex items-center gap-2 cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={allReviewsSelected}
-                    ref={(el) => { if (el) el.indeterminate = someReviewsSelected && !allReviewsSelected }}
-                    onChange={() => {
-                      if (allReviewsSelected) {
-                        setSelectedIds((prev) => {
-                          const next = new Set(prev)
-                          reviewItems.forEach((i) => next.delete(i.id))
-                          return next
-                        })
-                      } else {
-                        setSelectedIds((prev) => {
-                          const next = new Set(prev)
-                          reviewItems.forEach((i) => next.add(i.id))
-                          return next
-                        })
-                      }
-                    }}
-                    className="w-4 h-4 rounded border border-warm-border accent-ink cursor-pointer"
-                  />
-                  <span className="text-xs text-warm-gray">Select all reviews</span>
-                </label>
-              </div>
-            )
-          })()}
           {items.map((item) => (
-            <div
+            <button
               key={item.id}
-              className={`flex items-start border-b border-warm-border/50 transition-colors ${
+              onClick={() => {
+                setSelectedId(item.id)
+                setEditMode(false)
+                setMobileDetailOpen(true)
+              }}
+              className={`w-full text-left px-5 py-4 border-b border-warm-border/50 transition-colors ${
                 item.id === selectedId ? 'bg-warm-light' : 'hover:bg-warm-light/50'
               }`}
             >
-              {isReviewItem(item) && (
-                <label
-                  className="flex items-center pl-5 pt-4 pr-0 cursor-pointer shrink-0"
-                  onClick={(e) => e.stopPropagation()}
-                >
-                  <input
-                    type="checkbox"
-                    checked={selectedIds.has(item.id)}
-                    onChange={() => {
-                      setSelectedIds((prev) => {
-                        const next = new Set(prev)
-                        if (next.has(item.id)) next.delete(item.id)
-                        else next.add(item.id)
-                        return next
-                      })
-                    }}
-                    className="w-4 h-4 rounded border border-warm-border accent-ink cursor-pointer"
-                  />
-                </label>
-              )}
-              <button
-                onClick={() => {
-                  setSelectedId(item.id)
-                  setEditMode(false)
-                  setMobileDetailOpen(true)
-                }}
-                className={`w-full text-left py-4 ${isReviewItem(item) ? 'pl-2 pr-5' : 'px-5'}`}
-              >
-                <ListItemContent item={item} teamMembers={teamMembers} />
-              </button>
-            </div>
+              <ListItemContent item={item} teamMembers={teamMembers} />
+            </button>
           ))}
           {/* Infinite scroll sentinel */}
           <div ref={sentinelRef} className="h-1" />
@@ -820,38 +588,6 @@ export function WorkQueue() {
           )}
         </div>
       </div>
-
-      {/* Floating bulk action bar */}
-      {selectedIds.size > 0 && (
-        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 bg-ink text-cream rounded-full shadow-lg px-6 py-3 flex items-center gap-4">
-          <span className="text-sm text-cream/70">
-            {bulkProgress
-              ? `${bulkActionLoading === 'approve' ? 'Sending' : 'Skipping'} ${bulkProgress.current} of ${bulkProgress.total}...`
-              : `${selectedIds.size} selected`}
-          </span>
-          <button
-            onClick={handleBulkApproveDrafts}
-            disabled={!!bulkActionLoading || !items.some((i) => selectedIds.has(i.id) && isReviewItem(i) && i.review?.ai_draft)}
-            className="px-4 py-1.5 bg-cream text-ink text-xs font-medium rounded-full hover:bg-cream/90 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
-          >
-            Approve Drafts
-          </button>
-          <button
-            onClick={handleBulkSkip}
-            disabled={!!bulkActionLoading}
-            className="px-4 py-1.5 border border-cream/30 text-xs text-cream font-medium rounded-full hover:border-cream/60 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
-          >
-            Skip All
-          </button>
-          <button
-            onClick={() => setSelectedIds(new Set())}
-            disabled={!!bulkActionLoading}
-            className="text-xs text-cream/50 hover:text-cream transition-colors disabled:opacity-40"
-          >
-            Clear
-          </button>
-        </div>
-      )}
     </div>
   )
 }
@@ -1493,7 +1229,6 @@ function PostDetail({
 
       <div className="text-xs text-warm-gray mb-4">{item.location_name} · {item.org_name}</div>
 
-      {/* Image preview */}
       {post.media_url && (
         <div className="mb-4">
           <img
@@ -1505,14 +1240,12 @@ function PostDetail({
         </div>
       )}
 
-      {/* Post content */}
       {!editMode && (
         <div className="bg-warm-light/50 rounded-xl p-4 mb-4 border border-warm-border/50">
           <p className="text-sm text-ink leading-relaxed">{post.summary}</p>
         </div>
       )}
 
-      {/* Edit mode */}
       {editMode && (
         <div className="mb-4">
           <div className="text-[10px] text-warm-gray uppercase tracking-wider font-medium mb-2">Edit Post</div>
@@ -1545,7 +1278,6 @@ function PostDetail({
         </div>
       )}
 
-      {/* Actions */}
       {!editMode && (
         <div className="flex items-center gap-2 flex-wrap">
           {isDraft && (
@@ -1920,8 +1652,6 @@ function QueueHeader({
   scope,
   setScope,
   isAgencyAdmin,
-  viewMode,
-  setViewMode,
   itemCount,
 }: {
   counts?: WorkQueueData['counts'] | null
@@ -1930,8 +1660,6 @@ function QueueHeader({
   scope: ScopeType
   setScope: (s: ScopeType) => void
   isAgencyAdmin: boolean
-  viewMode: ViewMode
-  setViewMode: (m: ViewMode) => void
   itemCount: number
 }) {
   const urgentCount = (counts?.needs_reply || 0) + (counts?.google_updates || 0)
@@ -1946,36 +1674,26 @@ function QueueHeader({
             {urgentCount > 0 && <span className="text-red-500"> · {urgentCount} urgent</span>}
           </div>
         </div>
-        <div className="flex items-center gap-2">
-          {isAgencyAdmin && (
-            <div className="flex rounded-full border border-warm-border overflow-hidden">
-              <button
-                onClick={() => setScope('all')}
-                className={`px-3 py-1.5 text-xs transition-colors ${
-                  scope === 'all' ? 'bg-ink text-cream' : 'text-warm-gray hover:text-ink'
-                }`}
-              >
-                All
-              </button>
-              <button
-                onClick={() => setScope('mine')}
-                className={`px-3 py-1.5 text-xs transition-colors ${
-                  scope === 'mine' ? 'bg-ink text-cream' : 'text-warm-gray hover:text-ink'
-                }`}
-              >
-                My Queue
-              </button>
-            </div>
-          )}
-          {itemCount > 0 && (
+        {isAgencyAdmin && (
+          <div className="flex rounded-full border border-warm-border overflow-hidden">
             <button
-              onClick={() => setViewMode(viewMode === 'inbox' ? 'rapid' : 'inbox')}
-              className="px-3 py-1.5 text-xs border border-warm-border rounded-full text-warm-gray hover:text-ink hover:border-ink transition-colors"
+              onClick={() => setScope('all')}
+              className={`px-3 py-1.5 text-xs transition-colors ${
+                scope === 'all' ? 'bg-ink text-cream' : 'text-warm-gray hover:text-ink'
+              }`}
             >
-              {viewMode === 'inbox' ? 'Rapid review' : 'Inbox view'}
+              All
             </button>
-          )}
-        </div>
+            <button
+              onClick={() => setScope('mine')}
+              className={`px-3 py-1.5 text-xs transition-colors ${
+                scope === 'mine' ? 'bg-ink text-cream' : 'text-warm-gray hover:text-ink'
+              }`}
+            >
+              My Queue
+            </button>
+          </div>
+        )}
       </div>
 
       <div className="flex gap-1 overflow-x-auto">
@@ -2004,15 +1722,6 @@ function FilterTab({ active, onClick, label, count }: { active: boolean; onClick
         <span className={`ml-1.5 ${active ? 'text-cream/70' : 'text-warm-gray/60'}`}>{count}</span>
       )}
     </button>
-  )
-}
-
-function KbdHint({ label, shortcut }: { label: string; shortcut: string }) {
-  return (
-    <div className="flex items-center gap-1.5 text-[10px] text-warm-gray">
-      <kbd className="px-1.5 py-0.5 bg-warm-light border border-warm-border rounded font-mono text-[10px]">{shortcut}</kbd>
-      {label}
-    </div>
   )
 }
 
