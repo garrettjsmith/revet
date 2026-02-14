@@ -1,10 +1,10 @@
-# Falcon — AI-Powered Service Delivery System
+# Revet — AI-Powered Service Delivery System
 
 *The system that turns Revet from a SaaS dashboard into an AI-led, human-approved service delivery engine.*
 
-## What Falcon Is
+## What Revet Is
 
-Falcon is the internal system that automates the service fulfillment loop for multi-location GBP management. The AI agent does the work — audits profiles, generates content, optimizes listings, drafts customer communications. Mike reviews, approves, and handles edge cases. Customers see results and a great service experience without knowing (or caring) what's behind it.
+Revet is the internal system that automates the service fulfillment loop for multi-location GBP management. The AI agent does the work — audits profiles, generates content, optimizes listings, drafts customer communications. Mike reviews, approves, and handles edge cases. Customers see results and a great service experience without knowing (or caring) what's behind it.
 
 Today, Mike checks SPP, Asana, and Gmail three times a day. He manually moves work orders between stages, writes emails, schedules posts, runs audits. This loop works for 30-50 locations but breaks at 100+.
 
