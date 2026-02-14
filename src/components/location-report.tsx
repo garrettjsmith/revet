@@ -115,6 +115,51 @@ export function LocationReportView({
   const [chartMetric, setChartMetric] = useState<ChartMetric>('actions')
   const [selectedKeyword, setSelectedKeyword] = useState(0) // index into keywordScans
 
+  const exportCsv = () => {
+    const trendPct = (m: MetricPair) => m.previous > 0 ? `${Math.round(((m.value - m.previous) / m.previous) * 100)}%` : ''
+    const lines: string[][] = [
+      ['Metric', 'Value', 'Previous 30d', 'Trend'],
+      ['Total Actions', String(gbpMetrics.actions.value), String(gbpMetrics.actions.previous), trendPct(gbpMetrics.actions)],
+      ['Impressions', String(gbpMetrics.impressions.value), String(gbpMetrics.impressions.previous), trendPct(gbpMetrics.impressions)],
+      ['Calls', String(gbpMetrics.calls.value), String(gbpMetrics.calls.previous), trendPct(gbpMetrics.calls)],
+      ['Directions', String(gbpMetrics.directions.value), String(gbpMetrics.directions.previous), trendPct(gbpMetrics.directions)],
+      ['Web Clicks', String(gbpMetrics.clicks.value), String(gbpMetrics.clicks.previous), trendPct(gbpMetrics.clicks)],
+      [],
+      ['Avg Rating', avgRating?.toFixed(1) || ''],
+      ['Total Reviews', String(totalReviews)],
+      ['Reviews (30d)', String(reviews30d)],
+      ['Response Rate', `${responseRate}%`],
+      ['Days Since Last Review', daysSinceLastReview !== null ? String(daysSinceLastReview) : 'N/A'],
+      ['Positive Sentiment', String(sentimentCounts.positive)],
+      ['Neutral Sentiment', String(sentimentCounts.neutral)],
+      ['Negative Sentiment', String(sentimentCounts.negative)],
+      ['Profile Completeness', `${profileComplete}/${profileTotal}`],
+    ]
+    if (recentReviews.length > 0) {
+      lines.push([])
+      lines.push(['Reviewer', 'Rating', 'Date', 'Platform', 'Sentiment', 'Replied', 'Body'])
+      recentReviews.forEach((r) => {
+        lines.push([
+          r.reviewer_name || 'Anonymous',
+          r.rating !== null ? String(r.rating) : '',
+          new Date(r.published_at).toLocaleDateString('en-US'),
+          r.platform,
+          r.sentiment || '',
+          r.reply_body ? 'Yes' : 'No',
+          (r.body || '').replace(/\n/g, ' '),
+        ])
+      })
+    }
+    const csv = lines.map((r) => r.map((v) => `"${String(v).replace(/"/g, '""')}"`).join(',')).join('\n')
+    const blob = new Blob([csv], { type: 'text/csv' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `location-${locationId}-report.csv`
+    a.click()
+    URL.revokeObjectURL(url)
+  }
+
   const activeKeywordScan = keywordScans[selectedKeyword] || null
   const geoGridScan = activeKeywordScan?.latest || null
 
@@ -123,6 +168,16 @@ export function LocationReportView({
 
   return (
     <div className="space-y-8">
+      {/* Export */}
+      <div className="flex justify-end">
+        <button
+          onClick={exportCsv}
+          className="text-[10px] text-warm-gray hover:text-ink transition-colors"
+        >
+          Export CSV
+        </button>
+      </div>
+
       {/* GBP Performance Summary */}
       <div className="grid grid-cols-2 lg:grid-cols-5 gap-4">
         <MetricCard label="Total Actions" metric={gbpMetrics.actions} />

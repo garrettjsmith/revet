@@ -67,11 +67,18 @@ type ChartMetric = 'impressions' | 'actions' | 'calls' | 'directions' | 'clicks'
 
 // ─── Component ────────────────────────────────────────────
 
+type RatingFilter = 'all' | 'below_3' | '3_to_4' | 'above_4'
+type ResponseFilter = 'all' | 'below_50' | '50_to_80' | 'above_80'
+type TypeFilter = 'all' | 'place' | 'practitioner' | 'service_area'
+
 export function OrgReportDashboard({ orgSlug, summary, sentimentCounts, locations, daily }: Props) {
   const [sortField, setSortField] = useState<SortField>('health')
   const [sortDir, setSortDir] = useState<SortDir>('desc')
   const [chartMetric, setChartMetric] = useState<ChartMetric>('actions')
   const [healthFilter, setHealthFilter] = useState<'all' | 'healthy' | 'attention' | 'at_risk'>('all')
+  const [ratingFilter, setRatingFilter] = useState<RatingFilter>('all')
+  const [responseFilter, setResponseFilter] = useState<ResponseFilter>('all')
+  const [typeFilter, setTypeFilter] = useState<TypeFilter>('all')
 
   const exportCsv = () => {
     const headers = ['Location', 'City', 'State', 'Type', 'Avg Rating', 'Total Reviews', 'Reviews (30d)', 'Response Rate', 'Days Since Last Review', 'GBP Actions (30d)', 'GBP Actions Trend', 'GBP Impressions (30d)', 'SoLV', 'Health']
@@ -101,9 +108,17 @@ export function OrgReportDashboard({ orgSlug, summary, sentimentCounts, location
   }
 
   const healthOrder = { at_risk: 3, attention: 2, healthy: 1 }
-  const filteredLocations = healthFilter === 'all'
-    ? locations
-    : locations.filter((l) => l.health === healthFilter)
+  const filteredLocations = locations.filter((l) => {
+    if (healthFilter !== 'all' && l.health !== healthFilter) return false
+    if (ratingFilter === 'below_3' && (l.avg_rating === null || l.avg_rating >= 3)) return false
+    if (ratingFilter === '3_to_4' && (l.avg_rating === null || l.avg_rating < 3 || l.avg_rating >= 4)) return false
+    if (ratingFilter === 'above_4' && (l.avg_rating === null || l.avg_rating < 4)) return false
+    if (responseFilter === 'below_50' && l.response_rate >= 50) return false
+    if (responseFilter === '50_to_80' && (l.response_rate < 50 || l.response_rate >= 80)) return false
+    if (responseFilter === 'above_80' && l.response_rate < 80) return false
+    if (typeFilter !== 'all' && l.type !== typeFilter) return false
+    return true
+  })
 
   const sorted = [...filteredLocations].sort((a, b) => {
     const dir = sortDir === 'asc' ? 1 : -1
@@ -326,17 +341,17 @@ export function OrgReportDashboard({ orgSlug, summary, sentimentCounts, location
       {/* Location Table */}
       <div className="border border-warm-border rounded-xl overflow-hidden">
         <div className="px-5 py-3 border-b border-warm-border bg-warm-light/30">
-          <div className="flex items-center justify-between">
+          <div className="flex items-center justify-between mb-2">
             <h2 className="text-sm font-medium text-ink">
               Locations
-              {healthFilter !== 'all' && (
+              {filteredLocations.length !== locations.length && (
                 <span className="text-warm-gray font-normal ml-2">
-                  Showing {healthFilter === 'at_risk' ? 'at risk' : healthFilter} ({filteredLocations.length})
+                  {filteredLocations.length} of {locations.length}
                   <button
-                    onClick={() => setHealthFilter('all')}
+                    onClick={() => { setHealthFilter('all'); setRatingFilter('all'); setResponseFilter('all'); setTypeFilter('all') }}
                     className="ml-2 text-[10px] text-warm-gray hover:text-ink underline"
                   >
-                    Clear
+                    Clear all
                   </button>
                 </span>
               )}
@@ -347,6 +362,44 @@ export function OrgReportDashboard({ orgSlug, summary, sentimentCounts, location
             >
               Export CSV
             </button>
+          </div>
+          <div className="flex items-center gap-2 flex-wrap">
+            <select
+              value={ratingFilter}
+              onChange={(e) => setRatingFilter(e.target.value as RatingFilter)}
+              className={`text-[10px] bg-transparent border rounded-full px-2.5 py-1 outline-none transition-colors ${
+                ratingFilter !== 'all' ? 'border-ink text-ink font-medium' : 'border-warm-border text-warm-gray'
+              }`}
+            >
+              <option value="all">All Ratings</option>
+              <option value="below_3">Below 3.0</option>
+              <option value="3_to_4">3.0 - 3.9</option>
+              <option value="above_4">4.0+</option>
+            </select>
+            <select
+              value={responseFilter}
+              onChange={(e) => setResponseFilter(e.target.value as ResponseFilter)}
+              className={`text-[10px] bg-transparent border rounded-full px-2.5 py-1 outline-none transition-colors ${
+                responseFilter !== 'all' ? 'border-ink text-ink font-medium' : 'border-warm-border text-warm-gray'
+              }`}
+            >
+              <option value="all">All Response Rates</option>
+              <option value="below_50">Below 50%</option>
+              <option value="50_to_80">50% - 79%</option>
+              <option value="above_80">80%+</option>
+            </select>
+            <select
+              value={typeFilter}
+              onChange={(e) => setTypeFilter(e.target.value as TypeFilter)}
+              className={`text-[10px] bg-transparent border rounded-full px-2.5 py-1 outline-none transition-colors ${
+                typeFilter !== 'all' ? 'border-ink text-ink font-medium' : 'border-warm-border text-warm-gray'
+              }`}
+            >
+              <option value="all">All Types</option>
+              <option value="place">Place</option>
+              <option value="practitioner">Practitioner</option>
+              <option value="service_area">Service Area</option>
+            </select>
           </div>
         </div>
 
