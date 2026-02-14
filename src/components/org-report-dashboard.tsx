@@ -61,7 +61,7 @@ interface Props {
   daily: DailyData[]
 }
 
-type SortField = 'name' | 'avg_rating' | 'reviews_30d' | 'gbp_actions_30d' | 'solv' | 'health'
+type SortField = 'name' | 'avg_rating' | 'reviews_30d' | 'response_rate' | 'gbp_actions_30d' | 'solv' | 'health'
 type SortDir = 'asc' | 'desc'
 type ChartMetric = 'impressions' | 'actions' | 'calls' | 'directions' | 'clicks'
 
@@ -72,6 +72,24 @@ export function OrgReportDashboard({ orgSlug, summary, sentimentCounts, location
   const [sortDir, setSortDir] = useState<SortDir>('desc')
   const [chartMetric, setChartMetric] = useState<ChartMetric>('actions')
   const [healthFilter, setHealthFilter] = useState<'all' | 'healthy' | 'attention' | 'at_risk'>('all')
+
+  const exportCsv = () => {
+    const headers = ['Location', 'City', 'State', 'Type', 'Avg Rating', 'Total Reviews', 'Reviews (30d)', 'Response Rate', 'Days Since Last Review', 'GBP Actions (30d)', 'GBP Actions Trend', 'GBP Impressions (30d)', 'SoLV', 'Health']
+    const rows = sorted.map((l) => [
+      l.name, l.city || '', l.state || '', l.type,
+      l.avg_rating ?? '', l.total_reviews, l.reviews_30d, `${l.response_rate}%`,
+      l.days_since_last_review ?? '', l.gbp_actions_30d, `${l.gbp_actions_trend}%`,
+      l.gbp_impressions_30d, l.solv ?? '', l.health,
+    ])
+    const csv = [headers, ...rows].map((r) => r.map((v) => `"${String(v).replace(/"/g, '""')}"`).join(',')).join('\n')
+    const blob = new Blob([csv], { type: 'text/csv' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `${orgSlug}-locations-report.csv`
+    a.click()
+    URL.revokeObjectURL(url)
+  }
 
   const handleSort = (field: SortField) => {
     if (sortField === field) {
@@ -92,6 +110,7 @@ export function OrgReportDashboard({ orgSlug, summary, sentimentCounts, location
     if (sortField === 'name') return dir * a.name.localeCompare(b.name)
     if (sortField === 'avg_rating') return dir * ((a.avg_rating || 0) - (b.avg_rating || 0))
     if (sortField === 'reviews_30d') return dir * (a.reviews_30d - b.reviews_30d)
+    if (sortField === 'response_rate') return dir * (a.response_rate - b.response_rate)
     if (sortField === 'gbp_actions_30d') return dir * (a.gbp_actions_30d - b.gbp_actions_30d)
     if (sortField === 'solv') return dir * ((a.solv || 0) - (b.solv || 0))
     if (sortField === 'health') return dir * (healthOrder[a.health] - healthOrder[b.health])
@@ -322,6 +341,12 @@ export function OrgReportDashboard({ orgSlug, summary, sentimentCounts, location
                 </span>
               )}
             </h2>
+            <button
+              onClick={exportCsv}
+              className="text-[10px] text-warm-gray hover:text-ink transition-colors"
+            >
+              Export CSV
+            </button>
           </div>
         </div>
 
@@ -332,7 +357,7 @@ export function OrgReportDashboard({ orgSlug, summary, sentimentCounts, location
           <SortHeader label="Reviews (30d)" field="reviews_30d" current={sortField} dir={sortDir} onSort={handleSort} />
           <SortHeader label="GBP Actions" field="gbp_actions_30d" current={sortField} dir={sortDir} onSort={handleSort} />
           <SortHeader label="SoLV" field="solv" current={sortField} dir={sortDir} onSort={handleSort} />
-          <div>Response Rate</div>
+          <SortHeader label="Response Rate" field="response_rate" current={sortField} dir={sortDir} onSort={handleSort} />
           <SortHeader label="Health" field="health" current={sortField} dir={sortDir} onSort={handleSort} />
         </div>
 

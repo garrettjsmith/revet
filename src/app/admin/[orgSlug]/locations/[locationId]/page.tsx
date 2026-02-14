@@ -31,6 +31,10 @@ export default async function LocationDetailPage({
   const basePath = `/admin/${params.orgSlug}/locations/${params.locationId}`
   const isAgencyAdmin = await checkAgencyAdmin()
 
+  const now = new Date()
+  const thirtyDaysAgo = new Date(now)
+  thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30)
+
   // Run all independent queries in parallel
   const [
     { data: forms },
@@ -40,6 +44,7 @@ export default async function LocationDetailPage({
     { data: reviewSource },
     { data: gbpProfile },
     { data: stats },
+    { data: allReviews },
   ] = await Promise.all([
     supabase
       .from('form_templates')
@@ -77,6 +82,10 @@ export default async function LocationDetailPage({
       .select('*')
       .eq('location_id', location.id)
       .returns<ProfileStats[]>(),
+    adminClient
+      .from('reviews')
+      .select('rating, published_at, reply_body')
+      .eq('location_id', location.id),
   ])
 
   const formList = (forms || []) as FormTemplate[]
@@ -91,6 +100,40 @@ export default async function LocationDetailPage({
     : reviewSource
     ? ({ active: 'Synced', error: 'Sync error', paused: 'Paused', pending: 'Pending' }[reviewSource.sync_status as string] || 'Pending')
     : 'Not linked'
+
+  // Health calculation
+  const allRevs = allReviews || []
+  const totalRevs = allRevs.length
+  const avgRating = reviewSource?.average_rating ? Number(reviewSource.average_rating) : null
+  const repliedCount = allRevs.filter((r: any) => r.reply_body).length
+  const responseRate = totalRevs > 0 ? Math.round((repliedCount / totalRevs) * 100) : 0
+  const lastReviewDate = allRevs.length > 0
+    ? allRevs.reduce((latest: string | null, r: any) => {
+        if (!latest || (r.published_at && r.published_at > latest)) return r.published_at
+        return latest
+      }, null as string | null)
+    : null
+  const daysSinceLastReview = lastReviewDate
+    ? Math.floor((now.getTime() - new Date(lastReviewDate).getTime()) / 86400000)
+    : null
+
+  let health: 'healthy' | 'attention' | 'at_risk' = 'healthy'
+  const healthReasons: string[] = []
+  if (avgRating !== null && avgRating < 3.0) { health = 'at_risk'; healthReasons.push('Rating below 3.0') }
+  else if (avgRating !== null && avgRating < 4.0) { health = 'attention'; healthReasons.push('Rating below 4.0') }
+  if (daysSinceLastReview !== null && daysSinceLastReview > 60) { health = 'at_risk'; healthReasons.push('No reviews in 60+ days') }
+  else if (daysSinceLastReview !== null && daysSinceLastReview > 30 && health !== 'at_risk') { health = 'attention'; healthReasons.push('No reviews in 30+ days') }
+  if (responseRate < 50 && totalRevs > 0) {
+    if (health === 'healthy') health = 'attention'
+    healthReasons.push(`Response rate ${responseRate}%`)
+  }
+
+  const healthConfig = {
+    healthy: { label: 'Healthy', classes: 'border-emerald-200 bg-emerald-50/50', textClass: 'text-emerald-700', dotClass: 'bg-emerald-500' },
+    attention: { label: 'Needs Attention', classes: 'border-amber-200 bg-amber-50/50', textClass: 'text-amber-700', dotClass: 'bg-amber-500' },
+    at_risk: { label: 'At Risk', classes: 'border-red-200 bg-red-50/50', textClass: 'text-red-700', dotClass: 'bg-red-500' },
+  }
+  const hc = healthConfig[health]
 
   const statCards = [
     { label: 'Reviews', value: reviewCount || 0 },
@@ -154,6 +197,27 @@ export default async function LocationDetailPage({
             <div className="text-2xl font-bold font-mono text-cream">{s.value}</div>
           </div>
         ))}
+      </div>
+
+      {/* Health Status */}
+      <div className={`border rounded-xl px-5 py-4 mb-8 ${hc.classes}`}>
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2.5">
+            <div className={`w-2.5 h-2.5 rounded-full ${hc.dotClass}`} />
+            <span className={`text-sm font-medium ${hc.textClass}`}>{hc.label}</span>
+            {healthReasons.length > 0 && (
+              <span className="text-xs text-warm-gray">
+                {healthReasons.join(' · ')}
+              </span>
+            )}
+          </div>
+          <div className="flex items-center gap-4 text-xs text-warm-gray">
+            <span>{responseRate}% response rate</span>
+            {daysSinceLastReview !== null && (
+              <span>Last review {daysSinceLastReview}d ago</span>
+            )}
+          </div>
+        </div>
       </div>
 
       {/* Google Business Profile */}
