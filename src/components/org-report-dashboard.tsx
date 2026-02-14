@@ -61,7 +61,7 @@ interface Props {
   daily: DailyData[]
 }
 
-type SortField = 'name' | 'avg_rating' | 'reviews_30d' | 'gbp_actions_30d' | 'solv' | 'health'
+type SortField = 'name' | 'avg_rating' | 'reviews_30d' | 'response_rate' | 'gbp_actions_30d' | 'solv' | 'health'
 type SortDir = 'asc' | 'desc'
 type ChartMetric = 'impressions' | 'actions' | 'calls' | 'directions' | 'clicks'
 
@@ -72,6 +72,24 @@ export function OrgReportDashboard({ orgSlug, summary, sentimentCounts, location
   const [sortDir, setSortDir] = useState<SortDir>('desc')
   const [chartMetric, setChartMetric] = useState<ChartMetric>('actions')
   const [healthFilter, setHealthFilter] = useState<'all' | 'healthy' | 'attention' | 'at_risk'>('all')
+
+  const exportCsv = () => {
+    const headers = ['Location', 'City', 'State', 'Type', 'Avg Rating', 'Total Reviews', 'Reviews (30d)', 'Response Rate', 'Days Since Last Review', 'GBP Actions (30d)', 'GBP Actions Trend', 'GBP Impressions (30d)', 'SoLV', 'Health']
+    const rows = sorted.map((l) => [
+      l.name, l.city || '', l.state || '', l.type,
+      l.avg_rating ?? '', l.total_reviews, l.reviews_30d, `${l.response_rate}%`,
+      l.days_since_last_review ?? '', l.gbp_actions_30d, `${l.gbp_actions_trend}%`,
+      l.gbp_impressions_30d, l.solv ?? '', l.health,
+    ])
+    const csv = [headers, ...rows].map((r) => r.map((v) => `"${String(v).replace(/"/g, '""')}"`).join(',')).join('\n')
+    const blob = new Blob([csv], { type: 'text/csv' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `${orgSlug}-locations-report.csv`
+    a.click()
+    URL.revokeObjectURL(url)
+  }
 
   const handleSort = (field: SortField) => {
     if (sortField === field) {
@@ -92,6 +110,7 @@ export function OrgReportDashboard({ orgSlug, summary, sentimentCounts, location
     if (sortField === 'name') return dir * a.name.localeCompare(b.name)
     if (sortField === 'avg_rating') return dir * ((a.avg_rating || 0) - (b.avg_rating || 0))
     if (sortField === 'reviews_30d') return dir * (a.reviews_30d - b.reviews_30d)
+    if (sortField === 'response_rate') return dir * (a.response_rate - b.response_rate)
     if (sortField === 'gbp_actions_30d') return dir * (a.gbp_actions_30d - b.gbp_actions_30d)
     if (sortField === 'solv') return dir * ((a.solv || 0) - (b.solv || 0))
     if (sortField === 'health') return dir * (healthOrder[a.health] - healthOrder[b.health])
@@ -322,92 +341,190 @@ export function OrgReportDashboard({ orgSlug, summary, sentimentCounts, location
                 </span>
               )}
             </h2>
+            <button
+              onClick={exportCsv}
+              className="text-[10px] text-warm-gray hover:text-ink transition-colors"
+            >
+              Export CSV
+            </button>
           </div>
         </div>
 
-        {/* Table header */}
-        <div className="hidden lg:grid grid-cols-[2fr_1fr_1fr_1fr_80px_1fr_80px] gap-4 px-5 py-2 text-[10px] text-warm-gray uppercase tracking-wider border-b border-warm-border/50">
-          <SortHeader label="Location" field="name" current={sortField} dir={sortDir} onSort={handleSort} />
-          <SortHeader label="Rating" field="avg_rating" current={sortField} dir={sortDir} onSort={handleSort} />
-          <SortHeader label="Reviews (30d)" field="reviews_30d" current={sortField} dir={sortDir} onSort={handleSort} />
-          <SortHeader label="GBP Actions" field="gbp_actions_30d" current={sortField} dir={sortDir} onSort={handleSort} />
-          <SortHeader label="SoLV" field="solv" current={sortField} dir={sortDir} onSort={handleSort} />
-          <div>Response Rate</div>
-          <SortHeader label="Health" field="health" current={sortField} dir={sortDir} onSort={handleSort} />
+        {/* Desktop table */}
+        <div className="hidden lg:block">
+          {/* Table header */}
+          <div className="grid grid-cols-[2fr_1fr_1fr_1fr_80px_1fr_80px] gap-4 px-5 py-2 text-[10px] text-warm-gray uppercase tracking-wider border-b border-warm-border/50">
+            <SortHeader label="Location" field="name" current={sortField} dir={sortDir} onSort={handleSort} />
+            <SortHeader label="Rating" field="avg_rating" current={sortField} dir={sortDir} onSort={handleSort} />
+            <SortHeader label="Reviews (30d)" field="reviews_30d" current={sortField} dir={sortDir} onSort={handleSort} />
+            <SortHeader label="GBP Actions" field="gbp_actions_30d" current={sortField} dir={sortDir} onSort={handleSort} />
+            <SortHeader label="SoLV" field="solv" current={sortField} dir={sortDir} onSort={handleSort} />
+            <SortHeader label="Response Rate" field="response_rate" current={sortField} dir={sortDir} onSort={handleSort} />
+            <SortHeader label="Health" field="health" current={sortField} dir={sortDir} onSort={handleSort} />
+          </div>
+
+          {/* Table rows */}
+          <div className="divide-y divide-warm-border/50">
+            {sorted.map((loc) => (
+              <Link
+                key={loc.id}
+                href={`/admin/${orgSlug}/locations/${loc.id}/reports`}
+                className="grid grid-cols-[2fr_1fr_1fr_1fr_80px_1fr_80px] gap-4 px-5 py-3 hover:bg-warm-light/50 transition-colors no-underline items-center"
+              >
+                {/* Location name */}
+                <div>
+                  <div className="text-sm text-ink font-medium">{loc.name}</div>
+                  <div className="text-[10px] text-warm-gray">
+                    {[loc.city, loc.state].filter(Boolean).join(', ')}
+                  </div>
+                </div>
+
+                {/* Rating */}
+                <div className="flex items-center gap-1.5">
+                  {loc.avg_rating !== null ? (
+                    <>
+                      <span className="text-sm font-medium text-ink">{loc.avg_rating.toFixed(1)}</span>
+                      <span className="text-amber-400 text-xs">★</span>
+                      <span className="text-[10px] text-warm-gray">({loc.total_reviews})</span>
+                    </>
+                  ) : (
+                    <span className="text-xs text-warm-gray">No reviews</span>
+                  )}
+                </div>
+
+                {/* Reviews 30d */}
+                <div className="flex items-center gap-1.5">
+                  <span className="text-sm text-ink">{loc.reviews_30d}</span>
+                  {loc.days_since_last_review !== null && (
+                    <span className={`text-[10px] ${loc.days_since_last_review > 30 ? 'text-red-500' : loc.days_since_last_review > 14 ? 'text-amber-500' : 'text-warm-gray'}`}>
+                      {loc.days_since_last_review}d ago
+                    </span>
+                  )}
+                </div>
+
+                {/* GBP Actions */}
+                <div className="flex items-center gap-1.5">
+                  <span className="text-sm text-ink">{formatNumber(loc.gbp_actions_30d)}</span>
+                  {loc.gbp_actions_trend !== 0 && (
+                    <TrendBadge trend={loc.gbp_actions_trend} />
+                  )}
+                </div>
+
+                {/* SoLV */}
+                <div>
+                  {loc.solv !== null ? (
+                    <span className={`text-sm font-medium ${loc.solv >= 50 ? 'text-emerald-600' : loc.solv >= 25 ? 'text-amber-600' : 'text-red-500'}`}>
+                      {Math.round(loc.solv)}%
+                    </span>
+                  ) : (
+                    <span className="text-[10px] text-warm-gray">--</span>
+                  )}
+                </div>
+
+                {/* Response Rate */}
+                <div className="flex items-center gap-2">
+                  <div className="flex-1 h-1.5 bg-warm-light rounded-full overflow-hidden max-w-[80px]">
+                    <div
+                      className={`h-full rounded-full ${loc.response_rate >= 80 ? 'bg-emerald-500' : loc.response_rate >= 50 ? 'bg-amber-500' : 'bg-red-400'}`}
+                      style={{ width: `${loc.response_rate}%` }}
+                    />
+                  </div>
+                  <span className="text-xs text-warm-gray">{loc.response_rate}%</span>
+                </div>
+
+                {/* Health */}
+                <div>
+                  <HealthBadge health={loc.health} />
+                </div>
+              </Link>
+            ))}
+          </div>
         </div>
 
-        {/* Table rows */}
-        <div className="divide-y divide-warm-border/50">
+        {/* Mobile sort */}
+        <div className="lg:hidden px-4 py-2 border-b border-warm-border/50 flex items-center justify-between">
+          <select
+            value={sortField}
+            onChange={(e) => { setSortField(e.target.value as SortField); setSortDir('desc') }}
+            className="text-xs bg-transparent text-warm-gray outline-none"
+          >
+            <option value="health">Sort by Health</option>
+            <option value="name">Sort by Name</option>
+            <option value="avg_rating">Sort by Rating</option>
+            <option value="reviews_30d">Sort by Reviews</option>
+            <option value="response_rate">Sort by Response Rate</option>
+            <option value="gbp_actions_30d">Sort by Actions</option>
+            <option value="solv">Sort by SoLV</option>
+          </select>
+          <button
+            onClick={() => setSortDir(sortDir === 'asc' ? 'desc' : 'asc')}
+            className="text-xs text-warm-gray hover:text-ink transition-colors"
+          >
+            {sortDir === 'asc' ? '↑ Asc' : '↓ Desc'}
+          </button>
+        </div>
+
+        {/* Mobile cards */}
+        <div className="lg:hidden divide-y divide-warm-border/50">
           {sorted.map((loc) => (
             <Link
               key={loc.id}
               href={`/admin/${orgSlug}/locations/${loc.id}/reports`}
-              className="grid grid-cols-1 lg:grid-cols-[2fr_1fr_1fr_1fr_80px_1fr_80px] gap-2 lg:gap-4 px-5 py-3 hover:bg-warm-light/50 transition-colors no-underline items-center"
+              className="block px-4 py-4 hover:bg-warm-light/50 transition-colors no-underline"
             >
-              {/* Location name */}
-              <div>
-                <div className="text-sm text-ink font-medium">{loc.name}</div>
-                <div className="text-[10px] text-warm-gray">
-                  {[loc.city, loc.state].filter(Boolean).join(', ')}
+              {/* Header row: name + health dot */}
+              <div className="flex items-start justify-between mb-1">
+                <div>
+                  <div className="text-sm text-ink font-medium">{loc.name}</div>
+                  <div className="text-[10px] text-warm-gray">
+                    {[loc.city, loc.state].filter(Boolean).join(', ')}
+                  </div>
                 </div>
-              </div>
-
-              {/* Rating */}
-              <div className="flex items-center gap-1.5">
-                {loc.avg_rating !== null ? (
-                  <>
-                    <span className="text-sm font-medium text-ink">{loc.avg_rating.toFixed(1)}</span>
-                    <span className="text-amber-400 text-xs">★</span>
-                    <span className="text-[10px] text-warm-gray">({loc.total_reviews})</span>
-                  </>
-                ) : (
-                  <span className="text-xs text-warm-gray">No reviews</span>
-                )}
-              </div>
-
-              {/* Reviews 30d */}
-              <div className="flex items-center gap-1.5">
-                <span className="text-sm text-ink">{loc.reviews_30d}</span>
-                {loc.days_since_last_review !== null && (
-                  <span className={`text-[10px] ${loc.days_since_last_review > 30 ? 'text-red-500' : loc.days_since_last_review > 14 ? 'text-amber-500' : 'text-warm-gray'}`}>
-                    {loc.days_since_last_review}d ago
-                  </span>
-                )}
-              </div>
-
-              {/* GBP Actions */}
-              <div className="flex items-center gap-1.5">
-                <span className="text-sm text-ink">{formatNumber(loc.gbp_actions_30d)}</span>
-                {loc.gbp_actions_trend !== 0 && (
-                  <TrendBadge trend={loc.gbp_actions_trend} />
-                )}
-              </div>
-
-              {/* SoLV */}
-              <div>
-                {loc.solv !== null ? (
-                  <span className={`text-sm font-medium ${loc.solv >= 50 ? 'text-emerald-600' : loc.solv >= 25 ? 'text-amber-600' : 'text-red-500'}`}>
-                    {Math.round(loc.solv)}%
-                  </span>
-                ) : (
-                  <span className="text-[10px] text-warm-gray">--</span>
-                )}
-              </div>
-
-              {/* Response Rate */}
-              <div className="flex items-center gap-2">
-                <div className="flex-1 h-1.5 bg-warm-light rounded-full overflow-hidden max-w-[80px]">
-                  <div
-                    className={`h-full rounded-full ${loc.response_rate >= 80 ? 'bg-emerald-500' : loc.response_rate >= 50 ? 'bg-amber-500' : 'bg-red-400'}`}
-                    style={{ width: `${loc.response_rate}%` }}
-                  />
-                </div>
-                <span className="text-xs text-warm-gray">{loc.response_rate}%</span>
-              </div>
-
-              {/* Health */}
-              <div>
                 <HealthBadge health={loc.health} />
+              </div>
+
+              {/* Key metrics row */}
+              <div className="grid grid-cols-3 gap-3 mt-3">
+                <div>
+                  <div className="flex items-center gap-1">
+                    {loc.avg_rating !== null ? (
+                      <>
+                        <span className="text-lg font-serif text-ink">{loc.avg_rating.toFixed(1)}</span>
+                        <span className="text-amber-400 text-xs">★</span>
+                      </>
+                    ) : (
+                      <span className="text-sm text-warm-gray">--</span>
+                    )}
+                  </div>
+                  <div className="text-[10px] text-warm-gray mt-0.5">rating</div>
+                </div>
+                <div>
+                  <div className="text-lg font-serif text-ink">{loc.reviews_30d}</div>
+                  <div className="text-[10px] text-warm-gray mt-0.5">reviews (30d)</div>
+                </div>
+                <div>
+                  <div className={`text-lg font-serif ${loc.response_rate >= 80 ? 'text-emerald-600' : loc.response_rate >= 50 ? 'text-amber-600' : 'text-red-500'}`}>
+                    {loc.response_rate}%
+                  </div>
+                  <div className="text-[10px] text-warm-gray mt-0.5">replied</div>
+                </div>
+              </div>
+
+              {/* Secondary metrics row */}
+              <div className="flex items-center gap-4 mt-2 pt-2 border-t border-warm-border/30">
+                <div className="flex items-center gap-1.5">
+                  <span className="text-xs text-ink">{formatNumber(loc.gbp_actions_30d)}</span>
+                  <span className="text-[10px] text-warm-gray">actions</span>
+                  {loc.gbp_actions_trend !== 0 && <TrendBadge trend={loc.gbp_actions_trend} />}
+                </div>
+                {loc.solv !== null && (
+                  <div className="flex items-center gap-1.5">
+                    <span className={`text-xs font-medium ${loc.solv >= 50 ? 'text-emerald-600' : loc.solv >= 25 ? 'text-amber-600' : 'text-red-500'}`}>
+                      {Math.round(loc.solv)}%
+                    </span>
+                    <span className="text-[10px] text-warm-gray">SoLV</span>
+                  </div>
+                )}
               </div>
             </Link>
           ))}

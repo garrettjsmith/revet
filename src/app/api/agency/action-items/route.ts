@@ -133,7 +133,7 @@ export async function GET() {
       count: unreadNegativeCount || 0,
       label: `${unreadNegativeCount} negative review${unreadNegativeCount === 1 ? '' : 's'} need${unreadNegativeCount === 1 ? 's' : ''} a reply`,
       action_label: 'View reviews',
-      action_path: '/agency/reviews?status=new&rating=2',
+      action_path: '/agency/queue',
     })
   }
 
@@ -187,8 +187,8 @@ export async function GET() {
       priority: 'info',
       count: pendingReplies || 0,
       label: `${pendingReplies} repl${pendingReplies === 1 ? 'y' : 'ies'} queued to send`,
-      action_label: 'View reviews',
-      action_path: '/agency/reviews',
+      action_label: 'View queue',
+      action_path: '/agency/queue',
     })
   }
 
