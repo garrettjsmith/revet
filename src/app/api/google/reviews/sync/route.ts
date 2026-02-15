@@ -213,7 +213,7 @@ export async function POST(request: NextRequest) {
           }
         })
       )
-      profilesBackfilled += counts.reduce((sum, c) => sum + c, 0)
+      profilesBackfilled += counts.reduce((sum, c) => sum + c, 0 as number)
     }
   }
 
