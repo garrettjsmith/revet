@@ -126,6 +126,10 @@ export async function POST(request: NextRequest) {
 
       const syncResult = await syncResponse.json()
 
+      if (!syncResponse.ok) {
+        console.error(`[google/reviews/sync] Internal sync failed for source ${source.id}:`, syncResult)
+      }
+
       // Update source stats and sync status from Google's response
       await supabase
         .from('review_sources')

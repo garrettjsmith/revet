@@ -91,7 +91,7 @@ export async function POST(request: NextRequest) {
     const normalizedReviews = data.reviews.map(normalizeGoogleReview)
 
     const apiKey = process.env.REVIEW_SYNC_API_KEY
-    await fetch(`${process.env.NEXT_PUBLIC_APP_URL}/api/reviews/sync`, {
+    const syncResponse = await fetch(`${process.env.NEXT_PUBLIC_APP_URL}/api/reviews/sync`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -103,6 +103,11 @@ export async function POST(request: NextRequest) {
         trigger: 'pubsub',
       }),
     })
+
+    if (!syncResponse.ok) {
+      const syncResult = await syncResponse.json().catch(() => ({}))
+      console.error(`[google/webhook] Internal sync failed for source ${source.id}:`, syncResult)
+    }
 
     return NextResponse.json({ ok: true })
   } catch (err) {

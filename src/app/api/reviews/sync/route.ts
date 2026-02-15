@@ -91,15 +91,19 @@ export async function POST(request: NextRequest) {
       })
       .eq('id', source_id)
 
-    // Process alert rules
-    await processAlertRules(
-      supabase,
-      (source.locations as any).org_id,
-      source.location_id,
-      (source.locations as any).name,
-      source.platform,
-      incomingReviews
-    )
+    // Process alert rules (non-blocking — don't let alert failures prevent sync success)
+    try {
+      await processAlertRules(
+        supabase,
+        (source.locations as any).org_id,
+        source.location_id,
+        (source.locations as any).name,
+        source.platform,
+        incomingReviews
+      )
+    } catch (alertErr) {
+      console.error('[reviews/sync] Alert processing failed (reviews still synced):', alertErr)
+    }
 
     return NextResponse.json({
       ok: true,
@@ -107,7 +111,8 @@ export async function POST(request: NextRequest) {
       source_id,
       processed: processedCount,
     })
-  } catch {
+  } catch (err) {
+    console.error('[reviews/sync] Sync failed:', err)
     return NextResponse.json({ error: 'Internal error' }, { status: 500 })
   }
 }
