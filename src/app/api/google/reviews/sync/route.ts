@@ -56,109 +56,115 @@ export async function POST(request: NextRequest) {
 
   const results: Array<{ source_id: string; reviews_synced: number; error?: string }> = []
 
-  for (const source of sources) {
-    try {
-      // Get the GBP resource name from metadata or mapping
-      let gbpLocationName = (source.metadata as any)?.gbp_location_name
+  // Process sources in parallel batches of 5 to avoid Vercel 120s timeout
+  const BATCH_SIZE = 5
+  for (let i = 0; i < sources.length; i += BATCH_SIZE) {
+    const batch = sources.slice(i, i + BATCH_SIZE)
+    const batchResults = await Promise.all(
+      batch.map(async (source): Promise<{ source_id: string; reviews_synced: number; error?: string }> => {
+        try {
+          // Get the GBP resource name from metadata or mapping
+          let gbpLocationName = (source.metadata as any)?.gbp_location_name
 
-      if (!gbpLocationName) {
-        // Try to find from integration mappings
-        const { data: mapping } = await supabase
-          .from('agency_integration_mappings')
-          .select('external_resource_id, metadata')
-          .eq('resource_type', 'gbp_location')
-          .eq('location_id', source.location_id)
-          .limit(1)
-          .single()
+          if (!gbpLocationName) {
+            // Try to find from integration mappings
+            const { data: mapping } = await supabase
+              .from('agency_integration_mappings')
+              .select('external_resource_id, metadata')
+              .eq('resource_type', 'gbp_location')
+              .eq('location_id', source.location_id)
+              .limit(1)
+              .single()
 
-        if (mapping) {
-          gbpLocationName = mapping.external_resource_id
-        }
-      }
+            if (mapping) {
+              gbpLocationName = mapping.external_resource_id
+            }
+          }
 
-      if (!gbpLocationName) {
-        await supabase
-          .from('review_sources')
-          .update({ sync_status: 'error', metadata: { ...source.metadata, error: 'No GBP location name found' } })
-          .eq('id', source.id)
-        results.push({ source_id: source.id, reviews_synced: 0, error: 'No GBP location name' })
-        continue
-      }
+          if (!gbpLocationName) {
+            await supabase
+              .from('review_sources')
+              .update({ sync_status: 'error', metadata: { ...source.metadata, error: 'No GBP location name found' } })
+              .eq('id', source.id)
+            return { source_id: source.id, reviews_synced: 0, error: 'No GBP location name' }
+          }
 
-      // Fetch reviews from Google (latest page only for incremental sync)
-      const data = await fetchGoogleReviews(gbpLocationName, {
-        pageSize: 50,
-        orderBy: 'updateTime desc',
-      })
-
-      if (!data.reviews || data.reviews.length === 0) {
-        await supabase
-          .from('review_sources')
-          .update({
-            last_synced_at: new Date().toISOString(),
-            sync_status: 'active',
-            total_review_count: data.totalReviewCount || source.total_review_count,
-            average_rating: data.averageRating || source.average_rating,
+          // Fetch reviews from Google (latest page only for incremental sync)
+          const data = await fetchGoogleReviews(gbpLocationName, {
+            pageSize: 50,
+            orderBy: 'updateTime desc',
           })
-          .eq('id', source.id)
 
-        results.push({ source_id: source.id, reviews_synced: 0 })
-        continue
-      }
+          if (!data.reviews || data.reviews.length === 0) {
+            await supabase
+              .from('review_sources')
+              .update({
+                last_synced_at: new Date().toISOString(),
+                sync_status: 'active',
+                total_review_count: data.totalReviewCount || source.total_review_count,
+                average_rating: data.averageRating || source.average_rating,
+              })
+              .eq('id', source.id)
 
-      // Normalize and sync reviews through the existing sync endpoint
-      const normalizedReviews = data.reviews.map(normalizeGoogleReview)
+            return { source_id: source.id, reviews_synced: 0 }
+          }
 
-      // Call the internal sync endpoint
-      const syncUrl = `${process.env.NEXT_PUBLIC_APP_URL}/api/reviews/sync`
-      const syncResponse = await fetch(syncUrl, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: apiKey ? `Bearer ${apiKey}` : '',
-        },
-        body: JSON.stringify({
-          source_id: source.id,
-          reviews: normalizedReviews,
-          trigger: 'cron',
-        }),
+          // Normalize and sync reviews through the existing sync endpoint
+          const normalizedReviews = data.reviews.map(normalizeGoogleReview)
+
+          // Call the internal sync endpoint
+          const syncUrl = `${process.env.NEXT_PUBLIC_APP_URL}/api/reviews/sync`
+          const syncResponse = await fetch(syncUrl, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              Authorization: apiKey ? `Bearer ${apiKey}` : '',
+            },
+            body: JSON.stringify({
+              source_id: source.id,
+              reviews: normalizedReviews,
+              trigger: 'cron',
+            }),
+          })
+
+          const syncResult = await syncResponse.json()
+
+          if (!syncResponse.ok) {
+            console.error(`[google/reviews/sync] Internal sync failed for source ${source.id}:`, syncResult)
+          }
+
+          // Update source stats and sync status from Google's response
+          await supabase
+            .from('review_sources')
+            .update({
+              total_review_count: data.totalReviewCount || source.total_review_count,
+              average_rating: data.averageRating || source.average_rating,
+              sync_status: 'active',
+              last_synced_at: new Date().toISOString(),
+            })
+            .eq('id', source.id)
+
+          return {
+            source_id: source.id,
+            reviews_synced: syncResult.processed || 0,
+          }
+        } catch (err) {
+          const errorMessage = err instanceof Error ? err.message : 'Unknown error'
+          console.error(`[google/reviews/sync] Error syncing source ${source.id}:`, errorMessage)
+
+          await supabase
+            .from('review_sources')
+            .update({
+              sync_status: 'error',
+              metadata: { ...source.metadata, last_error: errorMessage, error_at: new Date().toISOString() },
+            })
+            .eq('id', source.id)
+
+          return { source_id: source.id, reviews_synced: 0, error: errorMessage }
+        }
       })
-
-      const syncResult = await syncResponse.json()
-
-      if (!syncResponse.ok) {
-        console.error(`[google/reviews/sync] Internal sync failed for source ${source.id}:`, syncResult)
-      }
-
-      // Update source stats and sync status from Google's response
-      await supabase
-        .from('review_sources')
-        .update({
-          total_review_count: data.totalReviewCount || source.total_review_count,
-          average_rating: data.averageRating || source.average_rating,
-          sync_status: 'active',
-          last_synced_at: new Date().toISOString(),
-        })
-        .eq('id', source.id)
-
-      results.push({
-        source_id: source.id,
-        reviews_synced: syncResult.processed || 0,
-      })
-    } catch (err) {
-      const errorMessage = err instanceof Error ? err.message : 'Unknown error'
-      console.error(`[google/reviews/sync] Error syncing source ${source.id}:`, errorMessage)
-
-      await supabase
-        .from('review_sources')
-        .update({
-          sync_status: 'error',
-          metadata: { ...source.metadata, last_error: errorMessage, error_at: new Date().toISOString() },
-        })
-        .eq('id', source.id)
-
-      results.push({ source_id: source.id, reviews_synced: 0, error: errorMessage })
-    }
+    )
+    results.push(...batchResults)
   }
 
   const totalSynced = results.reduce((sum, r) => sum + r.reviews_synced, 0)
@@ -175,31 +181,39 @@ export async function POST(request: NextRequest) {
     const hasProfile = new Set((existingProfiles || []).map((p) => p.location_id))
     const missing = sources.filter((s) => !hasProfile.has(s.location_id))
 
-    for (const source of missing) {
-      const gbpLocationName = (source.metadata as any)?.gbp_location_name
-      if (!gbpLocationName) continue
+    // Backfill profiles in parallel batches of 5
+    for (let i = 0; i < missing.length; i += BATCH_SIZE) {
+      const batch = missing.slice(i, i + BATCH_SIZE)
+      const counts = await Promise.all(
+        batch.map(async (source) => {
+          const gbpLocationName = (source.metadata as any)?.gbp_location_name
+          if (!gbpLocationName) return 0
 
-      try {
-        const raw = await fetchGBPProfile(gbpLocationName)
-        const normalized = normalizeGBPProfile(raw)
+          try {
+            const raw = await fetchGBPProfile(gbpLocationName)
+            const normalized = normalizeGBPProfile(raw)
 
-        await supabase
-          .from('gbp_profiles')
-          .upsert(
-            {
-              location_id: source.location_id,
-              gbp_location_name: gbpLocationName,
-              ...normalized,
-              sync_status: 'active',
-              last_synced_at: new Date().toISOString(),
-              sync_error: null,
-            },
-            { onConflict: 'location_id' }
-          )
-        profilesBackfilled++
-      } catch (err) {
-        console.error(`[google/reviews/sync] Profile backfill failed for ${source.location_id}:`, err instanceof Error ? err.message : err)
-      }
+            await supabase
+              .from('gbp_profiles')
+              .upsert(
+                {
+                  location_id: source.location_id,
+                  gbp_location_name: gbpLocationName,
+                  ...normalized,
+                  sync_status: 'active',
+                  last_synced_at: new Date().toISOString(),
+                  sync_error: null,
+                },
+                { onConflict: 'location_id' }
+              )
+            return 1
+          } catch (err) {
+            console.error(`[google/reviews/sync] Profile backfill failed for ${source.location_id}:`, err instanceof Error ? err.message : err)
+            return 0
+          }
+        })
+      )
+      profilesBackfilled += counts.reduce((sum, c) => sum + c, 0 as number)
     }
   }
 
