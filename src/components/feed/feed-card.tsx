@@ -27,6 +27,7 @@ interface FeedCardProps {
   onRegenerateItem?: (item: WorkItem) => Promise<void>
   onDismissItem?: (item: WorkItem) => Promise<void>
   onApproveAll: (group: FeedGroup) => Promise<void>
+  onRejectAll: (group: FeedGroup) => Promise<void>
 }
 
 const TYPE_LABELS: Record<string, string> = {
@@ -81,9 +82,11 @@ export function FeedCard({
   onRegenerateItem,
   onDismissItem,
   onApproveAll,
+  onRejectAll,
 }: FeedCardProps) {
   const [expanded, setExpanded] = useState(false)
   const [approveAllLoading, setApproveAllLoading] = useState(false)
+  const [rejectAllLoading, setRejectAllLoading] = useState(false)
 
   const { items, item_type, priority, org_name } = group
   const count = items.length
@@ -98,6 +101,12 @@ export function FeedCard({
     setApproveAllLoading(true)
     await onApproveAll(group)
     setApproveAllLoading(false)
+  }
+
+  const handleRejectAll = async () => {
+    setRejectAllLoading(true)
+    await onRejectAll(group)
+    setRejectAllLoading(false)
   }
 
   const priorityDotColor = priority === 'urgent'
@@ -168,6 +177,13 @@ export function FeedCard({
                   }
                 </button>
               )}
+              <button
+                onClick={handleRejectAll}
+                disabled={rejectAllLoading}
+                className="px-4 py-1.5 text-xs text-warm-gray hover:text-red-600 rounded-full border border-warm-border hover:border-red-200 disabled:opacity-50 transition-colors"
+              >
+                {rejectAllLoading ? 'Skipping...' : 'Skip All'}
+              </button>
             </div>
             <button
               onClick={() => setExpanded(true)}
@@ -213,8 +229,8 @@ export function FeedCard({
             ))}
           </div>
 
-          {showApproveAll && (
-            <div className="mt-3 pt-3 border-t border-warm-border/50">
+          <div className="mt-3 pt-3 border-t border-warm-border/50 flex items-center gap-2">
+            {showApproveAll && (
               <button
                 onClick={handleApproveAll}
                 disabled={approveAllLoading}
@@ -225,8 +241,15 @@ export function FeedCard({
                   : `Approve Remaining (${approvableCount})`
                 }
               </button>
-            </div>
-          )}
+            )}
+            <button
+              onClick={handleRejectAll}
+              disabled={rejectAllLoading}
+              className="px-4 py-1.5 text-xs text-warm-gray hover:text-red-600 rounded-full border border-warm-border hover:border-red-200 disabled:opacity-50 transition-colors"
+            >
+              {rejectAllLoading ? 'Skipping...' : 'Skip Remaining'}
+            </button>
+          </div>
         </div>
       )}
     </div>
@@ -276,10 +299,16 @@ function PreviewLine({ item }: { item: WorkItem }) {
   }
 
   if (item.type === 'profile_optimization' && item.profile_optimization) {
-    const fields = item.profile_optimization.recommendations?.map((r: { field: string }) => r.field) || []
+    const recs = item.profile_optimization.recommendations || []
+    const summaries = recs.map((r: { field: string; proposed_value: unknown }) => {
+      if (r.field === 'categories' && Array.isArray(r.proposed_value)) {
+        return `+${r.proposed_value.length} categories`
+      }
+      return r.field
+    })
     return (
       <div className="text-[11px] text-ink/60 truncate">
-        {item.location_name}: {fields.join(', ')}
+        {item.location_name}: {summaries.join(', ')}
       </div>
     )
   }

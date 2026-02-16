@@ -424,6 +424,13 @@ export function FeedView() {
     }
   }
 
+  const handleRejectAll = async (group: FeedGroup) => {
+    for (const item of group.items) {
+      await handleRejectItem(item)
+    }
+    removeGroup(group.group_key)
+  }
+
   // ─── Loading state ──────────────────────────────────────
 
   if (loading) {
@@ -519,6 +526,7 @@ export function FeedView() {
               onRegenerateItem={handleRegenerateItem}
               onDismissItem={handleDismissItem}
               onApproveAll={handleApproveAll}
+              onRejectAll={handleRejectAll}
             />
           ))}
 
