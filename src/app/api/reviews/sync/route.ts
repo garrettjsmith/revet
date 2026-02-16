@@ -183,9 +183,8 @@ async function processAlertRules(
     .eq('active', true)
     .or(`location_id.is.null,location_id.eq.${locationId}`)
 
-  if (!rules || rules.length === 0) return
-
   // Pre-fetch subscription-based emails for this location
+  // Always check subscriptions, even if no explicit rules exist
   const subEmailCache = new Map<string, string[]>()
   for (const alertType of ['new_review', 'negative_review']) {
     const { data: emails } = await supabase.rpc('get_subscription_emails', {
@@ -196,7 +195,8 @@ async function processAlertRules(
     subEmailCache.set(alertType, (emails || []).map((r: { email: string }) => r.email))
   }
 
-  for (const rule of rules) {
+  // Process explicit alert rules
+  for (const rule of rules || []) {
     for (const review of reviews) {
       let shouldAlert = false
 
@@ -226,33 +226,67 @@ async function processAlertRules(
       const allEmails = Array.from(new Set([...ruleEmails, ...subEmails]))
 
       if (allEmails.length > 0) {
-        const publishedAt = new Date(review.published_at).toLocaleDateString('en-US', {
-          weekday: 'short',
-          month: 'short',
-          day: 'numeric',
-          year: 'numeric',
-        })
-
-        sendEmail({
-          to: allEmails,
-          subject: rule.rule_type === 'negative_review'
-            ? `Negative review: ${locationName}`
-            : `New review: ${locationName}`,
-          html: buildReviewAlertEmail({
-            locationName,
-            platform,
-            reviewerName: review.reviewer_name,
-            rating: review.rating,
-            body: review.body,
-            publishedAt,
-            alertType: rule.rule_type,
-          }),
-        }).catch((err) => {
-          console.error('[reviews/sync] Alert email failed:', err)
-        })
+        sendAlertEmail(allEmails, rule.rule_type, locationName, platform, review)
       }
     }
   }
+
+  // If no explicit 'new_review' rule exists, still notify subscription-based recipients
+  const hasNewReviewRule = (rules || []).some((r: any) => r.rule_type === 'new_review')
+  if (!hasNewReviewRule) {
+    const subEmails = subEmailCache.get('new_review') || []
+    if (subEmails.length > 0) {
+      for (const review of reviews) {
+        sendAlertEmail(subEmails, 'new_review', locationName, platform, review)
+      }
+    }
+  }
+
+  // If no explicit 'negative_review' rule exists, still notify subscription-based recipients
+  const hasNegativeRule = (rules || []).some((r: any) => r.rule_type === 'negative_review')
+  if (!hasNegativeRule) {
+    const subEmails = subEmailCache.get('negative_review') || []
+    if (subEmails.length > 0) {
+      for (const review of reviews) {
+        if (review.rating !== null && review.rating <= 3) {
+          sendAlertEmail(subEmails, 'negative_review', locationName, platform, review)
+        }
+      }
+    }
+  }
+}
+
+function sendAlertEmail(
+  emails: string[],
+  ruleType: string,
+  locationName: string,
+  platform: string,
+  review: any
+) {
+  const publishedAt = new Date(review.published_at).toLocaleDateString('en-US', {
+    weekday: 'short',
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric',
+  })
+
+  sendEmail({
+    to: emails,
+    subject: ruleType === 'negative_review'
+      ? `Negative review: ${locationName}`
+      : `New review: ${locationName}`,
+    html: buildReviewAlertEmail({
+      locationName,
+      platform,
+      reviewerName: review.reviewer_name,
+      rating: review.rating,
+      body: review.body,
+      publishedAt,
+      alertType: ruleType,
+    }),
+  }).catch((err) => {
+    console.error('[reviews/sync] Alert email failed:', err)
+  })
 }
 
 async function processResponseAlerts(
