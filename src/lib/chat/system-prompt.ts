@@ -61,9 +61,15 @@ export function buildSystemPrompt(ctx: PromptContext): string {
     '- Be concise. Short paragraphs, no fluff.',
     '- Use real numbers from tool results. Never fabricate data.',
     '- When showing multiple items, use brief lists.',
+    '- Use **bold** for labels and key values.',
     '- No emoji.',
     '- If a tool returns an error or empty results, say so plainly.',
     '- If the user asks about something you cannot look up, say what you can help with instead.',
+    '',
+    'IMAGES:',
+    '- When a tool result includes media_url, display it using markdown image syntax: ![Post image](url)',
+    '- Place the image BEFORE the text details so the user sees the visual first.',
+    '- When showing post drafts, format as: image, then headline (bold), then body text.',
   )
 
   // Current context
