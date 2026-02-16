@@ -238,6 +238,7 @@ export async function GET(request: NextRequest) {
           .insert({
             location_id: location.id,
             topic_type: 'STANDARD',
+            headline,
             summary,
             media_url: mediaUrl,
             status: 'draft',
