@@ -592,3 +592,28 @@ export interface AuditSectionData {
   status: 'good' | 'warning' | 'poor'
   suggestion: string | null
 }
+
+// Chat
+
+export type ChatMessageRole = 'user' | 'assistant' | 'tool_call' | 'tool_result'
+
+export interface ChatConversation {
+  id: string
+  user_id: string
+  org_id: string | null
+  location_id: string | null
+  title: string | null
+  created_at: string
+  updated_at: string
+}
+
+export interface ChatMessage {
+  id: string
+  conversation_id: string
+  role: ChatMessageRole
+  content: string | null
+  tool_name: string | null
+  tool_input: Record<string, unknown> | null
+  tool_result: Record<string, unknown> | null
+  created_at: string
+}
