@@ -5,6 +5,7 @@ import { generateGBPPost } from '@/lib/ai/generate-post'
 import { auditGBPProfile } from '@/lib/ai/profile-audit'
 import { generateProfileDescription } from '@/lib/ai/profile-optimize'
 import { generateTopicPool } from '@/lib/ai/generate-topics'
+import { generatePostImage } from '@/lib/ideogram'
 
 // ---------------------------------------------------------------------------
 // Tool definitions
@@ -226,7 +227,7 @@ const ADMIN_ACTION_TOOLS: Anthropic.Tool[] = [
   {
     name: 'schedule_post',
     description:
-      'Add a post to the GBP post queue for a location. Only call this AFTER showing the user the draft and getting their explicit confirmation.',
+      'Add a post to the GBP post queue for a location. Only call this AFTER showing the user the draft and getting their explicit confirmation. Pass media_url from the draft if one was generated.',
     input_schema: {
       type: 'object' as const,
       properties: {
@@ -234,6 +235,7 @@ const ADMIN_ACTION_TOOLS: Anthropic.Tool[] = [
         headline: { type: 'string', description: 'Post headline' },
         summary: { type: 'string', description: 'Post body text' },
         topic_type: { type: 'string', enum: ['STANDARD', 'EVENT', 'OFFER'], description: 'Post type (default: STANDARD)' },
+        media_url: { type: 'string', description: 'Image URL from generate_post_draft (pass through if present)' },
       },
       required: ['location_id', 'summary'],
     },
@@ -488,6 +490,55 @@ async function verifyLocationAccess(
     .eq('id', locationId)
     .single()
   return data ? ctx.orgIds.includes(data.org_id) : false
+}
+
+/** Fetch brand config for image generation, matching the cron pattern. */
+async function getBrandConfig(
+  locationId: string,
+  orgId: string,
+  ctx: ToolContext
+): Promise<{
+  designStyle: string | null
+  primaryColor: string | null
+  secondaryColor: string | null
+  fontStyle: string | null
+}> {
+  const [locResult, brandResult] = await Promise.all([
+    ctx.supabase.from('locations').select('design_style, primary_color, secondary_color').eq('id', locationId).single(),
+    ctx.supabase.from('brand_config').select('design_style, primary_color, secondary_color, font_style').eq('org_id', orgId).single(),
+  ])
+  const loc = locResult.data as any
+  const brand = brandResult.data as any
+  return {
+    designStyle: loc?.design_style || brand?.design_style || null,
+    primaryColor: loc?.primary_color || brand?.primary_color || null,
+    secondaryColor: loc?.secondary_color || brand?.secondary_color || null,
+    fontStyle: brand?.font_style || null,
+  }
+}
+
+/** Generate a post image if IDEOGRAM_API_KEY is configured. Returns URL or null. */
+async function tryGenerateImage(
+  headline: string,
+  subtext: string,
+  businessType: string,
+  brandConfig: { designStyle: string | null; primaryColor: string | null; secondaryColor: string | null; fontStyle: string | null }
+): Promise<string | null> {
+  if (!process.env.IDEOGRAM_API_KEY) return null
+  try {
+    return await generatePostImage({
+      headline,
+      subtext,
+      designStyle: brandConfig.designStyle,
+      primaryColor: brandConfig.primaryColor,
+      secondaryColor: brandConfig.secondaryColor,
+      fontStyle: brandConfig.fontStyle,
+      businessType,
+    })
+  } catch (err) {
+    console.error('[ask-rev] Image generation failed:', err)
+    return null
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -1175,6 +1226,7 @@ async function execGeneratePostDraft(input: Record<string, unknown>, ctx: ToolCo
   if (!loc) return { error: 'Location not found' }
 
   const businessName = gbp?.business_name || loc.organizations?.name || loc.name
+  const businessType = gbp?.primary_category_name || 'local business'
   const categories = [gbp?.primary_category_name, ...(gbp?.additional_categories?.map((c: any) => c.name) || [])].filter(Boolean)
   const recentSummaries = (recentPostsResult.data || []).map((p: any) => p.summary).filter(Boolean)
 
@@ -1188,11 +1240,17 @@ async function execGeneratePostDraft(input: Record<string, unknown>, ctx: ToolCo
     topic: input.topic as string | undefined,
   })
 
+  // Generate image
+  const brandConfig = await getBrandConfig(locationId, loc.org_id, ctx)
+  const subtext = [loc.city, loc.state].filter(Boolean).join(', ') || businessName
+  const mediaUrl = await tryGenerateImage(draft.headline, subtext, businessType, brandConfig)
+
   return {
     location_id: locationId,
     location_name: loc.name,
     headline: draft.headline,
     body: draft.summary,
+    media_url: mediaUrl,
   }
 }
 
@@ -1211,6 +1269,7 @@ async function execSchedulePost(input: Record<string, unknown>, ctx: ToolContext
       topic_type: (input.topic_type as string) || 'STANDARD',
       headline: (input.headline as string) || null,
       summary: input.summary as string,
+      media_url: (input.media_url as string) || null,
       status: 'pending',
       source: 'ask_rev',
     })
@@ -1704,12 +1763,17 @@ async function execBatchGeneratePosts(input: Record<string, unknown>, ctx: ToolC
   }
 
   const businessName = gbp?.business_name || loc.organizations?.name || loc.name
+  const businessType = gbp?.primary_category_name || 'local business'
   const categories = [gbp?.primary_category_name, ...(gbp?.additional_categories?.map((c: any) => c.displayName) || [])].filter(Boolean)
   const recentSummaries = (recentPostsResult.data || []).map((p: any) => p.summary).filter(Boolean)
 
   const postsToGenerate = Math.min(count, availableTopics.length)
   const selectedTopics = availableTopics.slice(0, postsToGenerate)
-  const generated: Array<{ topic: string; headline: string; summary: string; scheduled_for: string }> = []
+  const generated: Array<{ topic: string; headline: string; summary: string; scheduled_for: string; has_image: boolean }> = []
+
+  // Fetch brand config once for all images
+  const brandConfig = await getBrandConfig(locationId, loc.org_id, ctx)
+  const subtext = [loc.city, loc.state].filter(Boolean).join(', ') || businessName
 
   const now = new Date()
   const intervalDays = postsToGenerate >= 4 ? 7 : 14
@@ -1729,6 +1793,9 @@ async function execBatchGeneratePosts(input: Record<string, unknown>, ctx: ToolC
         brandVoice: loc.brand_voice || undefined,
       })
 
+      // Generate image
+      const mediaUrl = await tryGenerateImage(headline, subtext, businessType, brandConfig)
+
       // Stagger: first post ~3 days out, then at interval spacing
       const scheduledFor = new Date(now.getTime() + (3 + i * intervalDays) * 24 * 60 * 60 * 1000)
 
@@ -1739,6 +1806,7 @@ async function execBatchGeneratePosts(input: Record<string, unknown>, ctx: ToolC
           topic_type: 'STANDARD',
           summary,
           headline,
+          media_url: mediaUrl,
           status: 'draft',
           scheduled_for: scheduledFor.toISOString(),
           queued_by: ctx.userId,
@@ -1759,6 +1827,7 @@ async function execBatchGeneratePosts(input: Record<string, unknown>, ctx: ToolC
         headline,
         summary,
         scheduled_for: scheduledFor.toISOString(),
+        has_image: !!mediaUrl,
       })
     } catch (err) {
       console.error(`[batch-generate] Failed for topic "${topicRow.topic}":`, err)

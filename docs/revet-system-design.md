@@ -388,6 +388,7 @@ All variables are documented in `.env.example`. Falcon adds two new variables to
 | `ANTHROPIC_API_KEY` | Yes | Claude API key — used for review reply generation and Falcon agent tasks |
 | `RESEND_API_KEY` | Yes | Resend API key for transactional email (review alerts, reports, notifications) |
 | `LOCALFALCON_API_KEY` | Yes | LocalFalcon Data Retrieval API key for rank tracking |
+| `IDEOGRAM_API_KEY` | No | Ideogram API key for GBP post image generation. Posts will be text-only if not set. |
 | `FALCON_AGENT_MODEL` | No | Claude model ID for Falcon agent tasks. Default: `claude-sonnet-4-5-20250929` |
 | `FALCON_CRON_SECRET` | Yes* | Secret token to authenticate cron job endpoints. Required in production to prevent unauthorized triggering of agent tasks. |
 
