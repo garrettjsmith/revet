@@ -376,7 +376,7 @@ function getBatchKey(item: any): string {
     case 'post_pending':
       return item.post?.status || 'draft'
     case 'profile_optimization':
-      return item.profile_optimization?.batch_id || 'pending'
+      return 'pending'
     case 'google_update':
       return 'google_update'
     case 'sync_error':
@@ -563,6 +563,28 @@ function formatStaleLanderItem(lander: any) {
   }
 }
 
+// Keep only the most recent rec per field (dedupes across batches)
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function dedupeRecsByField(recs: any[]) {
+  const byField = new Map<string, any>()
+  for (const r of recs) {
+    const existing = byField.get(r.field)
+    if (!existing || r.created_at > existing.created_at) {
+      byField.set(r.field, r)
+    }
+  }
+  return Array.from(byField.values()).map((r) => ({
+    id: r.id,
+    field: r.field,
+    current_value: r.current_value,
+    proposed_value: r.proposed_value,
+    ai_rationale: r.ai_rationale,
+    status: r.status,
+    requires_client_approval: r.requires_client_approval,
+    edited_value: r.edited_value,
+  }))
+}
+
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function formatProfileOptItem(firstRec: any, allRecs: any[]) {
   const loc = firstRec.locations
@@ -581,17 +603,7 @@ function formatProfileOptItem(firstRec: any, allRecs: any[]) {
     org_slug: org?.slug || '',
     profile_optimization: {
       batch_id: firstRec.batch_id,
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      recommendations: allRecs.map((r: any) => ({
-        id: r.id,
-        field: r.field,
-        current_value: r.current_value,
-        proposed_value: r.proposed_value,
-        ai_rationale: r.ai_rationale,
-        status: r.status,
-        requires_client_approval: r.requires_client_approval,
-        edited_value: r.edited_value,
-      })),
+      recommendations: dedupeRecsByField(allRecs),
     },
   }
 }
