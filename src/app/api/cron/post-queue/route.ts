@@ -54,7 +54,7 @@ export async function GET(request: NextRequest) {
   }
 
   // Batch-lookup GBP profiles for all locations in this batch
-  const locationIds = [...new Set(entries.map((e: any) => e.location_id))]
+  const locationIds = Array.from(new Set(entries.map((e: any) => e.location_id)))
   const { data: profiles } = await supabase
     .from('gbp_profiles')
     .select('location_id, gbp_location_name, gbp_account_name')
