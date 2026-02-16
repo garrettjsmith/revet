@@ -16,6 +16,13 @@ interface FeedCardItemProps {
   onDismiss?: (item: WorkItem) => Promise<void>
 }
 
+const FIELD_LABELS: Record<string, string> = {
+  description: 'Business Description',
+  categories: 'Additional Categories',
+  attributes: 'Business Attributes',
+  hours: 'Business Hours',
+}
+
 export function FeedCardItem({
   item,
   actionLoading,
@@ -271,16 +278,58 @@ export function FeedCardItem({
     const recs = item.profile_optimization.recommendations || []
     return (
       <div className="border border-warm-border/50 rounded-lg p-4">
-        <div className="flex items-center gap-2 mb-2">
+        <div className="flex items-center gap-2 mb-3">
           <span className="text-sm font-medium text-ink">{item.location_name}</span>
           <span className="text-[10px] text-violet-600 font-medium">AI</span>
         </div>
-        <div className="space-y-2 mb-3">
-          {recs.map((rec: { id: string; field: string; proposed_value: unknown; ai_rationale: string | null }) => (
-            <div key={rec.id} className="text-xs">
-              <span className="font-medium text-ink capitalize">{rec.field}</span>
+        <div className="space-y-3 mb-3">
+          {recs.map((rec: { id: string; field: string; current_value: unknown; proposed_value: unknown; edited_value: unknown; ai_rationale: string | null; requires_client_approval: boolean }) => (
+            <div key={rec.id} className="bg-warm-light/50 border border-warm-border/50 rounded-lg p-3">
+              <div className="flex items-center justify-between mb-1.5">
+                <span className="text-xs font-medium text-ink">
+                  {FIELD_LABELS[rec.field] || rec.field}
+                </span>
+                {rec.requires_client_approval && (
+                  <span className="text-[10px] text-amber-600 bg-amber-50 px-1.5 py-0.5 rounded">Needs client approval</span>
+                )}
+              </div>
               {rec.ai_rationale && (
-                <span className="text-warm-gray"> — {rec.ai_rationale}</span>
+                <p className="text-[11px] text-warm-gray mb-2">{rec.ai_rationale}</p>
+              )}
+              {rec.field === 'description' && (
+                <div className="space-y-2">
+                  {rec.current_value != null && (
+                    <div>
+                      <div className="text-[10px] text-warm-gray uppercase tracking-wider mb-0.5">Current</div>
+                      <p className="text-xs text-ink/50 leading-relaxed line-clamp-3">{String(rec.current_value)}</p>
+                    </div>
+                  )}
+                  <div>
+                    <div className="text-[10px] text-emerald-600 uppercase tracking-wider mb-0.5">Proposed</div>
+                    <p className="text-xs text-ink leading-relaxed">{String(rec.edited_value || rec.proposed_value)}</p>
+                  </div>
+                </div>
+              )}
+              {rec.field === 'categories' && (
+                <div>
+                  <div className="text-[10px] text-emerald-600 uppercase tracking-wider mb-1">Suggested</div>
+                  <div className="flex flex-wrap gap-1">
+                    {(Array.isArray(rec.proposed_value) ? rec.proposed_value : []).map((cat: string, i: number) => (
+                      <span key={i} className="text-[11px] border border-warm-border rounded-full px-2 py-0.5 text-ink">
+                        {cat}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              )}
+              {rec.field === 'attributes' && rec.proposed_value != null && (
+                <div>
+                  <div className="text-[10px] text-emerald-600 uppercase tracking-wider mb-0.5">Proposed</div>
+                  <p className="text-xs text-ink">{typeof rec.proposed_value === 'string' ? rec.proposed_value : JSON.stringify(rec.proposed_value)}</p>
+                </div>
+              )}
+              {rec.field === 'hours' && (
+                <p className="text-xs text-warm-gray">Business hours need to be set manually.</p>
               )}
             </div>
           ))}
@@ -298,7 +347,7 @@ export function FeedCardItem({
             disabled={isLoading}
             className="px-3 py-1.5 text-xs text-red-500 hover:text-red-700 transition-colors"
           >
-            Reject
+            Reject All
           </button>
         </div>
       </div>
