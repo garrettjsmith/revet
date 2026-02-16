@@ -109,7 +109,7 @@ Where `batch_key` is:
 | `ai_draft_review` | `ai_draft` (constant — all pending drafts group) | AI drafts accumulate, no explicit batch ID |
 | `review_reply` | `needs_reply` (constant — all unreplied group) | Same — unreplied reviews accumulate |
 | `post_pending` | Status: `draft` / `client_review` / `pending` | Posts at different stages are different actions |
-| `profile_optimization` | `batch_id` from profile_recommendations | Recs already have batch IDs from generation |
+| `profile_optimization` | `pending` (constant — all pending recs group by org) | Recs deduped by field per location, latest batch wins |
 | `google_update` | `google_update` (constant) | Usually one per location, group by org |
 | `sync_error` | `sync_error` (constant) | Group all errors by org |
 | `stale_lander` | `stale_lander` (constant) | Group stale landers by org |

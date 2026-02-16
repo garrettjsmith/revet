@@ -444,8 +444,25 @@ export function FeedView() {
           setScope={setScope}
           isAgencyAdmin={false}
         />
-        <div className="flex-1 flex items-center justify-center">
-          <div className="animate-pulse text-sm text-warm-gray">Loading feed...</div>
+        <div className="flex-1 overflow-y-auto">
+          <div className="max-w-3xl mx-auto px-4 sm:px-6 py-4 space-y-3">
+            {[1, 2, 3, 4, 5].map((i) => (
+              <div key={i} className="border border-warm-border rounded-xl p-4 animate-pulse">
+                <div className="flex items-start justify-between">
+                  <div className="flex items-center gap-2">
+                    <div className="w-2 h-2 rounded-full bg-warm-border" />
+                    <div className="h-4 w-32 bg-warm-border/60 rounded" />
+                  </div>
+                  <div className="h-4 w-24 bg-warm-border/60 rounded" />
+                </div>
+                <div className="mt-3 h-3 w-48 bg-warm-border/40 rounded" />
+                <div className="mt-4 flex items-center justify-between">
+                  <div className="h-8 w-24 bg-warm-border/40 rounded-full" />
+                  <div className="h-4 w-16 bg-warm-border/40 rounded" />
+                </div>
+              </div>
+            ))}
+          </div>
         </div>
       </div>
     )
@@ -474,8 +491,8 @@ export function FeedView() {
         />
         <div className="flex-1 flex items-center justify-center">
           <div className="text-center">
-            <div className="w-12 h-12 rounded-full bg-emerald-100 flex items-center justify-center mx-auto mb-3">
-              <svg className="w-6 h-6 text-emerald-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+            <div className="w-12 h-12 rounded-full bg-warm-light flex items-center justify-center mx-auto mb-3">
+              <svg className="w-6 h-6 text-warm-gray" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                 <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
               </svg>
             </div>
