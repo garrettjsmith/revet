@@ -90,6 +90,7 @@ export function Sidebar({ currentOrg, memberships, userEmail, isAgencyAdmin, loc
       label: null,
       items: [
         { href: '/agency', label: 'Overview', icon: OverviewIcon },
+        { href: '/agency/feed', label: 'Feed', icon: QueueIcon },
         { href: '/agency/queue', label: 'Work Queue', icon: QueueIcon },
         { href: '/agency/organizations', label: 'Organizations', icon: OrganizationsIcon },
         { href: '/agency/locations', label: 'All Locations', icon: LocationIcon },
