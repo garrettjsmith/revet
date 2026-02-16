@@ -117,12 +117,20 @@ function buildImagePrompt({
   return `A professional Google Business Profile post image, 4:3 aspect ratio. Solid deep gradient background transitioning from ${color} at top-left to ${colorSecondary} at bottom-right. Large bold white text perfectly centered reading "${displayHeadline}" in a ${font}. Text is ALL CAPS, bold, and takes up 60% of image width. Below the headline, smaller white text reading "${subtext}". No decorative elements, no borders, no logos, no icons, no photographs, no people. Just bold text on clean gradient. Minimal corporate design. High contrast. Easy to read at thumbnail size.${designStyle ? ` Style notes: ${designStyle}` : ''}`
 }
 
+const STORAGE_BUCKET = 'assets'
+
 /**
  * Download an image from a URL and upload it to Supabase Storage.
  * Returns the public URL.
  */
 async function uploadToStorage(imageUrl: string): Promise<string> {
   const supabase = createAdminClient()
+
+  // Ensure the bucket exists
+  const { data: buckets } = await supabase.storage.listBuckets()
+  if (!buckets?.find((b) => b.name === STORAGE_BUCKET)) {
+    await supabase.storage.createBucket(STORAGE_BUCKET, { public: true })
+  }
 
   // Download the image
   const imageResponse = await fetch(imageUrl)
@@ -134,7 +142,7 @@ async function uploadToStorage(imageUrl: string): Promise<string> {
   const fileName = `post-images/${Date.now()}-${Math.random().toString(36).slice(2, 8)}.png`
 
   const { error: uploadError } = await supabase.storage
-    .from('assets')
+    .from(STORAGE_BUCKET)
     .upload(fileName, imageBuffer, {
       contentType: 'image/png',
       cacheControl: '31536000',
@@ -145,7 +153,7 @@ async function uploadToStorage(imageUrl: string): Promise<string> {
   }
 
   const { data: { publicUrl } } = supabase.storage
-    .from('assets')
+    .from(STORAGE_BUCKET)
     .getPublicUrl(fileName)
 
   return publicUrl

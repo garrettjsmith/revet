@@ -61,7 +61,7 @@ Services: ${services.length > 0 ? services.join(', ') : 'Not specified'}
 ${currentDescription ? `Current description (improve this): ${currentDescription}` : 'No current description.'}`
 
   const response = await getClient().messages.create({
-    model: 'claude-3-5-haiku-latest',
+    model: 'claude-haiku-4-5-20251001',
     max_tokens: 512,
     system: systemPrompt,
     messages: [{ role: 'user', content: userMessage }],
@@ -101,7 +101,7 @@ Current categories: ${currentCategories.join(', ') || 'None'}
 Services: ${services.length > 0 ? services.join(', ') : 'Not specified'}`
 
   const response = await getClient().messages.create({
-    model: 'claude-3-5-haiku-latest',
+    model: 'claude-haiku-4-5-20251001',
     max_tokens: 256,
     system: systemPrompt,
     messages: [{ role: 'user', content: userMessage }],

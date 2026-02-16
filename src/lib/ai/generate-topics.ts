@@ -52,7 +52,7 @@ Rules:
 - Return ONLY the topics, one per line, no numbering, no bullets, no extra text${existingContext}`
 
   const response = await getClient().messages.create({
-    model: 'claude-3-5-haiku-latest',
+    model: 'claude-haiku-4-5-20251001',
     max_tokens: 1000,
     system: systemPrompt,
     messages: [{ role: 'user', content: `Generate ${count} post topic ideas.` }],

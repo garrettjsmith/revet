@@ -122,7 +122,7 @@ export async function POST(req: NextRequest) {
 
   try {
     const response = await getClient().messages.create({
-      model: 'claude-3-5-haiku-latest',
+      model: 'claude-haiku-4-5-20251001',
       max_tokens: 512,
       system: `You are a command parser for Revet, a search optimization platform. The user will describe what they want to do. Parse their intent and call the most appropriate tool. Be precise with filters — if they mention a city, state, or org, include those in the filter. If unsure, use search_locations to help them find what they need.`,
       tools: TOOLS,
