@@ -232,12 +232,11 @@ const ADMIN_ACTION_TOOLS: Anthropic.Tool[] = [
       type: 'object' as const,
       properties: {
         location_id: { type: 'string', description: 'The location to post for' },
-        headline: { type: 'string', description: 'Post headline' },
         summary: { type: 'string', description: 'Post body text' },
         topic_type: { type: 'string', enum: ['STANDARD', 'EVENT', 'OFFER'], description: 'Post type (default: STANDARD)' },
         media_url: { type: 'string', description: 'Image URL from generate_post_draft (pass through if present)' },
       },
-      required: ['location_id', 'headline', 'summary'],
+      required: ['location_id', 'summary'],
     },
   },
   {
@@ -1267,11 +1266,11 @@ async function execSchedulePost(input: Record<string, unknown>, ctx: ToolContext
     .insert({
       location_id: locationId,
       topic_type: (input.topic_type as string) || 'STANDARD',
-      headline: (input.headline as string) || null,
       summary: input.summary as string,
       media_url: (input.media_url as string) || null,
       status: 'pending',
-      source: 'ask_rev',
+      queued_by: ctx.userId,
+      source: 'ai',
     })
 
   if (error) return { error: `Failed to schedule post: ${error.message}` }
@@ -1538,7 +1537,7 @@ async function execGetPostQueue(input: Record<string, unknown>, ctx: ToolContext
 
   let query = ctx.supabase
     .from('gbp_post_queue')
-    .select('id, topic_type, summary, headline, media_url, status, scheduled_for, source, created_at')
+    .select('id, topic_type, summary, media_url, status, scheduled_for, source, created_at')
     .eq('location_id', locationId)
     .order('scheduled_for', { ascending: true })
     .limit(30)
@@ -1567,7 +1566,6 @@ async function execGetPostQueue(input: Record<string, unknown>, ctx: ToolContext
     posts: (data || []).map((p: any) => ({
       post_id: p.id,
       type: p.topic_type,
-      headline: p.headline,
       summary: p.summary,
       status: p.status,
       scheduled_for: p.scheduled_for,
@@ -1805,13 +1803,12 @@ async function execBatchGeneratePosts(input: Record<string, unknown>, ctx: ToolC
           location_id: locationId,
           topic_type: 'STANDARD',
           summary,
-          headline,
           media_url: mediaUrl,
           status: 'draft',
           scheduled_for: scheduledFor.toISOString(),
           queued_by: ctx.userId,
           topic_id: topicRow.id,
-          source: 'ask_rev',
+          source: 'ai',
         })
         .select('id')
         .single()
