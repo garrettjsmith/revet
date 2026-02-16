@@ -43,7 +43,7 @@ export function FeedNewItemsBanner({ latestCreatedAt, scope, orgId, onRefresh }:
         setNewCount(0)
         onRefresh()
       }}
-      className="w-full px-5 py-2.5 bg-blue-50 text-blue-700 text-xs font-medium text-center hover:bg-blue-100 transition-colors border-b border-blue-100"
+      className="w-full px-5 py-2.5 bg-warm-light text-ink text-xs font-medium text-center hover:bg-warm-border/50 transition-colors border-b border-warm-border"
     >
       {newCount} new item{newCount !== 1 ? 's' : ''} — click to refresh
     </button>
