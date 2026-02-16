@@ -42,7 +42,7 @@ export async function GET(request: NextRequest) {
   // Fetch pending entries ready to post
   const { data: entries } = await supabase
     .from('gbp_post_queue')
-    .select('*, gbp_profiles:location_id(gbp_location_name, gbp_account_name)')
+    .select('*')
     .eq('status', 'pending')
     .or('scheduled_for.is.null,scheduled_for.lte.' + new Date().toISOString())
     .lt('attempts', MAX_ATTEMPTS)
@@ -53,11 +53,22 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ ok: true, processed: 0 })
   }
 
+  // Batch-lookup GBP profiles for all locations in this batch
+  const locationIds = [...new Set(entries.map((e: any) => e.location_id))]
+  const { data: profiles } = await supabase
+    .from('gbp_profiles')
+    .select('location_id, gbp_location_name, gbp_account_name')
+    .in('location_id', locationIds)
+
+  const profileMap = new Map(
+    (profiles || []).map((p: any) => [p.location_id, p])
+  )
+
   let confirmed = 0
   let failed = 0
 
   for (const entry of entries) {
-    const profile = (entry as any).gbp_profiles
+    const profile = profileMap.get(entry.location_id)
     if (!profile?.gbp_location_name) {
       await supabase
         .from('gbp_post_queue')
