@@ -282,13 +282,17 @@ export function ChatPane({ orgSlug, orgName, locationId, locationName, isAgencyA
         {messages.map((msg, i) => (
           <div key={i} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
             <div
-              className={`max-w-[85%] rounded-xl px-3 py-2 text-sm whitespace-pre-wrap ${
+              className={`max-w-[85%] rounded-xl px-3 py-2 text-sm ${
                 msg.role === 'user'
-                  ? 'bg-ink text-cream'
+                  ? 'bg-ink text-cream whitespace-pre-wrap'
                   : 'bg-warm-light text-ink'
               }`}
             >
-              {msg.content}
+              {msg.role === 'assistant' ? (
+                <MessageContent content={msg.content} />
+              ) : (
+                msg.content
+              )}
               {msg.role === 'assistant' && msg.content === '' && isStreaming && !activeTool && (
                 <span className="inline-block w-1.5 h-4 bg-warm-gray/50 animate-pulse" />
               )}
@@ -368,6 +372,58 @@ export function ChatPane({ orgSlug, orgName, locationId, locationName, isAgencyA
       </div>
     </>
   )
+}
+
+// Message rendering with image and formatting support
+
+/**
+ * Render assistant message content with support for:
+ * - Markdown images: ![alt](url)
+ * - Bold: **text**
+ * - Line breaks preserved
+ */
+function MessageContent({ content }: { content: string }) {
+  if (!content) return null
+
+  // Split on markdown image pattern, preserving the matches
+  const parts = content.split(/(!\[[^\]]*\]\([^)]+\))/)
+
+  return (
+    <div className="space-y-2">
+      {parts.map((part, i) => {
+        // Check if this part is an image
+        const imgMatch = part.match(/^!\[([^\]]*)\]\(([^)]+)\)$/)
+        if (imgMatch) {
+          const [, alt, src] = imgMatch
+          return (
+            <img
+              key={i}
+              src={src}
+              alt={alt || 'Generated image'}
+              className="rounded-lg w-full mt-1 mb-1"
+              loading="lazy"
+            />
+          )
+        }
+
+        // Regular text — render with bold support and whitespace preservation
+        if (!part) return null
+        return <span key={i} className="whitespace-pre-wrap">{renderBold(part)}</span>
+      })}
+    </div>
+  )
+}
+
+/** Render **bold** markdown as <strong> elements. */
+function renderBold(text: string): (string | JSX.Element)[] {
+  const parts = text.split(/(\*\*[^*]+\*\*)/)
+  return parts.map((segment, i) => {
+    const boldMatch = segment.match(/^\*\*(.+)\*\*$/)
+    if (boldMatch) {
+      return <strong key={i} className="font-semibold">{boldMatch[1]}</strong>
+    }
+    return segment
+  })
 }
 
 // Icons & Components
