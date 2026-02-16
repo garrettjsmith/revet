@@ -259,43 +259,55 @@ export async function checkGoogleConnectionStatus(): Promise<{
   }
 }
 
+/** HTTP status codes that indicate a transient error worth retrying. */
+const RETRYABLE_STATUSES = new Set([429, 500, 502, 503, 504])
+
 /**
  * Make an authenticated request to a Google API.
- * Automatically retries once with a refreshed token on 401.
+ * Retries on 401 (with token refresh) and on transient errors (429, 5xx)
+ * with exponential backoff (1s, 2s, 4s).
  */
 export async function googleFetch(url: string, options: RequestInit = {}): Promise<Response> {
-  const accessToken = await getValidAccessToken()
+  let accessToken = await getValidAccessToken()
+  const maxRetries = 3
 
-  const response = await fetch(url, {
-    ...options,
-    headers: {
-      ...options.headers,
-      Authorization: `Bearer ${accessToken}`,
-    },
-  })
-
-  // If 401, try refreshing and retry once
-  if (response.status === 401) {
-    const supabase = createAdminClient()
-    const { data: integration } = await supabase
-      .from('agency_integrations')
-      .select('*')
-      .eq('provider', 'google')
-      .single()
-
-    if (!integration) throw new Error('Google integration not found')
-
-    const newToken = await refreshAccessToken(integration)
-    return fetch(url, {
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    const response = await fetch(url, {
       ...options,
       headers: {
         ...options.headers,
-        Authorization: `Bearer ${newToken}`,
+        Authorization: `Bearer ${accessToken}`,
       },
     })
+
+    // 401 — refresh token and retry once
+    if (response.status === 401 && attempt === 0) {
+      const supabase = createAdminClient()
+      const { data: integration } = await supabase
+        .from('agency_integrations')
+        .select('*')
+        .eq('provider', 'google')
+        .single()
+
+      if (!integration) throw new Error('Google integration not found')
+
+      accessToken = await refreshAccessToken(integration)
+      continue
+    }
+
+    // Transient error — retry with exponential backoff
+    if (RETRYABLE_STATUSES.has(response.status) && attempt < maxRetries) {
+      const delayMs = 1000 * Math.pow(2, attempt) // 1s, 2s, 4s
+      console.warn(`[google/fetch] ${response.status} on attempt ${attempt + 1}, retrying in ${delayMs}ms: ${url}`)
+      await new Promise((r) => setTimeout(r, delayMs))
+      continue
+    }
+
+    return response
   }
 
-  return response
+  // Should not reach here, but satisfy TypeScript
+  throw new Error(`[google/fetch] Exhausted retries for ${url}`)
 }
 
 export class GoogleAuthError extends Error {
