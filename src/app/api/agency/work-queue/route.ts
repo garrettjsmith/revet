@@ -110,7 +110,7 @@ export async function GET(request: NextRequest) {
     profileOptResult,
     staleLanderResult,
   ] = await Promise.all([
-    // 1: Unreplied negative Google reviews (urgent)
+    // 1: Unreplied new Google reviews (negative = urgent, others = important)
     wantsReviews
       ? applyScope(
           adminClient
@@ -118,7 +118,6 @@ export async function GET(request: NextRequest) {
             .select(reviewSelect)
             .eq('platform', 'google')
             .eq('status', 'new')
-            .eq('sentiment', 'negative')
             .is('reply_body', null)
         )
           .order('published_at', { ascending: false })
@@ -205,11 +204,12 @@ export async function GET(request: NextRequest) {
   const seen = new Set<string>()
   const items: any[] = []
 
-  // Negative reviews (urgent)
+  // New unreplied reviews (negative = urgent, others = important)
   for (const review of negativeResult.data || []) {
     if (seen.has(review.id)) continue
     seen.add(review.id)
-    items.push(formatReviewItem(review, 'review_reply', 'urgent'))
+    const priority = review.sentiment === 'negative' ? 'urgent' : 'important'
+    items.push(formatReviewItem(review, 'review_reply', priority))
   }
 
   // Google updates (urgent)
