@@ -107,21 +107,25 @@ export async function POST(request: NextRequest) {
       })
       .eq('id', source_id)
 
-    // Process autopilot for truly new reviews (not previously in DB)
+    // Filter to truly new reviews (not previously in DB)
     const newReviews = incomingReviews.filter((r: any) =>
       !existingReplyMap.has(r.platform_review_id) && !r.reply_body
     )
 
-    // Process alert rules — only for truly new reviews
+    // Process alert rules — only for new reviews, non-blocking
     if (newReviews.length > 0) {
-      await processAlertRules(
-        supabase,
-        (source.locations as any).org_id,
-        source.location_id,
-        (source.locations as any).name,
-        source.platform,
-        newReviews
-      )
+      try {
+        await processAlertRules(
+          supabase,
+          (source.locations as any).org_id,
+          source.location_id,
+          (source.locations as any).name,
+          source.platform,
+          newReviews
+        )
+      } catch (alertErr) {
+        console.error('[reviews/sync] Alert processing failed (reviews still synced):', alertErr)
+      }
     }
 
     // Detect reviews that newly received replies
@@ -160,7 +164,8 @@ export async function POST(request: NextRequest) {
       source_id,
       processed: processedCount,
     })
-  } catch {
+  } catch (err) {
+    console.error('[reviews/sync] Sync failed:', err)
     return NextResponse.json({ error: 'Internal error' }, { status: 500 })
   }
 }
