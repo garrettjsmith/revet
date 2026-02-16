@@ -107,15 +107,22 @@ export async function POST(request: NextRequest) {
       })
       .eq('id', source_id)
 
-    // Process alert rules
-    await processAlertRules(
-      supabase,
-      (source.locations as any).org_id,
-      source.location_id,
-      (source.locations as any).name,
-      source.platform,
-      incomingReviews
+    // Process autopilot for truly new reviews (not previously in DB)
+    const newReviews = incomingReviews.filter((r: any) =>
+      !existingReplyMap.has(r.platform_review_id) && !r.reply_body
     )
+
+    // Process alert rules — only for truly new reviews
+    if (newReviews.length > 0) {
+      await processAlertRules(
+        supabase,
+        (source.locations as any).org_id,
+        source.location_id,
+        (source.locations as any).name,
+        source.platform,
+        newReviews
+      )
+    }
 
     // Detect reviews that newly received replies
     const reviewsWithNewReplies = incomingReviews.filter((review: any) => {
@@ -136,10 +143,7 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // Process autopilot for truly new reviews (not previously in DB)
-    const newReviews = incomingReviews.filter((r: any) =>
-      !existingReplyMap.has(r.platform_review_id) && !r.reply_body
-    )
+    // Process autopilot for truly new reviews
     if (newReviews.length > 0) {
       await processAutopilot(
         supabase,
