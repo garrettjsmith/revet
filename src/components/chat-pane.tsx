@@ -38,6 +38,12 @@ const TOOL_LABELS: Record<string, string> = {
   run_profile_audit: 'Running audit',
   update_gbp_field: 'Updating profile',
   generate_optimization_plan: 'Generating optimization plan',
+  get_work_queue: 'Loading work queue',
+  get_post_queue: 'Checking post queue',
+  approve_post: 'Processing approval',
+  get_topic_pool: 'Loading topic pool',
+  generate_topics: 'Generating topics',
+  batch_generate_posts: 'Generating post batch',
 }
 
 export function ChatPane({ orgSlug, orgName, locationId, locationName, isAgencyAdmin }: ChatPaneProps) {

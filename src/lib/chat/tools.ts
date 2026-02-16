@@ -4,6 +4,7 @@ import { generateReviewReply } from '@/lib/ai/generate-reply'
 import { generateGBPPost } from '@/lib/ai/generate-post'
 import { auditGBPProfile } from '@/lib/ai/profile-audit'
 import { generateProfileDescription } from '@/lib/ai/profile-optimize'
+import { generateTopicPool } from '@/lib/ai/generate-topics'
 
 // ---------------------------------------------------------------------------
 // Tool definitions
@@ -277,10 +278,103 @@ const ADMIN_ACTION_TOOLS: Anthropic.Tool[] = [
   },
 ]
 
+const CONTENT_MANAGEMENT_TOOLS: Anthropic.Tool[] = [
+  {
+    name: 'get_work_queue',
+    description:
+      'Get actionable work items from the agency work queue. Returns items grouped by type with counts. Useful for "what needs attention?", "show me the queue", "what\'s pending?".',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        filter: {
+          type: 'string',
+          enum: ['all', 'needs_reply', 'ai_drafts', 'google_updates', 'posts', 'sync_errors', 'profile_optimizations', 'stale_landers'],
+          description: 'Filter by item type (default: all)',
+        },
+        limit: { type: 'number', description: 'Max items per type (default: 20, max: 50)' },
+      },
+    },
+  },
+  {
+    name: 'get_post_queue',
+    description:
+      'View posts in the content queue for a location. Shows draft, pending review, scheduled, and recently published posts with their status in the approval pipeline.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        location_id: { type: 'string', description: 'The location to check' },
+        status: {
+          type: 'string',
+          enum: ['all', 'draft', 'client_review', 'pending', 'confirmed', 'rejected'],
+          description: 'Filter by queue status (default: all)',
+        },
+      },
+      required: ['location_id'],
+    },
+  },
+  {
+    name: 'approve_post',
+    description:
+      'Advance a post through the approval pipeline. Only call AFTER showing the post content and getting user confirmation. Actions: agency_approve (draft -> client review), reject, edit.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        post_id: { type: 'string', description: 'The queue entry ID' },
+        action: {
+          type: 'string',
+          enum: ['agency_approve', 'reject', 'edit'],
+          description: 'The approval action',
+        },
+        summary: { type: 'string', description: 'Updated text (required for edit action)' },
+      },
+      required: ['post_id', 'action'],
+    },
+  },
+  {
+    name: 'get_topic_pool',
+    description:
+      'View the topic pool for a location. Shows available (unused) topics and optionally used ones. Useful for understanding content coverage before generating posts.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        location_id: { type: 'string', description: 'The location to check' },
+        include_used: { type: 'boolean', description: 'Include already-used topics (default: false)' },
+      },
+      required: ['location_id'],
+    },
+  },
+  {
+    name: 'generate_topics',
+    description:
+      'Generate new post topic ideas for a location\'s topic pool using AI. Topics cover seasonal hooks, service spotlights, tips, community angles. Adds them to the pool for future post generation.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        location_id: { type: 'string', description: 'The location to generate topics for' },
+        count: { type: 'number', description: 'Number of topics to generate (default: 20, max: 50)' },
+      },
+      required: ['location_id'],
+    },
+  },
+  {
+    name: 'batch_generate_posts',
+    description:
+      'Generate a batch of post drafts for a location using topics from its pool. Creates draft queue entries with staggered scheduling. Only call AFTER confirming with the user how many posts to generate.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        location_id: { type: 'string', description: 'The location to generate posts for' },
+        count: { type: 'number', description: 'Number of posts to generate (default: 4, max: 12)' },
+      },
+      required: ['location_id'],
+    },
+  },
+]
+
 /** Get tool definitions based on user role. */
 export function getToolDefinitions(isAgencyAdmin: boolean): Anthropic.Tool[] {
   if (isAgencyAdmin) {
-    return [...READ_TOOLS, ...ADMIN_TOOLS, ...ADMIN_ACTION_TOOLS]
+    return [...READ_TOOLS, ...ADMIN_TOOLS, ...ADMIN_ACTION_TOOLS, ...CONTENT_MANAGEMENT_TOOLS]
   }
   return [...READ_TOOLS]
 }
@@ -342,6 +436,19 @@ export async function executeTool(
       return execUpdateGBPField(input, ctx)
     case 'generate_optimization_plan':
       return execGenerateOptimizationPlan(input, ctx)
+    // Content management tools (agency admin only)
+    case 'get_work_queue':
+      return execGetWorkQueue(input, ctx)
+    case 'get_post_queue':
+      return execGetPostQueue(input, ctx)
+    case 'approve_post':
+      return execApprovePost(input, ctx)
+    case 'get_topic_pool':
+      return execGetTopicPool(input, ctx)
+    case 'generate_topics':
+      return execGenerateTopics(input, ctx)
+    case 'batch_generate_posts':
+      return execBatchGeneratePosts(input, ctx)
     default:
       return { error: `Unknown tool: ${name}` }
   }
@@ -1231,5 +1338,439 @@ async function execGenerateOptimizationPlan(input: Record<string, unknown>, ctx:
     current_description: gbp.description,
     suggested_description: optimizedDescription,
     message: 'Here is the suggested optimized description. Use update_gbp_field to apply it.',
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Content management tool executors (agency admin only)
+// ---------------------------------------------------------------------------
+
+async function execGetWorkQueue(input: Record<string, unknown>, ctx: ToolContext) {
+  if (!ctx.isAgencyAdmin) return { error: 'Agency admin required' }
+
+  const filter = (input.filter as string) || 'all'
+  const limit = Math.min((input.limit as number) || 20, 50)
+  const items: Array<{ type: string; count: number; items: unknown[] }> = []
+
+  // Reviews needing reply
+  if (filter === 'all' || filter === 'needs_reply') {
+    const { data, count } = await ctx.supabase
+      .from('reviews')
+      .select('id, reviewer_name, rating, body, platform, published_at, location_id, locations(name)', { count: 'exact' })
+      .is('reply_body', null)
+      .eq('status', 'new')
+      .order('published_at', { ascending: false })
+      .limit(limit)
+
+    items.push({
+      type: 'needs_reply',
+      count: count || 0,
+      items: (data || []).map((r: any) => ({
+        review_id: r.id,
+        reviewer: r.reviewer_name,
+        rating: r.rating,
+        body: r.body?.slice(0, 120),
+        platform: r.platform,
+        location_name: r.locations?.name,
+        published_at: r.published_at,
+      })),
+    })
+  }
+
+  // AI draft replies pending approval
+  if (filter === 'all' || filter === 'ai_drafts') {
+    const { data, count } = await ctx.supabase
+      .from('reviews')
+      .select('id, reviewer_name, rating, body, ai_draft_reply, location_id, locations(name)', { count: 'exact' })
+      .not('ai_draft_reply', 'is', null)
+      .is('reply_body', null)
+      .order('updated_at', { ascending: false })
+      .limit(limit)
+
+    items.push({
+      type: 'ai_drafts',
+      count: count || 0,
+      items: (data || []).map((r: any) => ({
+        review_id: r.id,
+        reviewer: r.reviewer_name,
+        rating: r.rating,
+        body: r.body?.slice(0, 120),
+        draft_reply: r.ai_draft_reply?.slice(0, 120),
+        location_name: r.locations?.name,
+      })),
+    })
+  }
+
+  // Post queue items
+  if (filter === 'all' || filter === 'posts') {
+    const { data, count } = await ctx.supabase
+      .from('gbp_post_queue')
+      .select('id, summary, status, scheduled_for, location_id, locations(name)', { count: 'exact' })
+      .in('status', ['draft', 'client_review', 'pending'])
+      .order('scheduled_for', { ascending: true })
+      .limit(limit)
+
+    items.push({
+      type: 'posts',
+      count: count || 0,
+      items: (data || []).map((p: any) => ({
+        post_id: p.id,
+        summary: p.summary?.slice(0, 120),
+        status: p.status,
+        scheduled_for: p.scheduled_for,
+        location_name: p.locations?.name,
+      })),
+    })
+  }
+
+  // Google updates
+  if (filter === 'all' || filter === 'google_updates') {
+    const { data, count } = await ctx.supabase
+      .from('gbp_profiles')
+      .select('location_id, business_name, has_google_updated, has_pending_edits, locations(name)', { count: 'exact' })
+      .eq('has_google_updated', true)
+      .limit(limit)
+
+    items.push({
+      type: 'google_updates',
+      count: count || 0,
+      items: (data || []).map((p: any) => ({
+        location_name: p.locations?.name,
+        business_name: p.business_name,
+        has_pending_edits: p.has_pending_edits,
+      })),
+    })
+  }
+
+  // Sync errors
+  if (filter === 'all' || filter === 'sync_errors') {
+    const { data, count } = await ctx.supabase
+      .from('review_sources')
+      .select('id, platform, platform_listing_name, location_id, last_synced_at, locations(name)', { count: 'exact' })
+      .eq('sync_status', 'error')
+      .limit(limit)
+
+    items.push({
+      type: 'sync_errors',
+      count: count || 0,
+      items: (data || []).map((s: any) => ({
+        source_id: s.id,
+        platform: s.platform,
+        listing: s.platform_listing_name,
+        location_name: s.locations?.name,
+        last_synced: s.last_synced_at,
+      })),
+    })
+  }
+
+  const totalCount = items.reduce((s, i) => s + i.count, 0)
+  return { total_items: totalCount, categories: items }
+}
+
+async function execGetPostQueue(input: Record<string, unknown>, ctx: ToolContext) {
+  if (!ctx.isAgencyAdmin) return { error: 'Agency admin required' }
+
+  const locationId = input.location_id as string
+  if (!(await verifyLocationAccess(locationId, ctx))) {
+    return { error: 'Access denied' }
+  }
+
+  const statusFilter = (input.status as string) || 'all'
+
+  let query = ctx.supabase
+    .from('gbp_post_queue')
+    .select('id, topic_type, summary, headline, media_url, status, scheduled_for, source, created_at')
+    .eq('location_id', locationId)
+    .order('scheduled_for', { ascending: true })
+    .limit(30)
+
+  if (statusFilter !== 'all') {
+    query = query.eq('status', statusFilter)
+  }
+
+  const { data, error } = await query
+  if (error) return { error: error.message }
+
+  // Count by status
+  const { data: counts } = await ctx.supabase
+    .from('gbp_post_queue')
+    .select('status')
+    .eq('location_id', locationId)
+
+  const statusCounts: Record<string, number> = {}
+  for (const row of counts || []) {
+    statusCounts[row.status] = (statusCounts[row.status] || 0) + 1
+  }
+
+  return {
+    location_id: locationId,
+    status_counts: statusCounts,
+    posts: (data || []).map((p: any) => ({
+      post_id: p.id,
+      type: p.topic_type,
+      headline: p.headline,
+      summary: p.summary,
+      status: p.status,
+      scheduled_for: p.scheduled_for,
+      source: p.source,
+      has_image: !!p.media_url,
+    })),
+  }
+}
+
+async function execApprovePost(input: Record<string, unknown>, ctx: ToolContext) {
+  if (!ctx.isAgencyAdmin) return { error: 'Agency admin required' }
+
+  const postId = input.post_id as string
+  const action = input.action as string
+
+  // Fetch the post
+  const { data: post } = await ctx.supabase
+    .from('gbp_post_queue')
+    .select('id, status, summary, location_id, locations(name)')
+    .eq('id', postId)
+    .single()
+
+  if (!post) return { error: 'Post not found' }
+
+  switch (action) {
+    case 'agency_approve': {
+      if (post.status !== 'draft') {
+        return { error: `Post is "${post.status}", not "draft". Can only agency-approve drafts.` }
+      }
+      await ctx.supabase
+        .from('gbp_post_queue')
+        .update({ status: 'client_review' })
+        .eq('id', postId)
+
+      return {
+        status: 'client_review',
+        post_id: postId,
+        message: 'Post approved and moved to client review. Email notification sent.',
+      }
+    }
+    case 'reject': {
+      await ctx.supabase
+        .from('gbp_post_queue')
+        .update({ status: 'rejected' })
+        .eq('id', postId)
+
+      return { status: 'rejected', post_id: postId, message: 'Post has been rejected.' }
+    }
+    case 'edit': {
+      const summary = input.summary as string
+      if (!summary) return { error: 'Summary text is required for edit action' }
+
+      await ctx.supabase
+        .from('gbp_post_queue')
+        .update({ summary: summary.trim() })
+        .eq('id', postId)
+
+      return { status: post.status, post_id: postId, message: 'Post text updated.' }
+    }
+    default:
+      return { error: `Unknown action: ${action}. Use agency_approve, reject, or edit.` }
+  }
+}
+
+async function execGetTopicPool(input: Record<string, unknown>, ctx: ToolContext) {
+  if (!ctx.isAgencyAdmin) return { error: 'Agency admin required' }
+
+  const locationId = input.location_id as string
+  if (!(await verifyLocationAccess(locationId, ctx))) {
+    return { error: 'Access denied' }
+  }
+
+  const includeUsed = input.include_used === true
+
+  let query = ctx.supabase
+    .from('gbp_post_topics')
+    .select('id, topic, source, created_at, used_at')
+    .eq('location_id', locationId)
+    .eq('active', true)
+    .order('created_at', { ascending: false })
+
+  if (!includeUsed) {
+    query = query.is('used_at', null)
+  }
+
+  const { data, error } = await query
+  if (error) return { error: error.message }
+
+  const topics = data || []
+  const available = topics.filter((t: any) => !t.used_at)
+  const used = topics.filter((t: any) => t.used_at)
+
+  return {
+    location_id: locationId,
+    available_count: available.length,
+    used_count: includeUsed ? used.length : undefined,
+    topics: topics.map((t: any) => ({
+      id: t.id,
+      topic: t.topic,
+      source: t.source,
+      used: !!t.used_at,
+    })),
+  }
+}
+
+async function execGenerateTopics(input: Record<string, unknown>, ctx: ToolContext) {
+  if (!ctx.isAgencyAdmin) return { error: 'Agency admin required' }
+
+  const locationId = input.location_id as string
+  const count = Math.min((input.count as number) || 20, 50)
+
+  if (!(await verifyLocationAccess(locationId, ctx))) {
+    return { error: 'Access denied' }
+  }
+
+  // Fetch context
+  const [locResult, gbpResult, existingResult] = await Promise.all([
+    ctx.supabase.from('locations').select('name, city, state, brand_voice, org_id, organizations(name)').eq('id', locationId).single(),
+    ctx.supabase.from('gbp_profiles').select('business_name, description, primary_category_name, additional_categories').eq('location_id', locationId).single(),
+    ctx.supabase.from('gbp_post_topics').select('topic').eq('location_id', locationId),
+  ])
+
+  const loc = locResult.data as any
+  const gbp = gbpResult.data as any
+  if (!loc) return { error: 'Location not found' }
+
+  const businessName = gbp?.business_name || loc.organizations?.name || loc.name
+  const categories = [gbp?.primary_category_name, ...(gbp?.additional_categories?.map((c: any) => c.displayName) || [])].filter(Boolean)
+  const existingTopics = (existingResult.data || []).map((t: any) => t.topic)
+
+  const newTopics = await generateTopicPool({
+    businessName,
+    businessDescription: gbp?.description || null,
+    city: loc.city,
+    state: loc.state,
+    categories,
+    brandVoice: loc.brand_voice || null,
+    existingTopics,
+    count,
+  })
+
+  if (newTopics.length === 0) {
+    return { error: 'Failed to generate topics' }
+  }
+
+  // Insert into topic pool
+  const rows = newTopics.map((topic) => ({
+    location_id: locationId,
+    topic,
+    source: 'ai' as const,
+  }))
+
+  const { data: inserted, error } = await ctx.supabase
+    .from('gbp_post_topics')
+    .insert(rows)
+    .select('id, topic')
+
+  if (error) return { error: `Failed to save topics: ${error.message}` }
+
+  return {
+    location_id: locationId,
+    location_name: loc.name,
+    generated: (inserted || []).length,
+    topics: (inserted || []).map((t: any) => t.topic),
+  }
+}
+
+async function execBatchGeneratePosts(input: Record<string, unknown>, ctx: ToolContext) {
+  if (!ctx.isAgencyAdmin) return { error: 'Agency admin required' }
+
+  const locationId = input.location_id as string
+  const count = Math.min((input.count as number) || 4, 12)
+
+  if (!(await verifyLocationAccess(locationId, ctx))) {
+    return { error: 'Access denied' }
+  }
+
+  // Fetch context
+  const [locResult, gbpResult, topicsResult, recentPostsResult] = await Promise.all([
+    ctx.supabase.from('locations').select('name, city, state, brand_voice, org_id, organizations(name)').eq('id', locationId).single(),
+    ctx.supabase.from('gbp_profiles').select('business_name, description, primary_category_name, additional_categories').eq('location_id', locationId).single(),
+    ctx.supabase.from('gbp_post_topics').select('id, topic').eq('location_id', locationId).eq('active', true).is('used_at', null).order('created_at', { ascending: true }).limit(count),
+    ctx.supabase.from('gbp_posts').select('summary').eq('location_id', locationId).order('create_time', { ascending: false }).limit(5),
+  ])
+
+  const loc = locResult.data as any
+  const gbp = gbpResult.data as any
+  if (!loc) return { error: 'Location not found' }
+
+  const availableTopics = topicsResult.data || []
+  if (availableTopics.length === 0) {
+    return { error: 'No available topics in the pool. Use generate_topics first to add topics.' }
+  }
+
+  const businessName = gbp?.business_name || loc.organizations?.name || loc.name
+  const categories = [gbp?.primary_category_name, ...(gbp?.additional_categories?.map((c: any) => c.displayName) || [])].filter(Boolean)
+  const recentSummaries = (recentPostsResult.data || []).map((p: any) => p.summary).filter(Boolean)
+
+  const postsToGenerate = Math.min(count, availableTopics.length)
+  const selectedTopics = availableTopics.slice(0, postsToGenerate)
+  const generated: Array<{ topic: string; headline: string; summary: string; scheduled_for: string }> = []
+
+  const now = new Date()
+  const intervalDays = postsToGenerate >= 4 ? 7 : 14
+
+  for (let i = 0; i < selectedTopics.length; i++) {
+    const topicRow = selectedTopics[i]
+
+    try {
+      const { summary, headline } = await generateGBPPost({
+        businessName,
+        businessDescription: gbp?.description || null,
+        city: loc.city,
+        state: loc.state,
+        categories,
+        recentPostSummaries: [...recentSummaries, ...generated.map((g) => g.summary)],
+        topic: topicRow.topic,
+        brandVoice: loc.brand_voice || undefined,
+      })
+
+      // Stagger: first post ~3 days out, then at interval spacing
+      const scheduledFor = new Date(now.getTime() + (3 + i * intervalDays) * 24 * 60 * 60 * 1000)
+
+      const { data: queueEntry } = await ctx.supabase
+        .from('gbp_post_queue')
+        .insert({
+          location_id: locationId,
+          topic_type: 'STANDARD',
+          summary,
+          headline,
+          status: 'draft',
+          scheduled_for: scheduledFor.toISOString(),
+          queued_by: ctx.userId,
+          topic_id: topicRow.id,
+          source: 'ask_rev',
+        })
+        .select('id')
+        .single()
+
+      // Mark topic as used
+      await ctx.supabase
+        .from('gbp_post_topics')
+        .update({ used_at: new Date().toISOString(), used_in_queue_id: queueEntry?.id || null, use_count: 1 })
+        .eq('id', topicRow.id)
+
+      generated.push({
+        topic: topicRow.topic,
+        headline,
+        summary,
+        scheduled_for: scheduledFor.toISOString(),
+      })
+    } catch (err) {
+      console.error(`[batch-generate] Failed for topic "${topicRow.topic}":`, err)
+    }
+  }
+
+  return {
+    location_id: locationId,
+    location_name: loc.name,
+    generated_count: generated.length,
+    requested_count: postsToGenerate,
+    posts: generated,
+    message: `Generated ${generated.length} draft posts. Use get_post_queue to see them, or approve_post to advance them.`,
   }
 }
