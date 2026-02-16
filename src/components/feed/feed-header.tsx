@@ -32,14 +32,14 @@ const TABS: { key: FilterType; label: string; countKey: CountKeys }[] = [
 
 export function FeedHeader({ counts, filter, setFilter, scope, setScope, isAgencyAdmin }: FeedHeaderProps) {
   return (
-    <div className="border-b border-warm-border bg-white">
+    <div className="border-b border-warm-border">
       <div className="px-5 pt-4 pb-0 flex items-center justify-between">
         <h1 className="text-lg font-serif text-ink">Feed</h1>
         {isAgencyAdmin && (
           <select
             value={scope}
             onChange={(e: React.ChangeEvent<HTMLSelectElement>) => setScope(e.target.value as ScopeType)}
-            className="text-xs border border-warm-border rounded-lg px-2 py-1 bg-white text-ink"
+            className="text-xs border border-warm-border rounded-lg px-2 py-1 bg-cream text-ink"
           >
             <option value="all">All</option>
             <option value="mine">My Queue</option>

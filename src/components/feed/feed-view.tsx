@@ -428,7 +428,7 @@ export function FeedView() {
 
   if (loading) {
     return (
-      <div className="h-screen flex flex-col bg-[#F8F6F1]">
+      <div className="h-screen flex flex-col">
         <FeedHeader
           counts={null}
           filter={filter}
@@ -450,7 +450,7 @@ export function FeedView() {
 
   if (groups.length === 0) {
     return (
-      <div className="h-screen flex flex-col bg-[#F8F6F1]">
+      <div className="h-screen flex flex-col">
         <FeedHeader
           counts={data?.counts || null}
           filter={filter}
@@ -483,7 +483,7 @@ export function FeedView() {
   // ─── Feed ───────────────────────────────────────────────
 
   return (
-    <div className="h-screen flex flex-col bg-[#F8F6F1]">
+    <div className="h-screen flex flex-col">
       <FeedHeader
         counts={data?.counts || null}
         filter={filter}

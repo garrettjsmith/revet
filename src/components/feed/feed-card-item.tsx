@@ -35,7 +35,7 @@ export function FeedCardItem({
     const hasDraft = !!review.ai_draft
 
     return (
-      <div className="border border-warm-border/50 rounded-lg p-4 bg-white">
+      <div className="border border-warm-border/50 rounded-lg p-4">
         {/* Review header */}
         <div className="flex items-start justify-between gap-2 mb-2">
           <div className="min-w-0">
@@ -152,7 +152,7 @@ export function FeedCardItem({
     }
 
     return (
-      <div className="border border-warm-border/50 rounded-lg p-4 bg-white">
+      <div className="border border-warm-border/50 rounded-lg p-4">
         <div className="flex items-start justify-between gap-2 mb-2">
           <div className="min-w-0">
             <div className="flex items-center gap-2">
@@ -240,7 +240,7 @@ export function FeedCardItem({
   // Google update
   if (item.type === 'google_update') {
     return (
-      <div className="border border-warm-border/50 rounded-lg p-4 bg-white">
+      <div className="border border-warm-border/50 rounded-lg p-4">
         <div className="flex items-center gap-2 mb-2">
           <span className="text-sm font-medium text-ink">{item.location_name}</span>
           <span className="text-[10px] text-blue-600 bg-blue-50 px-2 py-0.5 rounded-full">Google Update</span>
@@ -270,7 +270,7 @@ export function FeedCardItem({
   if (item.type === 'profile_optimization' && item.profile_optimization) {
     const recs = item.profile_optimization.recommendations || []
     return (
-      <div className="border border-warm-border/50 rounded-lg p-4 bg-white">
+      <div className="border border-warm-border/50 rounded-lg p-4">
         <div className="flex items-center gap-2 mb-2">
           <span className="text-sm font-medium text-ink">{item.location_name}</span>
           <span className="text-[10px] text-violet-600 font-medium">AI</span>
@@ -308,7 +308,7 @@ export function FeedCardItem({
   // Sync error
   if (item.type === 'sync_error' && item.sync_error) {
     return (
-      <div className="border border-warm-border/50 rounded-lg p-4 bg-white">
+      <div className="border border-warm-border/50 rounded-lg p-4">
         <div className="flex items-center gap-2 mb-2">
           <span className="text-sm font-medium text-ink">{item.location_name}</span>
           <span className="text-[10px] text-red-600 bg-red-50 px-2 py-0.5 rounded-full">
@@ -333,7 +333,7 @@ export function FeedCardItem({
   // Stale lander
   if (item.type === 'stale_lander' && item.stale_lander) {
     return (
-      <div className="border border-warm-border/50 rounded-lg p-4 bg-white">
+      <div className="border border-warm-border/50 rounded-lg p-4">
         <div className="flex items-center gap-2 mb-2">
           <span className="text-sm font-medium text-ink">{item.location_name}</span>
           <span className="text-[10px] text-amber-600 bg-amber-50 px-2 py-0.5 rounded-full">Stale</span>

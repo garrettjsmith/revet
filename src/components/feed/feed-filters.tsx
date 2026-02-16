@@ -54,7 +54,7 @@ export function FeedFilters({ org, location, onOrgChange, onLocationChange }: Fe
   const hasFilters = org || location
 
   return (
-    <div className="border-b border-warm-border/50 bg-white">
+    <div className="border-b border-warm-border/50">
       <button
         type="button"
         onClick={() => setExpanded(!expanded)}

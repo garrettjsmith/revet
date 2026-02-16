@@ -104,13 +104,13 @@ export function FeedCard({
     ? 'bg-red-500'
     : priority === 'important'
       ? 'bg-amber-400'
-      : 'bg-gray-300'
+      : 'bg-warm-border'
 
   // Preview text for collapsed state
   const previewItems = items.slice(0, 3)
 
   return (
-    <div className="border border-warm-border rounded-xl bg-white overflow-hidden">
+    <div className="border border-warm-border rounded-xl overflow-hidden">
       {/* Card header — always visible */}
       <div className="px-5 py-4">
         <div className="flex items-center justify-between gap-3 mb-1">
