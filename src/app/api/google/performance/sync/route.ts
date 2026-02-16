@@ -3,6 +3,8 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { fetchPerformanceMetrics } from '@/lib/google/performance'
 import { getValidAccessToken, GoogleAuthError } from '@/lib/google/auth'
 
+export const maxDuration = 120
+
 /**
  * POST /api/google/performance/sync
  *
@@ -45,11 +47,12 @@ export async function POST(request: NextRequest) {
   const startStr = body.date_range?.start || startDate.toISOString().split('T')[0]
   const endStr = body.date_range?.end || endDate.toISOString().split('T')[0]
 
-  // Get GBP location mappings (up to 10 per run)
+  // Get GBP location mappings (up to 10 per run, only those linked to a location)
   const { data: mappings } = await supabase
     .from('agency_integration_mappings')
     .select('external_resource_id, location_id, external_resource_name')
     .eq('resource_type', 'gbp_location')
+    .not('location_id', 'is', null)
     .limit(10)
 
   if (!mappings || mappings.length === 0) {
