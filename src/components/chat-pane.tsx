@@ -17,20 +17,37 @@ interface ChatPaneProps {
   isAgencyAdmin?: boolean
 }
 
+// Friendly labels for tool activity indicators
+const TOOL_LABELS: Record<string, string> = {
+  get_reviews: 'Checking reviews',
+  get_review_stats: 'Analyzing review trends',
+  get_locations: 'Looking up locations',
+  get_location_details: 'Fetching location details',
+  get_performance_metrics: 'Pulling performance data',
+  get_profile_audit: 'Checking audit scores',
+  get_posts: 'Loading posts',
+  get_org_overview: 'Getting org overview',
+  get_review_sources: 'Checking review sources',
+  get_landers: 'Loading landers',
+  search_all_locations: 'Searching all locations',
+  get_action_items: 'Finding action items',
+}
+
 export function ChatPane({ orgSlug, orgName, locationId, locationName, isAgencyAdmin }: ChatPaneProps) {
-  const { isOpen, close } = useChatPane()
+  const { isOpen, conversationId, close, setConversationId, startNewConversation } = useChatPane()
   const pathname = usePathname()
   const [messages, setMessages] = useState<ChatMessage[]>([])
   const [input, setInput] = useState('')
   const [isStreaming, setIsStreaming] = useState(false)
+  const [activeTool, setActiveTool] = useState<string | null>(null)
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLTextAreaElement>(null)
   const abortRef = useRef<AbortController | null>(null)
 
-  // Auto-scroll to bottom on new messages
+  // Auto-scroll to bottom on new messages or tool activity
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
-  }, [messages])
+  }, [messages, activeTool])
 
   // Focus input when opening
   useEffect(() => {
@@ -71,6 +88,7 @@ export function ChatPane({ orgSlug, orgName, locationId, locationName, isAgencyA
     if (inputRef.current) inputRef.current.style.height = 'auto'
 
     setIsStreaming(true)
+    setActiveTool(null)
 
     // Add empty assistant message for streaming into
     setMessages((prev) => [...prev, { role: 'assistant', content: '' }])
@@ -85,6 +103,7 @@ export function ChatPane({ orgSlug, orgName, locationId, locationName, isAgencyA
         body: JSON.stringify({
           messages: newMessages.map((m) => ({ role: m.role, content: m.content })),
           context: { orgSlug, orgName, locationId, locationName, pathname, isAgencyAdmin },
+          conversationId,
         }),
         signal: controller.signal,
       })
@@ -125,13 +144,35 @@ export function ChatPane({ orgSlug, orgName, locationId, locationName, isAgencyA
             if (data === '[DONE]') continue
             try {
               const parsed = JSON.parse(data)
-              if (parsed.type === 'delta' && parsed.text) {
-                setMessages((prev) => {
-                  const updated = [...prev]
-                  const last = updated[updated.length - 1]
-                  updated[updated.length - 1] = { ...last, content: last.content + parsed.text }
-                  return updated
-                })
+              switch (parsed.type) {
+                case 'delta':
+                  if (parsed.text) {
+                    setMessages((prev) => {
+                      const updated = [...prev]
+                      const last = updated[updated.length - 1]
+                      updated[updated.length - 1] = { ...last, content: last.content + parsed.text }
+                      return updated
+                    })
+                  }
+                  break
+                case 'tool_start':
+                  setActiveTool(parsed.tool)
+                  break
+                case 'tool_done':
+                  setActiveTool(null)
+                  break
+                case 'meta':
+                  if (parsed.conversationId) {
+                    setConversationId(parsed.conversationId)
+                  }
+                  break
+                case 'error':
+                  setMessages((prev) => {
+                    const updated = [...prev]
+                    updated[updated.length - 1] = { role: 'assistant', content: parsed.text || 'Something went wrong.' }
+                    return updated
+                  })
+                  break
               }
             } catch {
               // skip malformed JSON
@@ -149,9 +190,10 @@ export function ChatPane({ orgSlug, orgName, locationId, locationName, isAgencyA
       }
     } finally {
       setIsStreaming(false)
+      setActiveTool(null)
       abortRef.current = null
     }
-  }, [input, messages, isStreaming, orgSlug, orgName, locationId, locationName, pathname, isAgencyAdmin])
+  }, [input, messages, isStreaming, orgSlug, orgName, locationId, locationName, pathname, isAgencyAdmin, conversationId, setConversationId])
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter' && !e.shiftKey) {
@@ -165,6 +207,8 @@ export function ChatPane({ orgSlug, orgName, locationId, locationName, isAgencyA
     setMessages([])
     setInput('')
     setIsStreaming(false)
+    setActiveTool(null)
+    startNewConversation()
   }
 
   const chatContent = (
@@ -173,7 +217,7 @@ export function ChatPane({ orgSlug, orgName, locationId, locationName, isAgencyA
       <div className="flex items-center justify-between px-4 py-3 border-b border-warm-border shrink-0">
         <div className="flex items-center gap-2">
           <SparkleIcon className="w-4 h-4 text-warm-gray" />
-          <span className="text-sm font-medium text-ink">Ask Revet</span>
+          <span className="text-sm font-medium text-ink">Ask Rev</span>
         </div>
         <div className="flex items-center gap-2">
           {messages.length > 0 && (
@@ -181,7 +225,7 @@ export function ChatPane({ orgSlug, orgName, locationId, locationName, isAgencyA
               onClick={handleClear}
               className="text-xs text-warm-gray hover:text-ink transition-colors"
             >
-              Clear
+              New chat
             </button>
           )}
           <button
@@ -199,7 +243,7 @@ export function ChatPane({ orgSlug, orgName, locationId, locationName, isAgencyA
           <div className="flex flex-col items-center justify-center h-full text-center px-6">
             <SparkleIcon className="w-8 h-8 text-warm-border mb-3" />
             <p className="text-sm text-warm-gray">
-              Ask about your data, reviews, locations, or anything on screen.
+              Ask about your reviews, locations, performance, or anything on screen.
             </p>
             <div className="mt-4 space-y-1.5 w-full">
               {[
@@ -232,12 +276,23 @@ export function ChatPane({ orgSlug, orgName, locationId, locationName, isAgencyA
               }`}
             >
               {msg.content}
-              {msg.role === 'assistant' && msg.content === '' && isStreaming && (
+              {msg.role === 'assistant' && msg.content === '' && isStreaming && !activeTool && (
                 <span className="inline-block w-1.5 h-4 bg-warm-gray/50 animate-pulse" />
               )}
             </div>
           </div>
         ))}
+
+        {/* Tool activity indicator */}
+        {activeTool && (
+          <div className="flex justify-start">
+            <div className="flex items-center gap-2 text-xs text-warm-gray px-3 py-1.5">
+              <LoadingDots />
+              <span>{TOOL_LABELS[activeTool] || `Running ${activeTool}`}</span>
+            </div>
+          </div>
+        )}
+
         <div ref={messagesEndRef} />
       </div>
 
@@ -265,7 +320,7 @@ export function ChatPane({ orgSlug, orgName, locationId, locationName, isAgencyA
           <span className="text-[10px] text-warm-gray truncate">
             {orgName && <>{orgName}{locationName ? ` / ${locationName}` : ''}</>}
           </span>
-          <kbd className="text-[10px] font-mono text-warm-gray bg-warm-light rounded px-1.5 py-0.5 shrink-0">⌘J</kbd>
+          <kbd className="text-[10px] font-mono text-warm-gray bg-warm-light rounded px-1.5 py-0.5 shrink-0">&#8984;J</kbd>
         </div>
       </div>
     </>
@@ -302,7 +357,18 @@ export function ChatPane({ orgSlug, orgName, locationId, locationName, isAgencyA
   )
 }
 
-// Icons
+// Icons & Components
+
+function LoadingDots() {
+  return (
+    <span className="inline-flex gap-0.5">
+      <span className="w-1 h-1 bg-warm-gray rounded-full animate-bounce [animation-delay:0ms]" />
+      <span className="w-1 h-1 bg-warm-gray rounded-full animate-bounce [animation-delay:150ms]" />
+      <span className="w-1 h-1 bg-warm-gray rounded-full animate-bounce [animation-delay:300ms]" />
+    </span>
+  )
+}
+
 function SparkleIcon({ className }: { className?: string }) {
   return (
     <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">

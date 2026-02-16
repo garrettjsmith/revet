@@ -1,54 +1,9 @@
 import { NextRequest } from 'next/server'
 import { createServerSupabase } from '@/lib/supabase/server'
-import Anthropic from '@anthropic-ai/sdk'
+import { createAdminClient } from '@/lib/supabase/admin'
+import { createAgentStream } from '@/lib/chat/stream'
 
-export const maxDuration = 60
-
-let _client: Anthropic | null = null
-function getClient() {
-  if (!_client) {
-    _client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
-  }
-  return _client
-}
-
-function buildSystemPrompt(context: {
-  orgSlug?: string
-  orgName?: string
-  locationId?: string
-  locationName?: string
-  pathname?: string
-  isAgencyAdmin?: boolean
-}) {
-  const parts = [
-    'You are an AI assistant for Revet, a search optimization platform for multi-location businesses.',
-    'You help users understand their data, answer questions about locations, reviews, and performance, and provide actionable insights.',
-    'Keep responses concise and helpful. Use short paragraphs.',
-  ]
-
-  if (context.orgName) {
-    parts.push(`The user is viewing organization: "${context.orgName}".`)
-  }
-  if (context.locationName) {
-    parts.push(`They are looking at location: "${context.locationName}".`)
-  }
-  if (context.pathname) {
-    parts.push(`Current page: ${context.pathname}`)
-  }
-  if (context.isAgencyAdmin) {
-    parts.push('This user is an agency admin with full platform access.')
-  } else {
-    parts.push('This user is a customer org member with read-only dashboard access.')
-  }
-
-  parts.push(
-    "You don't have direct access to their data yet — this is a preview of the chat interface.",
-    "When asked about data you don't have, explain what you'll be able to help with once connected: review trends, location comparisons, performance metrics, content generation, and more.",
-    "Be helpful and specific about what's coming, but don't make up data."
-  )
-
-  return parts.join(' ')
-}
+export const maxDuration = 120
 
 export async function POST(req: NextRequest) {
   const supabase = createServerSupabase()
@@ -61,7 +16,11 @@ export async function POST(req: NextRequest) {
     })
   }
 
-  let body: { messages?: unknown; context?: Record<string, unknown> }
+  let body: {
+    messages?: unknown
+    context?: Record<string, unknown>
+    conversationId?: string
+  }
   try {
     body = await req.json()
   } catch {
@@ -71,7 +30,7 @@ export async function POST(req: NextRequest) {
     })
   }
 
-  const { messages, context } = body
+  const { messages, context, conversationId } = body
 
   if (!messages || !Array.isArray(messages) || messages.length === 0) {
     return new Response(JSON.stringify({ error: 'Messages required' }), {
@@ -80,58 +39,158 @@ export async function POST(req: NextRequest) {
     })
   }
 
-  // Keep last 20 messages to limit context
-  const recentMessages = messages.slice(-20)
-  const systemPrompt = buildSystemPrompt((context as Record<string, string | boolean | undefined>) || {})
+  // Resolve user's org memberships and agency admin status
+  const adminClient = createAdminClient()
 
-  try {
-    const stream = getClient().messages.stream({
-      model: 'claude-sonnet-4-5-20250929',
-      max_tokens: 1024,
-      system: systemPrompt,
-      messages: recentMessages.map((m: { role: string; content: string }) => ({
-        role: m.role as 'user' | 'assistant',
-        content: m.content,
-      })),
-    })
+  const { data: memberships } = await adminClient
+    .from('org_members')
+    .select('org_id, is_agency_admin')
+    .eq('user_id', user.id)
 
-    const readable = new ReadableStream({
-      async start(controller) {
-        const encoder = new TextEncoder()
+  const orgIds = (memberships || []).map((m: any) => m.org_id)
+  const isAgencyAdmin = (memberships || []).some((m: any) => m.is_agency_admin)
 
-        try {
-          for await (const event of stream) {
-            if (
-              event.type === 'content_block_delta' &&
-              event.delta.type === 'text_delta'
-            ) {
-              const data = JSON.stringify({ type: 'delta', text: event.delta.text })
-              controller.enqueue(encoder.encode(`data: ${data}\n\n`))
-            }
-          }
-          controller.enqueue(encoder.encode('data: [DONE]\n\n'))
-          controller.close()
-        } catch (error) {
-          console.error('Chat stream error:', error)
-          const data = JSON.stringify({ type: 'error', text: 'Stream interrupted' })
-          controller.enqueue(encoder.encode(`data: ${data}\n\n`))
-          controller.close()
-        }
-      },
-    })
+  // Resolve or create conversation
+  let convId = conversationId
+  if (!convId) {
+    // Create a new conversation
+    const orgId = context?.orgSlug
+      ? await resolveOrgId(adminClient, context.orgSlug as string)
+      : null
 
-    return new Response(readable, {
-      headers: {
-        'Content-Type': 'text/event-stream',
-        'Cache-Control': 'no-cache',
-        Connection: 'keep-alive',
-      },
-    })
-  } catch (error) {
-    console.error('Chat API error:', error)
-    return new Response(JSON.stringify({ error: 'Chat request failed' }), {
+    const { data: conv } = await adminClient
+      .from('chat_conversations')
+      .insert({
+        user_id: user.id,
+        org_id: orgId,
+        location_id: (context?.locationId as string) || null,
+        title: truncate(getFirstUserMessage(messages), 100),
+      })
+      .select('id')
+      .single()
+
+    convId = conv?.id
+  } else {
+    // Update timestamp on existing conversation
+    await adminClient
+      .from('chat_conversations')
+      .update({ updated_at: new Date().toISOString() })
+      .eq('id', convId)
+      .eq('user_id', user.id)
+  }
+
+  if (!convId) {
+    return new Response(JSON.stringify({ error: 'Failed to create conversation' }), {
       status: 500,
       headers: { 'Content-Type': 'application/json' },
     })
   }
+
+  // Save the new user message
+  const lastUserMsg = messages[messages.length - 1]
+  if (lastUserMsg?.role === 'user') {
+    await adminClient.from('chat_messages').insert({
+      conversation_id: convId,
+      role: 'user',
+      content: lastUserMsg.content,
+    })
+  }
+
+  // Build Claude messages from client history (last 20 turns)
+  const recentMessages = messages.slice(-20).map((m: { role: string; content: string }) => ({
+    role: m.role as 'user' | 'assistant',
+    content: m.content,
+  }))
+
+  // Create the agent stream
+  const readable = createAgentStream(recentMessages, {
+    supabase: adminClient,
+    userId: user.id,
+    orgIds,
+    isAgencyAdmin,
+    orgSlug: context?.orgSlug as string | undefined,
+    orgName: context?.orgName as string | undefined,
+    locationId: context?.locationId as string | undefined,
+    locationName: context?.locationName as string | undefined,
+    pathname: context?.pathname as string | undefined,
+    conversationId: convId,
+  })
+
+  // Collect assistant text for persistence (tee the stream)
+  const [streamForClient, streamForSave] = readable.tee()
+
+  // Save assistant response in background
+  saveAssistantMessage(streamForSave, adminClient, convId)
+
+  return new Response(streamForClient, {
+    headers: {
+      'Content-Type': 'text/event-stream',
+      'Cache-Control': 'no-cache',
+      Connection: 'keep-alive',
+    },
+  })
+}
+
+/** Collect text deltas from a teed stream and save the final assistant message. */
+async function saveAssistantMessage(
+  stream: ReadableStream<Uint8Array>,
+  supabase: any,
+  conversationId: string
+) {
+  const reader = stream.getReader()
+  const decoder = new TextDecoder()
+  let text = ''
+
+  try {
+    while (true) {
+      const { done, value } = await reader.read()
+      if (done) break
+
+      const chunk = decoder.decode(value, { stream: true })
+      // Parse SSE lines
+      for (const line of chunk.split('\n')) {
+        if (line.startsWith('data: ')) {
+          const data = line.slice(6)
+          if (data === '[DONE]') continue
+          try {
+            const parsed = JSON.parse(data)
+            if (parsed.type === 'delta' && parsed.text) {
+              text += parsed.text
+            }
+          } catch {
+            // skip
+          }
+        }
+      }
+    }
+  } catch {
+    // Stream read error — save what we have
+  }
+
+  if (text) {
+    await supabase.from('chat_messages').insert({
+      conversation_id: conversationId,
+      role: 'assistant',
+      content: text,
+    })
+  }
+}
+
+/** Resolve org slug to ID. */
+async function resolveOrgId(supabase: any, slug: string): Promise<string | null> {
+  const { data } = await supabase
+    .from('organizations')
+    .select('id')
+    .eq('slug', slug)
+    .single()
+  return data?.id || null
+}
+
+function getFirstUserMessage(messages: any[]): string {
+  const first = messages.find((m: any) => m.role === 'user')
+  return first?.content || 'New conversation'
+}
+
+function truncate(str: string, max: number): string {
+  return str.length > max ? str.slice(0, max - 1) + '\u2026' : str
 }
