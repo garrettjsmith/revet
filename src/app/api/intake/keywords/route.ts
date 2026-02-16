@@ -29,7 +29,7 @@ export async function GET(request: NextRequest) {
 
   try {
     const response = await getClient().messages.create({
-      model: 'claude-3-5-haiku-latest',
+      model: 'claude-haiku-4-5-20251001',
       max_tokens: 512,
       system: `You are a local SEO keyword expert. Generate search keywords that customers would use to find this type of business.
 
