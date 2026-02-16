@@ -237,7 +237,7 @@ const ADMIN_ACTION_TOOLS: Anthropic.Tool[] = [
         topic_type: { type: 'string', enum: ['STANDARD', 'EVENT', 'OFFER'], description: 'Post type (default: STANDARD)' },
         media_url: { type: 'string', description: 'Image URL from generate_post_draft (pass through if present)' },
       },
-      required: ['location_id', 'summary'],
+      required: ['location_id', 'headline', 'summary'],
     },
   },
   {
