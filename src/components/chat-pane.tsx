@@ -31,6 +31,13 @@ const TOOL_LABELS: Record<string, string> = {
   get_landers: 'Loading landers',
   search_all_locations: 'Searching all locations',
   get_action_items: 'Finding action items',
+  draft_review_reply: 'Drafting reply',
+  send_review_reply: 'Sending reply',
+  generate_post_draft: 'Generating post',
+  schedule_post: 'Scheduling post',
+  run_profile_audit: 'Running audit',
+  update_gbp_field: 'Updating profile',
+  generate_optimization_plan: 'Generating optimization plan',
 }
 
 export function ChatPane({ orgSlug, orgName, locationId, locationName, isAgencyAdmin }: ChatPaneProps) {

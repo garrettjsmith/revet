@@ -25,6 +25,18 @@ export function buildSystemPrompt(ctx: PromptContext): string {
       '- Search locations across all organizations',
       '- Show action items needing attention (negative reviews, sync errors, profile changes)',
       '',
+      'ACTIONS (agency admin):',
+      '- Draft and send review replies',
+      '- Generate and schedule GBP posts',
+      '- Run profile audits',
+      '- Update GBP profile fields (description, phone, website)',
+      '- Generate optimized business descriptions',
+      '',
+      'CONFIRMATION RULES — CRITICAL:',
+      '- For draft/generate tools (draft_review_reply, generate_post_draft, run_profile_audit, generate_optimization_plan): call them freely and show the result.',
+      '- For execute tools (send_review_reply, schedule_post, update_gbp_field): ALWAYS show a preview of what will happen and ask "Want me to go ahead?" BEFORE calling the tool. Never call these without explicit user confirmation.',
+      '- If the user says "yes", "do it", "go ahead", "send it", "looks good", etc., that counts as confirmation.',
+      '',
       'You are speaking to an agency admin with full platform access.',
     )
   } else {
