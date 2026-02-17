@@ -24,45 +24,72 @@ Three clear namespaces:
 | `/agency/[orgSlug]/` | Agency admins | Agency configuring a specific org's settings |
 | `/admin/[orgSlug]/` | Customers + agency | Customer portal — read-only dashboards + limited self-service |
 
-### Customer Self-Service (What Customers CAN Do)
+### Customer Roles
 
-The principle: **Customers don't operate. But they approve what the agency sends them.**
+Two roles within the customer org, independent from agency admin:
 
-Customers can view everything. They can't initiate actions — but when the agency explicitly sends something for their review, they can approve or reject it.
+| Role | Who | How Set |
+|------|-----|---------|
+| **Customer admin** | Client's point person (Director, C-level) | Agency admin designates. One per org. |
+| **Member** | Client's managers, staff | Default role for all org members |
 
-**View (read-only):**
+Stored as `is_org_admin` boolean on `org_members`. Independent from `is_agency_admin` — they are separate concerns. Constraint: only one `is_org_admin = true` per org (excluding agency admins).
+
+### Customer Capabilities by Role
+
+The principle: **Customers don't operate. But they approve what the agency sends them — and customer admins manage their own team.**
+
+**All customers (admin + member):**
+
+*View (read-only):*
 - All dashboards, stats, trends
 - Reviews (individual reviews, ratings, review text)
 - GBP profile details
 - Lander content
 - Form submissions
 - Review funnels
-- Team roster (who's on the team, roles)
 
-**Approve (agency-initiated, sent for client review):**
-- **Posts** — approve/reject/request edits on posts the agency sends for review. Already implemented at `/admin/[orgSlug]/posts/review`.
-- **Profile recommendations** — approve/reject profile changes (description, categories) that require client sign-off. Backend exists (`client_review` status + email), customer approval UI needs building.
+*Approve (agency-initiated, sent for client review):*
+- **Posts** — approve/reject/request edits on posts the agency sends for review
+- **Profile recommendations** — approve/reject profile changes that require client sign-off
 
-**Interact (self-service):**
+*Self-service:*
 - **Reports** — view, change date ranges, download
-- **Notifications** — update their own notification preferences (what alerts they receive)
+- **Notifications** — update their own notification preferences
 - **Display name** — update their own name
 
-**Cannot (agency-only):**
+**Customer admin only:**
+
+*Request (creates work queue item for agency):*
+- **Request a post** — submit a post request that appears in the agency work queue/feed. Assigned agent gets notified.
+- **Request profile changes** — submit a change request for profile fields (hours, description, photos, etc.). Appears in agency work queue/feed.
+
+*Team management:*
+- Add new members to the org
+- Remove members from the org (non-agency members only)
+- Agency admins are **not visible** on the customer team roster
+
+*Notifications:*
+- Configure notification preferences for **all** non-agency members in their org (not just their own)
+
+**Cannot (agency-only, regardless of customer role):**
 - Reply to reviews, write or approve AI drafts
-- Initiate profile changes or lander edits
-- Create posts or configure post topics
+- Directly edit profiles or landers (can only *request* changes)
+- Directly create posts (can only *request* posts)
 - Configure autopilot, lander settings, brand config
 - Edit org settings (name, slug, logo)
-- Add/remove team members
-- Configure notifications for other users
+- Designate or change the customer admin (agency sets this)
 
 ## Design Decisions (Locked)
 
 | Decision | Choice | Rationale |
 |----------|--------|-----------|
 | Three namespaces | `/agency/settings/`, `/agency/[orgSlug]/`, `/admin/[orgSlug]/` | Clean separation: global config, per-org config, customer portal |
-| Customer self-service | Approve agency-sent items + notifications + display name | Customers don't operate — they observe data and approve what the agency sends them. |
+| Customer roles | Customer admin (one per org) + member | Admin manages team & notifications, can request posts/changes. Member views & approves. |
+| `is_org_admin` boolean | Separate from `is_agency_admin` | Independent concerns. Agency admin = platform operator. Customer admin = org point person. |
+| One admin per org | Constraint on `is_org_admin` | Single point of contact. Agency designates. Keeps it simple. |
+| Request workflow | Work queue items + notification to assigned agent | Formal, trackable. Customers request, agency acts. |
+| Customer self-service | Approve agency-sent items + notifications + display name + requests (admin) | Customers don't operate — they observe, approve, and request. |
 | Dual-mode pages | Split into separate routes | Cleaner than conditional rendering. Agency version has full config. Customer version has limited controls. |
 | Sidebar context switching | Scope selector already supports agency vs org | Existing pattern works. Agency org config uses agency scope with org sub-nav. |
 
@@ -119,10 +146,10 @@ Dashboards and data. Customers can view everything, edit only their own notifica
 | `/admin/[orgSlug]/forms` | Keep | View form submissions |
 | `/admin/[orgSlug]/reports` | Keep | View + change date ranges + download |
 | `/admin/[orgSlug]/locations/[locationId]/reports` | Keep | View + change date ranges + download |
-| `/admin/[orgSlug]/notifications` | Modify | Self-service: user manages their OWN notification preferences only |
-| `/admin/[orgSlug]/locations/[locationId]/notifications` | Modify | Self-service: user manages their OWN location notification preferences |
+| `/admin/[orgSlug]/notifications` | Modify | Member: own preferences only. Customer admin: all non-agency members' preferences. |
+| `/admin/[orgSlug]/locations/[locationId]/notifications` | Modify | Member: own preferences only. Customer admin: all non-agency members' preferences. |
 | `/admin/[orgSlug]/profile` | New | Display name edit |
-| `/admin/[orgSlug]/team` | Modify | Read-only roster view (who's on the team, roles). No add/remove/toggle. |
+| `/admin/[orgSlug]/team` | Modify | Customer admin: add/remove members, view roster. Member: read-only roster. Agency admins hidden. |
 | `/admin/[orgSlug]/settings` | Remove | Redirect to org dashboard. Org config moves to `/agency/[orgSlug]/settings`. |
 | `/admin/[orgSlug]/brand` | Remove | Redirect to org dashboard. Already agency-gated. |
 | `/admin/[orgSlug]/review-funnels/*` | Keep | View existing funnels |
@@ -189,12 +216,13 @@ Acme Dental               ← scope selector
 ├── Locations
 ├── Reviews
 ├── Post Review
+├── Requests              ← customer admin only: view submitted requests + submit new
 ├── Forms
 ├── Reports
 ├── [Location selected]
 │   ├── Overview
 │   ├── Reviews
-│   ├── GBP Profile
+│   ├── GBP Profile       ← customer admin sees "Request Change" button
 │   ├── Reports
 │   └── More ▾
 │       ├── Review Funnels
@@ -202,8 +230,8 @@ Acme Dental               ← scope selector
 │       ├── Lander
 │       └── Post Topics
 └── [Footer]
-    ├── Notifications     ← self-service: own preferences
-    ├── Team              ← read-only roster
+    ├── Notifications     ← member: own preferences. Admin: team-wide.
+    ├── Team              ← member: read-only roster. Admin: add/remove members.
     ├── Profile           ← display name edit
     └── [user email] Sign out
 ```
@@ -212,16 +240,19 @@ Acme Dental               ← scope selector
 - Remove "Brand Config" from main nav
 - Remove "Settings" from footer (org settings → agency only)
 - Add "Profile" to footer (display name)
-- "Team" becomes read-only roster
-- "Notifications" shows only the user's own preferences
+- Add "Requests" to main nav (customer admin only)
+- "Team" becomes read-only roster for members, add/remove for customer admin
+- "Notifications" — own preferences for members, team-wide for customer admin
+- "Request Change" button on GBP Profile page (customer admin only)
+- "Request a Post" accessible from Requests page or Post Review (customer admin only)
 
 ---
 
 ## Customer Notification Self-Service
 
-The existing notifications page already has a dual-mode pattern. For the customer version, simplify:
+The existing notifications page already has a dual-mode pattern. For the customer version, two views based on role:
 
-### What Customers See
+### What Members See
 
 A personal notification preferences page:
 
@@ -247,6 +278,36 @@ A personal notification preferences page:
 - Cannot add subscriptions for other team members
 - Cannot configure org-wide "all members" alerts
 - Simple checkbox list, not the full subscriber management table
+
+### What Customer Admins See
+
+The same personal preferences section PLUS a team notification management section:
+
+```
+┌─────────────────────────────────────────────────────────┐
+│  Your Notifications                                      │
+│  [Same personal preferences as above]                    │
+│                                                          │
+│  ─────────────────────────────────────────────────────── │
+│                                                          │
+│  Team Notifications                                      │
+│                                                          │
+│  Manage which alerts your team members receive.          │
+│                                                          │
+│  [Jane Smith ▾]                                          │
+│  ☑ New reviews                                           │
+│  ☑ Negative reviews (1-2 stars)                          │
+│  ☐ Review replies posted                                 │
+│  ☑ Weekly summary report                                 │
+│  ☐ New form submissions                                  │
+│                                                          │
+│  [Save Team Preferences]                                 │
+└─────────────────────────────────────────────────────────┘
+```
+
+- Can manage subscriptions for any non-agency member in their org
+- Cannot see or configure agency admin subscriptions
+- Same checkbox UI, with a member selector dropdown
 
 ### What Agency Admins See (at `/agency/[orgSlug]/notifications`)
 
@@ -278,6 +339,84 @@ New simple page at `/admin/[orgSlug]/profile`:
 
 ---
 
+## Customer Request Workflow
+
+Customer admins can request posts and profile changes. These create formal work queue items that the agency sees in their feed.
+
+### Request Types
+
+| Type | Created By | What It Contains | Where It Appears |
+|------|-----------|-----------------|------------------|
+| Post request | Customer admin | Free-text description of desired post (topic, key points, timing) | Agency work queue + feed |
+| Profile change request | Customer admin | Field(s) to change + desired value(s) or description of change | Agency work queue + feed |
+
+### Flow
+
+1. Customer admin submits request via form in customer portal
+2. System creates a work queue item (new `type: 'client_request'` or similar)
+3. Assigned agent gets notified (email/in-app, based on notification config)
+4. Agency sees request in work queue / feed with context (who requested, what org/location, details)
+5. Agency acts on request (creates the post, makes the profile change)
+6. Request marked as completed
+
+### Data Model
+
+New table or extend existing `work_queue_items`:
+
+```
+client_requests
+  id             uuid
+  org_id         uuid (FK → organizations)
+  location_id    uuid (FK → locations, nullable — post requests may be org-level)
+  request_type   'post' | 'profile_change'
+  details        text (free-text description from customer)
+  status         'pending' | 'in_progress' | 'completed' | 'dismissed'
+  requested_by   uuid (FK → auth.users)
+  assigned_to    uuid (FK → auth.users, nullable)
+  created_at     timestamptz
+  completed_at   timestamptz
+```
+
+### Customer UI
+
+**Request a Post** — accessible from customer sidebar or posts page (customer admin only):
+
+```
+┌─────────────────────────────────────────────────────────┐
+│  Request a Post                                          │
+│                                                          │
+│  Location   [All locations ▾]                            │
+│                                                          │
+│  What should this post be about?                         │
+│  ┌───────────────────────────────────────────────────┐   │
+│  │ We're running a spring cleaning special...        │   │
+│  │                                                   │   │
+│  └───────────────────────────────────────────────────┘   │
+│                                                          │
+│  [Submit Request]                                        │
+└─────────────────────────────────────────────────────────┘
+```
+
+**Request Profile Change** — accessible from GBP profile page (customer admin only):
+
+```
+┌─────────────────────────────────────────────────────────┐
+│  Request a Change                                        │
+│                                                          │
+│  What would you like changed?                            │
+│  ┌───────────────────────────────────────────────────┐   │
+│  │ Please update our holiday hours for Memorial Day  │   │
+│  │ — we'll be closed May 26.                         │   │
+│  └───────────────────────────────────────────────────┘   │
+│                                                          │
+│  [Submit Request]                                        │
+└─────────────────────────────────────────────────────────┘
+```
+
+Minimal forms. Free-text. No field pickers or structured data — the agency interprets and acts.
+
+---
+
 ## Auth & Access Control
 
 ### New Pattern
@@ -292,13 +431,21 @@ Every page explicitly checks access. No more relying on "it's behind `/admin/` s
 
 ### Mutation Protection
 
-For customer-facing pages that allow self-service or client approval:
+For customer-facing pages that allow self-service, client approval, or customer admin actions:
 
+**All customers (admin + member):**
 - **Post approval API** (`/api/posts/[postId]/approve`): Already works — `client_approve` and `client_reject` actions. Verify non-admins can only act on `client_review` posts in their org.
 - **Recommendations API** (`/api/locations/[locationId]/recommendations`): `client_approve` and `client_reject` actions already exist in backend. Verify non-admins can only act on `client_review` recs in their org's locations.
-- **Notifications API**: Add check — members can only create/delete subscriptions where `subscriber_type = 'user'` AND `subscriber_value = currentUser.id` (their own)
-- **Profile API**: Add check — members can only update their own `org_members` record
-- **All other mutations**: Require `is_agency_admin` at the API level, not just the page level
+- **Notifications API (own)**: Members can only create/delete subscriptions where `subscriber_type = 'user'` AND `subscriber_value = currentUser.id`
+- **Profile API**: Members can only update their own `org_members` record
+
+**Customer admin only (`is_org_admin`):**
+- **Team API**: Can add/remove non-agency members in their org. Cannot see or modify agency admin records.
+- **Notifications API (team)**: Can create/delete subscriptions for any non-agency member in their org (`subscriber_type = 'user'` AND user is a non-agency member of the same org)
+- **Request API** (new): Can create client requests (post requests, profile change requests) for their org/locations
+
+**Agency-only (`is_agency_admin`):**
+- All other mutations — reply to reviews, create posts, edit profiles, configure settings, etc.
 
 ---
 
@@ -329,38 +476,63 @@ For customer-facing pages that allow self-service or client approval:
 
 **Verification:** Navigate to `/agency/acme-dental`, see config hub. All config pages load with correct data. Forms save successfully. All pages require agency admin.
 
-### Phase 3: Lock Down Customer Portal
+### Phase 3: Customer Roles & Data Model
 
-16. Replace `/admin/[orgSlug]/settings/page.tsx` with redirect to org dashboard
-17. Replace `/admin/[orgSlug]/brand/page.tsx` with redirect to org dashboard
-18. Simplify `/admin/[orgSlug]/notifications/page.tsx` — self-service only (own preferences)
-19. Simplify `/admin/[orgSlug]/team/page.tsx` — read-only roster view
-20. Create `/admin/[orgSlug]/profile/page.tsx` — display name edit
-21. Create `/admin/[orgSlug]/locations/[locationId]/recommendations/page.tsx` — client approval UI for profile recommendations (approve/reject recs in `client_review` status)
-22. Replace `/admin/[orgSlug]/locations/[locationId]/reviews/autopilot` with redirect
-23. Replace `/admin/[orgSlug]/locations/[locationId]/lander/settings` with redirect
-24. Simplify `/admin/[orgSlug]/locations/[locationId]/notifications/page.tsx` — self-service only
-25. Hide action buttons (reply, approve AI draft, edit) on review/post/profile pages for non-admin users
-26. Update customer sidebar: remove Brand Config, remove Settings, add Profile
-27. Add `is_agency_admin` checks to mutation APIs that currently lack them
+16. Add `is_org_admin` boolean to `org_members` table (migration)
+17. Add unique constraint: one `is_org_admin = true` per org (excluding agency admins)
+18. Add `is_org_admin` to `checkOrgAdmin()` helper (new) in `src/lib/locations.ts` or similar
+19. Create `client_requests` table (migration) — see data model above
+20. Create `/api/client-requests/route.ts` — POST (create request), GET (list requests)
+21. Add `is_org_admin` check to team mutation APIs (add/remove members)
+22. Update agency team page (`/agency/[orgSlug]/team`) — add ability to designate customer admin
 
-**Verification:** Log in as a non-admin org member. Verify no config pages are accessible. Verify notification self-service works. Verify profile edit works. Verify client approval works for posts and recommendations. Verify old config URLs redirect gracefully.
+**Verification:** Migration runs cleanly. Can set `is_org_admin` on one member per org. Client requests table exists. API creates/lists requests.
 
-### Phase 4: Polish & Cleanup
+### Phase 4: Lock Down Customer Portal
 
-26. Add redirects for all old routes (keep for 30 days, then remove)
-27. Remove duplicated components (if any config forms were copied vs moved)
-28. Update CLAUDE.md route documentation
-29. Test full flow: agency admin configures org → customer sees result
+23. Replace `/admin/[orgSlug]/settings/page.tsx` with redirect to org dashboard
+24. Replace `/admin/[orgSlug]/brand/page.tsx` with redirect to org dashboard
+25. Simplify `/admin/[orgSlug]/notifications/page.tsx` — member: own preferences. Customer admin: team-wide.
+26. Simplify `/admin/[orgSlug]/team/page.tsx` — member: read-only roster. Customer admin: add/remove members. Agency admins hidden.
+27. Create `/admin/[orgSlug]/profile/page.tsx` — display name edit
+28. Create `/admin/[orgSlug]/locations/[locationId]/recommendations/page.tsx` — client approval UI for profile recommendations
+29. Create `/admin/[orgSlug]/requests/page.tsx` — customer admin: view + submit requests. Members: not visible.
+30. Add "Request Change" button to `/admin/[orgSlug]/locations/[locationId]/gbp-profile` (customer admin only)
+31. Replace `/admin/[orgSlug]/locations/[locationId]/reviews/autopilot` with redirect
+32. Replace `/admin/[orgSlug]/locations/[locationId]/lander/settings` with redirect
+33. Simplify `/admin/[orgSlug]/locations/[locationId]/notifications/page.tsx` — member: own only. Customer admin: team-wide.
+34. Hide action buttons (reply, approve AI draft, edit) on review/post/profile pages for non-agency users
+35. Update customer sidebar: remove Brand Config, remove Settings, add Profile, add Requests (admin only)
+36. Add `is_agency_admin` checks to mutation APIs that currently lack them
+
+**Verification:** Log in as member — read-only roster, own notifications, no config, no requests page. Log in as customer admin — team management works, notifications for all members, requests submit and appear in agency feed. Client approval works for posts and recommendations. Old config URLs redirect.
+
+### Phase 5: Agency-Side Request Handling
+
+37. Surface `client_requests` in agency work queue / feed as a new item type
+38. Add notification to assigned agent when request is created
+39. Add request status updates (in_progress, completed, dismissed) from agency UI
+40. Customer admin can see request status on their Requests page
+
+**Verification:** Customer admin submits request → appears in agency feed → assigned agent gets notified → agency marks complete → customer sees updated status.
+
+### Phase 6: Polish & Cleanup
+
+41. Add redirects for all old routes (keep for 30 days, then remove)
+42. Remove duplicated components (if any config forms were copied vs moved)
+43. Update CLAUDE.md route documentation
+44. Test full flow: agency admin configures org → customer admin manages team → member sees result
 
 ---
 
 ## Migration Path
 
 1. **Build phases 1-2** — New agency config routes created. Both old and new routes work.
-2. **Build phase 3** — Customer portal locked down. Old config routes redirect.
-3. **Evaluate** — Run for a week. Check no workflows are broken.
-4. **Clean up** — Remove redirect stubs, delete orphaned components.
+2. **Build phase 3** — Customer roles and request data model. Migration runs.
+3. **Build phase 4** — Customer portal locked down. Old config routes redirect. Customer admin features live.
+4. **Build phase 5** — Request workflow end-to-end.
+5. **Evaluate** — Run for a week. Check no workflows are broken.
+6. **Clean up** — Remove redirect stubs, delete orphaned components.
 
 Old routes redirect to dashboard (not to the new agency routes) because customers hitting a bookmarked config URL shouldn't land in an access-denied page.
 
@@ -368,10 +540,11 @@ Old routes redirect to dashboard (not to the new agency routes) because customer
 
 ## What's NOT in This Build
 
-- **Role-based permissions beyond agency/member** — No "org admin" role. Binary: agency admin or member.
+- **Multiple customer admins per org** — One admin per org. Agency designates. Keep it simple.
 - **Customer self-service for org settings** — Customers can't edit org name/logo. Agency handles that.
 - **Review reply pre-approval** — No `client_review` flow for AI-drafted review replies. Agency approves directly. Could add later.
 - **Lander approval flow** — No client sign-off on lander content yet. Agency publishes directly. Could add later.
+- **Structured request forms** — Requests are free-text. No field pickers, structured data, or request templates. Agency interprets.
 - **Review funnel creation gating** — Currently any member can create funnels. Evaluate separately whether to restrict.
 - **Form creation gating** — Same as above.
 - **Post topic management gating** — Same as above.
