@@ -45,12 +45,6 @@ export default async function OrgConfigLayout({
             </div>
           )}
           <h1 className="text-2xl font-serif text-ink">{org.name}</h1>
-          <Link
-            href={`/admin/${params.orgSlug}`}
-            className="ml-auto text-xs text-warm-gray hover:text-ink no-underline transition-colors"
-          >
-            View dashboard
-          </Link>
         </div>
         <OrgConfigNav orgSlug={params.orgSlug} />
       </div>
