@@ -360,7 +360,7 @@ export async function createCTReport(params: {
   })
 
   if (!res.success || !res.response?.['report-id']) {
-    throw new Error(`Failed to create CT report: ${formatErrors(res.errors)}`)
+    throw new Error(`Failed to create CT report: ${formatErrors(res.errors)} | full response: ${JSON.stringify(res)}`)
   }
 
   return String(res.response['report-id'])
@@ -375,7 +375,7 @@ export async function runCTReport(reportId: string): Promise<void> {
   })
 
   if (!res.success) {
-    throw new Error(`Failed to run CT report ${reportId}: ${formatErrors(res.errors)}`)
+    throw new Error(`Failed to run CT report ${reportId}: ${formatErrors(res.errors)} | full response: ${JSON.stringify(res)}`)
   }
 }
 
@@ -389,7 +389,7 @@ export async function getCTReport(reportId: string): Promise<CTReportStatus> {
 
   const report = res.report || res.response
   if (!res.success || !report) {
-    throw new Error(`Failed to get CT report ${reportId}: ${formatErrors(res.errors)}`)
+    throw new Error(`Failed to get CT report ${reportId}: ${formatErrors(res.errors)} | full response: ${JSON.stringify(res)}`)
   }
 
   return report
@@ -404,7 +404,7 @@ export async function getCTResults(reportId: string): Promise<CTCitation[]> {
   })
 
   if (!res.success || !res.response) {
-    throw new Error(`Failed to get CT results for ${reportId}: ${formatErrors(res.errors)}`)
+    throw new Error(`Failed to get CT results for ${reportId}: ${formatErrors(res.errors)} | full response: ${JSON.stringify(res)}`)
   }
 
   const { results } = res.response
