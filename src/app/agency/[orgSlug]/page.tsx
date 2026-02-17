@@ -25,11 +25,13 @@ export default async function OrgConfigOverview({
     { count: memberCount },
     { count: profileCount },
     { data: brandConfig },
+    { count: subscriptionCount },
   ] = await Promise.all([
     supabase.from('locations').select('*', { count: 'exact', head: true }).eq('org_id', org.id),
     supabase.from('org_members').select('*', { count: 'exact', head: true }).eq('org_id', org.id),
     supabase.from('review_profiles').select('*', { count: 'exact', head: true }).eq('org_id', org.id).eq('active', true),
     supabase.from('brand_config').select('id, brand_voice, primary_color').eq('org_id', org.id).single(),
+    supabase.from('notification_subscriptions').select('*', { count: 'exact', head: true }).eq('org_id', org.id),
   ])
 
   const hasBrandConfig = !!brandConfig?.brand_voice || !!brandConfig?.primary_color
@@ -102,6 +104,34 @@ export default async function OrgConfigOverview({
             </div>
             <span className="text-xs text-warm-gray group-hover:text-ink transition-colors">
               {hasBrandConfig ? 'Edit' : 'Set up'}
+            </span>
+          </Link>
+          <Link
+            href={`/agency/${params.orgSlug}/team`}
+            className="flex items-center justify-between px-5 py-4 hover:bg-warm-light/50 transition-colors no-underline group"
+          >
+            <div>
+              <div className="text-sm font-medium text-ink">Team</div>
+              <div className="text-xs text-warm-gray mt-0.5">
+                Members, roles, and per-member alert preferences
+              </div>
+            </div>
+            <span className="text-xs text-warm-gray group-hover:text-ink transition-colors">
+              {(memberCount || 0) > 0 ? `${memberCount} member${memberCount !== 1 ? 's' : ''}` : 'Set up'}
+            </span>
+          </Link>
+          <Link
+            href={`/agency/${params.orgSlug}/notifications`}
+            className="flex items-center justify-between px-5 py-4 hover:bg-warm-light/50 transition-colors no-underline group"
+          >
+            <div>
+              <div className="text-sm font-medium text-ink">Notifications</div>
+              <div className="text-xs text-warm-gray mt-0.5">
+                Email alert routing for reviews, responses, and reports
+              </div>
+            </div>
+            <span className="text-xs text-warm-gray group-hover:text-ink transition-colors">
+              {(subscriptionCount || 0) > 0 ? `${subscriptionCount} rule${subscriptionCount !== 1 ? 's' : ''}` : 'Set up'}
             </span>
           </Link>
         </div>

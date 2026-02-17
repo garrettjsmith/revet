@@ -6,6 +6,8 @@ import { usePathname } from 'next/navigation'
 const tabs = [
   { label: 'Overview', href: '' },
   { label: 'Brand', href: '/brand' },
+  { label: 'Team', href: '/team' },
+  { label: 'Notifications', href: '/notifications' },
 ]
 
 export function OrgConfigNav({ orgSlug }: { orgSlug: string }) {
