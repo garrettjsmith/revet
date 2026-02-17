@@ -106,25 +106,25 @@ export async function createBLLocation(params: {
   phone: string
   address1?: string
   city: string
-  stateCode: string
+  region: string
   postcode: string
   country: string
-  website?: string
+  website: string
+  businessCategoryId: string
   locationReference?: string
-  businessCategoryId?: string
 }): Promise<string> {
   const postParams: Record<string, string> = {
     name: params.name,
     telephone: params.phone,
     city: params.city,
-    'state-code': params.stateCode,
+    region: params.region,
     postcode: params.postcode,
     country: params.country,
+    url: params.website,
+    'business-category-id': params.businessCategoryId,
   }
   if (params.address1) postParams['address1'] = params.address1
-  if (params.website) postParams['url'] = params.website
   if (params.locationReference) postParams['location-reference'] = params.locationReference
-  if (params.businessCategoryId) postParams['business-category-id'] = params.businessCategoryId
 
   const res = await blFetch<{ 'location-id': number }>(
     '/v2/clients-and-locations/locations/',
@@ -137,6 +137,27 @@ export async function createBLLocation(params: {
   }
 
   return String(res.response['location-id'])
+}
+
+/**
+ * Search BrightLocal business categories by name for a given country.
+ * Returns the first matching category ID, or null if none found.
+ */
+export async function searchBusinessCategory(
+  categoryName: string,
+  country: string = 'USA'
+): Promise<string | null> {
+  const res = await blFetch<Array<{ id: number; name: string }>>(
+    '/v2/clients-and-locations/business-categories',
+    'GET',
+    { country, q: categoryName }
+  )
+
+  if (!res.success || !res.response || res.response.length === 0) {
+    return null
+  }
+
+  return String(res.response[0].id)
 }
 
 // ─── Citation Tracker API ───────────────────────────────────
