@@ -155,20 +155,12 @@ export default async function AgencyOrganizationsPage() {
                         {new Date(org.created_at).toLocaleDateString()}
                       </td>
                       <td className="px-5 py-3.5">
-                        <div className="flex items-center gap-3">
-                          <Link
-                            href={`/agency/${org.slug}`}
-                            className="text-xs text-warm-gray hover:text-ink no-underline transition-colors"
-                          >
-                            Configure
-                          </Link>
-                          <Link
-                            href={`/admin/${org.slug}`}
-                            className="text-xs text-warm-gray hover:text-ink no-underline transition-colors"
-                          >
-                            Dashboard
-                          </Link>
-                        </div>
+                        <Link
+                          href={`/agency/${org.slug}`}
+                          className="text-xs text-warm-gray hover:text-ink no-underline transition-colors"
+                        >
+                          Configure
+                        </Link>
                       </td>
                     </tr>
                   )
