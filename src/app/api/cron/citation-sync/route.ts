@@ -6,6 +6,7 @@ import {
   runCTReport,
   getCTReport,
   getCTResults,
+  searchBusinessCategory,
   type CTCitation,
 } from '@/lib/brightlocal'
 
@@ -54,13 +55,13 @@ export async function GET(request: NextRequest) {
       const locationIds = unmapped.map((l) => l.id)
       const { data: profiles } = await supabase
         .from('gbp_profiles')
-        .select('location_id, primary_category_name')
+        .select('location_id, primary_category_name, website_uri')
         .in('location_id', locationIds)
         .eq('sync_status', 'active')
 
       const profiledIds = new Set((profiles || []).map((p) => p.location_id))
-      const categoryByLocation = new Map(
-        (profiles || []).map((p) => [p.location_id, p.primary_category_name])
+      const gbpByLocation = new Map(
+        (profiles || []).map((p) => [p.location_id, p])
       )
 
       for (const loc of unmapped) {
@@ -71,14 +72,22 @@ export async function GET(request: NextRequest) {
           // Step 1: Create BrightLocal Location if needed
           let blLocId = loc.brightlocal_location_id
           if (!blLocId) {
+            const gbp = gbpByLocation.get(loc.id)
+            const website = gbp?.website_uri || loc.name.toLowerCase().replace(/\s+/g, '') + '.com'
+            const categoryName = gbp?.primary_category_name || 'Business'
+            const blCountry = loc.country === 'US' ? 'USA' : loc.country
+            const categoryId = await searchBusinessCategory(categoryName, blCountry) || '605'
+
             blLocId = await createBLLocation({
               name: loc.name,
               phone: loc.phone,
               address1: loc.address_line1 || undefined,
               city: loc.city,
-              stateCode: loc.state,
+              region: loc.state,
               postcode: loc.postal_code || '',
-              country: loc.country === 'US' ? 'USA' : loc.country,
+              country: blCountry,
+              website,
+              businessCategoryId: categoryId,
               locationReference: loc.id,
             })
 
@@ -89,7 +98,8 @@ export async function GET(request: NextRequest) {
           }
 
           // Step 2: Create CT report
-          const businessType = categoryByLocation.get(loc.id) || 'Business'
+          const gbp = gbpByLocation.get(loc.id)
+          const businessType = gbp?.primary_category_name || 'Business'
           const primaryLocation = loc.postal_code || loc.city || ''
           if (!primaryLocation) continue
 

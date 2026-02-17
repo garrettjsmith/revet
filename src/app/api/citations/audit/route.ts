@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
-import { createBLLocation, createCTReport, runCTReport } from '@/lib/brightlocal'
+import { createBLLocation, createCTReport, runCTReport, searchBusinessCategory } from '@/lib/brightlocal'
 
 export const maxDuration = 120
 
@@ -69,15 +69,15 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'No matching locations found' }, { status: 404 })
   }
 
-  // Pre-fetch GBP profiles for business category
+  // Pre-fetch GBP profiles for business category + website
   const locIds = locations.map((l) => l.id)
   const { data: gbpProfiles } = await supabase
     .from('gbp_profiles')
-    .select('location_id, primary_category_name')
+    .select('location_id, primary_category_name, website_uri')
     .in('location_id', locIds)
 
-  const categoryByLocation = new Map<string, string | null>(
-    (gbpProfiles || []).map((p) => [p.location_id, p.primary_category_name])
+  const gbpByLocation = new Map(
+    (gbpProfiles || []).map((p) => [p.location_id, p])
   )
 
   const errors: string[] = []
@@ -86,19 +86,28 @@ export async function POST(request: NextRequest) {
     try {
       // Step 1: Ensure BrightLocal Location exists
       if (!loc.brightlocal_location_id) {
+        const gbp = gbpByLocation.get(loc.id)
+
         if (!loc.phone || !loc.city || !loc.state) {
           errors.push(`${loc.name}: missing phone, city, or state`)
           continue
         }
+
+        const website = gbp?.website_uri || loc.name.toLowerCase().replace(/\s+/g, '') + '.com'
+        const categoryName = gbp?.primary_category_name || 'Business'
+        const blCountry = loc.country === 'US' ? 'USA' : loc.country
+        const categoryId = await searchBusinessCategory(categoryName, blCountry) || '605'
 
         const blLocId = await createBLLocation({
           name: loc.name,
           phone: loc.phone,
           address1: loc.address_line1 || undefined,
           city: loc.city,
-          stateCode: loc.state,
+          region: loc.state,
           postcode: loc.postal_code || '',
-          country: loc.country === 'US' ? 'USA' : loc.country,
+          country: blCountry,
+          website,
+          businessCategoryId: categoryId,
           locationReference: loc.id,
         })
 
@@ -112,7 +121,8 @@ export async function POST(request: NextRequest) {
 
       // Step 2: Ensure CT report exists
       if (!loc.brightlocal_report_id) {
-        const businessType = categoryByLocation.get(loc.id) || 'Business'
+        const gbp = gbpByLocation.get(loc.id)
+        const businessType = gbp?.primary_category_name || 'Business'
         const primaryLocation = loc.postal_code || loc.city || ''
 
         if (!primaryLocation) {
