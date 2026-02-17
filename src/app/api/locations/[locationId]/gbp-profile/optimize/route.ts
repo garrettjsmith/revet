@@ -57,7 +57,10 @@ export async function POST(
     if (field === 'description') {
       // Extract service names from service_items
       const services = (gbp.service_items || [])
-        .map((s: any) => s.structuredServiceItem?.serviceTypeId?.displayName || s.freeFormServiceItem?.label || '')
+        .map((s: any) => {
+          const freeLabel = s.freeFormServiceItem?.label
+          return s.structuredServiceItem?.description || (typeof freeLabel === 'object' ? freeLabel?.displayName : freeLabel) || ''
+        })
         .filter(Boolean)
 
       const suggestion = await generateProfileDescription({
@@ -79,7 +82,10 @@ export async function POST(
       ].filter(Boolean) as string[]
 
       const services = (gbp.service_items || [])
-        .map((s: any) => s.structuredServiceItem?.serviceTypeId?.displayName || s.freeFormServiceItem?.label || '')
+        .map((s: any) => {
+          const freeLabel = s.freeFormServiceItem?.label
+          return s.structuredServiceItem?.description || (typeof freeLabel === 'object' ? freeLabel?.displayName : freeLabel) || ''
+        })
         .filter(Boolean)
 
       const suggestions = await suggestCategories({

@@ -179,7 +179,10 @@ export async function GET() {
         try {
           if (section.key === 'description') {
             const services = (profile.service_items || [])
-              .map((s: Record<string, unknown>) => s.displayName || s.name || '')
+              .map((s: Record<string, unknown>) => {
+                const freeLabel = (s as any).freeFormServiceItem?.label
+                return (s as any).structuredServiceItem?.description || (typeof freeLabel === 'object' ? freeLabel?.displayName : freeLabel) || ''
+              })
               .filter(Boolean) as string[]
 
             const correctionsContext = (corrections || [])
@@ -209,7 +212,10 @@ export async function GET() {
             })
           } else if (section.key === 'categories') {
             const services = (profile.service_items || [])
-              .map((s: Record<string, unknown>) => s.displayName || s.name || '')
+              .map((s: Record<string, unknown>) => {
+                const freeLabel = (s as any).freeFormServiceItem?.label
+                return (s as any).structuredServiceItem?.description || (typeof freeLabel === 'object' ? freeLabel?.displayName : freeLabel) || ''
+              })
               .filter(Boolean) as string[]
 
             const currentCategories = [

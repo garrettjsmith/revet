@@ -1380,7 +1380,10 @@ async function execGenerateOptimizationPlan(input: Record<string, unknown>, ctx:
   if (!gbp) return { error: 'No GBP profile found' }
 
   const services = (gbp.service_items || [])
-    .map((s: any) => s.label || s.displayName || s.structuredServiceItem?.serviceTypeId)
+    .map((s: any) => {
+      const freeLabel = s.freeFormServiceItem?.label
+      return s.structuredServiceItem?.description || (typeof freeLabel === 'object' ? freeLabel?.displayName : freeLabel) || s.structuredServiceItem?.serviceTypeId
+    })
     .filter(Boolean)
 
   const optimizedDescription = await generateProfileDescription({
