@@ -211,10 +211,12 @@ export async function GET(request: NextRequest) {
   let sent = 0
 
   // Send to agency admins (global counts)
+  const emailPromises: Promise<unknown>[] = []
+
   if (globalCounts.totalItems > 0) {
-    Array.from(adminUserIds).forEach((uid) => {
+    for (const uid of Array.from(adminUserIds)) {
       const recipient = userEmails.get(uid)
-      if (!recipient) return
+      if (!recipient) continue
 
       const html = buildQueueDigestEmail({
         recipientName: recipient.name,
@@ -222,16 +224,18 @@ export async function GET(request: NextRequest) {
         queueUrl: `${APP_URL}/agency/queue`,
       })
 
-      sendEmail({
-        to: recipient.email,
-        subject: `Work queue: ${globalCounts.totalItems} item${globalCounts.totalItems === 1 ? '' : 's'} need attention`,
-        html,
-      }).catch((err) => {
-        console.error(`[queue-digest] Email failed for ${recipient.email}:`, err)
-      })
+      emailPromises.push(
+        sendEmail({
+          to: recipient.email,
+          subject: `Work queue: ${globalCounts.totalItems} item${globalCounts.totalItems === 1 ? '' : 's'} need attention`,
+          html,
+        }).catch((err) => {
+          console.error(`[queue-digest] Email failed for ${recipient.email}:`, err)
+        })
+      )
 
       sent++
-    })
+    }
   }
 
   // Send to account managers (scoped counts)
@@ -249,16 +253,20 @@ export async function GET(request: NextRequest) {
       queueUrl: `${APP_URL}/agency/queue`,
     })
 
-    sendEmail({
-      to: recipient.email,
-      subject: `Your queue: ${counts.totalItems} item${counts.totalItems === 1 ? '' : 's'} need attention`,
-      html,
-    }).catch((err) => {
-      console.error(`[queue-digest] Email failed for ${recipient.email}:`, err)
-    })
+    emailPromises.push(
+      sendEmail({
+        to: recipient.email,
+        subject: `Your queue: ${counts.totalItems} item${counts.totalItems === 1 ? '' : 's'} need attention`,
+        html,
+      }).catch((err) => {
+        console.error(`[queue-digest] Email failed for ${recipient.email}:`, err)
+      })
+    )
 
     sent++
   }
+
+  await Promise.allSettled(emailPromises)
 
   return NextResponse.json({
     ok: true,
