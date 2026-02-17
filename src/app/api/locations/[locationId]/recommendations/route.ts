@@ -69,11 +69,6 @@ export async function POST(
   request: NextRequest,
   { params }: { params: { locationId: string } }
 ) {
-  const isAdmin = await checkAgencyAdmin()
-  if (!isAdmin) {
-    return NextResponse.json({ error: 'Agency admin required' }, { status: 403 })
-  }
-
   const supabase = createServerSupabase()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) {
@@ -85,6 +80,25 @@ export async function POST(
 
   if (!action || !recommendation_id) {
     return NextResponse.json({ error: 'action and recommendation_id required' }, { status: 400 })
+  }
+
+  // Client actions only require authenticated user with location access
+  const clientActions = ['client_approve', 'client_reject']
+  if (!clientActions.includes(action)) {
+    const isAdmin = await checkAgencyAdmin()
+    if (!isAdmin) {
+      return NextResponse.json({ error: 'Agency admin required' }, { status: 403 })
+    }
+  } else {
+    // Verify the user has access to this location's org
+    const { data: location } = await supabase
+      .from('locations')
+      .select('id')
+      .eq('id', params.locationId)
+      .single()
+    if (!location) {
+      return NextResponse.json({ error: 'Location not found' }, { status: 404 })
+    }
   }
 
   const adminClient = createAdminClient()

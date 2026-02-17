@@ -108,7 +108,6 @@ export function Sidebar({ currentOrg, memberships, userEmail, isAgencyAdmin, loc
     { href: `${locationBasePath}/review-funnels`, label: 'Review Funnels', icon: FunnelIcon },
     { href: `${locationBasePath}/forms`, label: 'Forms', icon: FormIcon },
     { href: `${locationBasePath}/lander`, label: 'Lander', icon: LanderIcon },
-    { href: `${locationBasePath}/posts/topics`, label: 'Post Topics', icon: PostIcon },
     { href: `${locationBasePath}/notifications`, label: 'Notifications', icon: BellIcon },
   ] : null
 
