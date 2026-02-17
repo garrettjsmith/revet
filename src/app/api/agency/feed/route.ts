@@ -12,7 +12,7 @@ export const dynamic = 'force-dynamic'
  * by org + type + batch into cards for bulk action.
  *
  * Query params:
- *   filter: 'all' | 'reviews' | 'posts' | 'profiles' | 'errors' | 'landers'
+ *   filter: 'all' | 'reviews' | 'posts' | 'profiles' | 'errors' | 'landers' | 'citations'
  *   scope: 'all' | 'mine'
  *   org_id: optional org filter
  *   location_id: optional location filter
@@ -109,6 +109,7 @@ export async function GET(request: NextRequest) {
   const wantsProfiles = filter === 'all' || filter === 'profiles'
   const wantsErrors = filter === 'all' || filter === 'errors'
   const wantsLanders = filter === 'all' || filter === 'landers'
+  const wantsCitations = filter === 'all' || filter === 'citations'
 
   const reviewSelect = 'id, location_id, platform, reviewer_name, reviewer_photo_url, rating, body, published_at, sentiment, ai_draft, ai_draft_generated_at, status, assigned_to, locations(name, org_id, organizations(name, slug))'
 
@@ -130,6 +131,7 @@ export async function GET(request: NextRequest) {
     profileSyncErrorResult,
     profileOptResult,
     staleLanderResult,
+    citationResult,
   ] = await Promise.all([
     wantsReviews
       ? applyScope(
@@ -211,6 +213,16 @@ export async function GET(request: NextRequest) {
           .order('updated_at', { ascending: true })
           .limit(200)
       : Promise.resolve({ data: [] as any[] }),
+    wantsCitations
+      ? applyScope(
+          adminClient
+            .from('citation_listings')
+            .select('id, location_id, directory_name, directory_url, listing_url, found_name, found_address, found_phone, nap_correct, name_match, address_match, phone_match, status, ai_recommendation, assigned_to, updated_at, locations(name, org_id, organizations(name, slug))')
+            .in('status', ['action_needed', 'not_listed'])
+        )
+          .order('updated_at', { ascending: false })
+          .limit(200)
+      : Promise.resolve({ data: [] as any[] }),
   ])
 
   // Build flat item list (same dedup logic as work-queue)
@@ -273,6 +285,13 @@ export async function GET(request: NextRequest) {
     items.push(formatStaleLanderItem(lander))
   }
 
+  for (const listing of citationResult.data || []) {
+    const key = `citation_${listing.id}`
+    if (seen.has(key)) continue
+    seen.add(key)
+    items.push(formatCitationItem(listing))
+  }
+
   // Count by filter category (before grouping)
   const counts = {
     total: items.length,
@@ -281,6 +300,7 @@ export async function GET(request: NextRequest) {
     profiles: items.filter((i) => i.type === 'profile_optimization' || i.type === 'google_update').length,
     errors: items.filter((i) => i.type === 'sync_error').length,
     landers: items.filter((i) => i.type === 'stale_lander').length,
+    citations: items.filter((i) => i.type === 'citation').length,
   }
 
   // Group items by org + type + batch
@@ -383,6 +403,8 @@ function getBatchKey(item: any): string {
       return 'sync_error'
     case 'stale_lander':
       return 'stale_lander'
+    case 'citation':
+      return item.citation?.status || 'action_needed'
     default:
       return 'other'
   }
@@ -419,7 +441,7 @@ function sortGroupItems(items: any[], itemType: string) {
 function emptyResponse(scope: string, isAgencyAdmin: any) {
   return {
     groups: [],
-    counts: { total: 0, reviews: 0, posts: 0, profiles: 0, errors: 0, landers: 0 },
+    counts: { total: 0, reviews: 0, posts: 0, profiles: 0, errors: 0, landers: 0, citations: 0 },
     total_groups: 0,
     offset: 0,
     has_more: false,
@@ -604,6 +626,40 @@ function formatProfileOptItem(firstRec: any, allRecs: any[]) {
     profile_optimization: {
       batch_id: firstRec.batch_id,
       recommendations: dedupeRecsByField(allRecs),
+    },
+  }
+}
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function formatCitationItem(listing: any) {
+  const loc = listing.locations
+  const org = loc?.organizations
+
+  return {
+    id: `citation_${listing.id}`,
+    type: 'citation' as const,
+    priority: 'important' as const,
+    created_at: listing.updated_at || new Date().toISOString(),
+    assigned_to: listing.assigned_to || null,
+    location_id: listing.location_id,
+    location_name: loc?.name || 'Unknown',
+    org_id: org?.id || loc?.org_id || '',
+    org_name: org?.name || 'Unknown',
+    org_slug: org?.slug || '',
+    citation: {
+      id: listing.id,
+      directory_name: listing.directory_name,
+      directory_url: listing.directory_url,
+      listing_url: listing.listing_url,
+      nap_correct: listing.nap_correct,
+      name_match: listing.name_match,
+      address_match: listing.address_match,
+      phone_match: listing.phone_match,
+      found_name: listing.found_name,
+      found_address: listing.found_address,
+      found_phone: listing.found_phone,
+      status: listing.status,
+      ai_recommendation: listing.ai_recommendation,
     },
   }
 }

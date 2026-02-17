@@ -9,7 +9,7 @@ import { FeedCard } from './feed-card'
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type WorkItem = any
 
-type FilterType = 'all' | 'reviews' | 'posts' | 'profiles' | 'errors' | 'landers'
+type FilterType = 'all' | 'reviews' | 'posts' | 'profiles' | 'errors' | 'landers' | 'citations'
 type ScopeType = 'all' | 'mine'
 
 interface FeedGroup {
@@ -33,6 +33,7 @@ interface FeedData {
     profiles: number
     errors: number
     landers: number
+    citations: number
   }
   total_groups: number
   offset: number

@@ -61,7 +61,23 @@ interface WorkItemStaleLander {
   slug: string
 }
 
-type WorkItemType = 'review_reply' | 'ai_draft_review' | 'google_update' | 'post_pending' | 'sync_error' | 'profile_optimization' | 'stale_lander'
+interface WorkItemCitation {
+  id: string
+  directory_name: string
+  directory_url: string | null
+  listing_url: string | null
+  nap_correct: boolean
+  name_match: boolean
+  address_match: boolean
+  phone_match: boolean
+  found_name: string | null
+  found_address: string | null
+  found_phone: string | null
+  status: string
+  ai_recommendation: string | null
+}
+
+type WorkItemType = 'review_reply' | 'ai_draft_review' | 'google_update' | 'post_pending' | 'sync_error' | 'profile_optimization' | 'stale_lander' | 'citation'
 
 interface WorkItem {
   id: string
@@ -79,6 +95,7 @@ interface WorkItem {
   sync_error?: WorkItemSyncError
   profile_optimization?: WorkItemProfileOpt
   stale_lander?: WorkItemStaleLander
+  citation?: WorkItemCitation
 }
 
 interface FieldDiff {
@@ -99,6 +116,7 @@ interface WorkQueueData {
     sync_errors: number
     profile_optimizations: number
     stale_landers: number
+    citations: number
   }
   has_more?: boolean
   offset?: number
@@ -106,7 +124,7 @@ interface WorkQueueData {
   is_agency_admin?: boolean
 }
 
-type FilterType = 'all' | 'needs_reply' | 'ai_drafts' | 'google_updates' | 'posts' | 'sync_errors' | 'profile_optimizations' | 'stale_landers'
+type FilterType = 'all' | 'needs_reply' | 'ai_drafts' | 'google_updates' | 'posts' | 'sync_errors' | 'profile_optimizations' | 'stale_landers' | 'citations'
 type ScopeType = 'all' | 'mine'
 
 interface TeamMember {
@@ -792,6 +810,44 @@ function ListItemContent({ item, teamMembers = [] }: { item: WorkItem; teamMembe
     )
   }
 
+  if (item.type === 'citation' && item.citation) {
+    const cit = item.citation
+    const isNotListed = cit.status === 'not_listed'
+    const issues: string[] = []
+    if (!isNotListed) {
+      if (!cit.name_match) issues.push('name')
+      if (!cit.address_match) issues.push('address')
+      if (!cit.phone_match) issues.push('phone')
+    }
+
+    return (
+      <div className="flex items-start gap-3">
+        <PriorityDot priority={item.priority} />
+        <div className="min-w-0 flex-1">
+          <div className="flex items-center gap-2 mb-0.5">
+            <span className="text-sm font-medium text-ink truncate">{cit.directory_name}</span>
+            {isNotListed && (
+              <span className="text-[10px] text-red-600 bg-red-50 px-1.5 py-0.5 rounded font-medium">Not Listed</span>
+            )}
+          </div>
+          <div className="text-xs text-warm-gray truncate mb-1">
+            {item.location_name} · {item.org_name}
+          </div>
+          <div className="text-xs text-teal-700">
+            {isNotListed
+              ? 'Business not found on this directory'
+              : `Incorrect ${issues.join(', ')}`}
+          </div>
+          <div className="flex items-center gap-2 mt-1.5">
+            <TypeBadge type="citation" />
+            <span className="text-warm-border">·</span>
+            <span className="text-[10px] text-warm-gray">{timeAgo(item.created_at)}</span>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
   return null
 }
 
@@ -923,6 +979,10 @@ function ItemDetail({
           onRegenerate={onRegenerateLander}
           onDismiss={onDismissLander}
         />
+      )}
+
+      {item.type === 'citation' && item.citation && (
+        <CitationDetail item={item} />
       )}
     </div>
   )
@@ -1571,6 +1631,92 @@ function ProfileOptDetail({
   )
 }
 
+// ─── Citation Detail ─────────────────────────────────────────
+
+function CitationDetail({ item }: { item: WorkItem }) {
+  const cit = item.citation!
+  const isNotListed = cit.status === 'not_listed'
+
+  return (
+    <div>
+      <div className="flex items-center gap-3 mb-4">
+        <div className="w-10 h-10 rounded-full bg-teal-100 flex items-center justify-center shrink-0">
+          <svg className="w-5 h-5 text-teal-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+          </svg>
+        </div>
+        <div>
+          <div className="flex items-center gap-2">
+            <span className="text-sm font-medium text-ink">{cit.directory_name}</span>
+            {isNotListed && (
+              <span className="text-[10px] text-red-600 bg-red-50 px-1.5 py-0.5 rounded font-medium">Not Listed</span>
+            )}
+          </div>
+          <div className="text-[10px] text-warm-gray mt-0.5">{item.location_name} · {item.org_name}</div>
+        </div>
+      </div>
+
+      {isNotListed ? (
+        <div className="bg-red-50 rounded-xl p-4 mb-4 border border-red-200">
+          <div className="text-[10px] text-red-600 uppercase tracking-wider font-medium mb-2">Not Listed</div>
+          <p className="text-sm text-ink leading-relaxed">
+            This business was not found on {cit.directory_name}. Submitting a listing will improve citation coverage and local search visibility.
+          </p>
+        </div>
+      ) : (
+        <div className="space-y-3 mb-4">
+          <div className="text-[10px] text-warm-gray uppercase tracking-wider font-medium">NAP Mismatches</div>
+          {!cit.name_match && (
+            <div className="bg-teal-50 rounded-lg p-3 border border-teal-200">
+              <div className="text-[10px] text-teal-700 font-medium mb-1">Business Name</div>
+              <div className="text-xs text-ink/60 line-through">{cit.found_name || 'Not found'}</div>
+            </div>
+          )}
+          {!cit.address_match && (
+            <div className="bg-teal-50 rounded-lg p-3 border border-teal-200">
+              <div className="text-[10px] text-teal-700 font-medium mb-1">Address</div>
+              <div className="text-xs text-ink/60 line-through">{cit.found_address || 'Not found'}</div>
+            </div>
+          )}
+          {!cit.phone_match && (
+            <div className="bg-teal-50 rounded-lg p-3 border border-teal-200">
+              <div className="text-[10px] text-teal-700 font-medium mb-1">Phone</div>
+              <div className="text-xs text-ink/60 line-through">{cit.found_phone || 'Not found'}</div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {cit.ai_recommendation && (
+        <div className="text-xs text-warm-gray mb-4">{cit.ai_recommendation}</div>
+      )}
+
+      <div className="flex items-center gap-2">
+        {cit.listing_url && (
+          <a
+            href={cit.listing_url}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="px-4 py-2.5 border border-warm-border text-xs text-ink rounded-full hover:border-ink transition-colors no-underline"
+          >
+            View Listing
+          </a>
+        )}
+        {cit.directory_url && !cit.listing_url && (
+          <a
+            href={cit.directory_url}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="px-4 py-2.5 border border-warm-border text-xs text-ink rounded-full hover:border-ink transition-colors no-underline"
+          >
+            Visit Directory
+          </a>
+        )}
+      </div>
+    </div>
+  )
+}
+
 // ─── Stale Lander Detail ─────────────────────────────────────
 
 function StaleLanderDetail({
@@ -1703,6 +1849,7 @@ function QueueHeader({
         <FilterTab active={filter === 'posts'} onClick={() => setFilter('posts')} label="Posts" count={counts?.posts} />
         <FilterTab active={filter === 'profile_optimizations'} onClick={() => setFilter('profile_optimizations')} label="Optimize" count={counts?.profile_optimizations} />
         <FilterTab active={filter === 'stale_landers'} onClick={() => setFilter('stale_landers')} label="Landers" count={counts?.stale_landers} />
+        <FilterTab active={filter === 'citations'} onClick={() => setFilter('citations')} label="Citations" count={counts?.citations} />
         <FilterTab active={filter === 'sync_errors'} onClick={() => setFilter('sync_errors')} label="Errors" count={counts?.sync_errors} />
       </div>
     </div>
@@ -1794,6 +1941,7 @@ function TypeBadge({ type }: { type: string }) {
     sync_error: { label: 'Error', classes: 'text-red-600 bg-red-50' },
     profile_optimization: { label: 'Optimize', classes: 'text-violet-600 bg-violet-50' },
     stale_lander: { label: 'Lander', classes: 'text-amber-600 bg-amber-50' },
+    citation: { label: 'Citation', classes: 'text-teal-600 bg-teal-50' },
   }
   const c = config[type]
   if (!c) return null

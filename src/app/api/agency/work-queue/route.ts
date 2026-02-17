@@ -15,7 +15,7 @@ export const dynamic = 'force-dynamic'
  *   - Account managers see only items from their assigned orgs
  *
  * Query params:
- *   filter: 'all' | 'needs_reply' | 'ai_drafts' | 'google_updates' | 'posts' | 'sync_errors' | 'profile_optimizations' | 'stale_landers'
+ *   filter: 'all' | 'needs_reply' | 'ai_drafts' | 'google_updates' | 'posts' | 'sync_errors' | 'profile_optimizations' | 'stale_landers' | 'citations'
  *   scope: 'all' | 'mine' (only affects agency admins; managers always scoped)
  *   limit: number (default: 50)
  */
@@ -89,6 +89,7 @@ export async function GET(request: NextRequest) {
   const wantsSyncErrors = filter === 'all' || filter === 'sync_errors'
   const wantsProfileOpt = filter === 'all' || filter === 'profile_optimizations'
   const wantsStaleLanders = filter === 'all' || filter === 'stale_landers'
+  const wantsCitations = filter === 'all' || filter === 'citations'
 
   // Helper to apply location scope to a query builder
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -109,6 +110,7 @@ export async function GET(request: NextRequest) {
     profileSyncErrorResult,
     profileOptResult,
     staleLanderResult,
+    citationResult,
   ] = await Promise.all([
     // 1: Unreplied new Google reviews (negative = urgent, others = important)
     wantsReviews
@@ -198,6 +200,17 @@ export async function GET(request: NextRequest) {
           .order('updated_at', { ascending: true })
           .limit(limit)
       : Promise.resolve({ data: [] as any[] }),
+    // 9: Citation listings needing action (important)
+    wantsCitations
+      ? applyScope(
+          adminClient
+            .from('citation_listings')
+            .select('id, location_id, directory_name, directory_url, listing_url, found_name, found_address, found_phone, nap_correct, name_match, address_match, phone_match, status, ai_recommendation, assigned_to, updated_at, locations(name, org_id, organizations(name, slug))')
+            .in('status', ['action_needed', 'not_listed'])
+        )
+          .order('updated_at', { ascending: false })
+          .limit(limit)
+      : Promise.resolve({ data: [] as any[] }),
   ])
 
   // Build unified item list
@@ -268,6 +281,14 @@ export async function GET(request: NextRequest) {
     items.push(formatStaleLanderItem(lander))
   }
 
+  // Citation listings needing action (important)
+  for (const listing of citationResult.data || []) {
+    const key = `citation_${listing.id}`
+    if (seen.has(key)) continue
+    seen.add(key)
+    items.push(formatCitationItem(listing))
+  }
+
   // Sort all items by date (newest first) so types are interleaved chronologically
   items.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
 
@@ -281,6 +302,7 @@ export async function GET(request: NextRequest) {
     sync_errors: items.filter((i) => i.type === 'sync_error').length,
     profile_optimizations: items.filter((i) => i.type === 'profile_optimization').length,
     stale_landers: items.filter((i) => i.type === 'stale_lander').length,
+    citations: items.filter((i) => i.type === 'citation').length,
   }
 
   const offset = Math.max(0, parseInt(searchParams.get('offset') || '0', 10))
@@ -451,6 +473,38 @@ function formatProfileOptItem(firstRec: any, allRecs: any[]) {
         requires_client_approval: r.requires_client_approval,
         edited_value: r.edited_value,
       })),
+    },
+  }
+}
+
+function formatCitationItem(listing: any) {
+  const loc = listing.locations
+  const org = loc?.organizations
+
+  return {
+    id: `citation_${listing.id}`,
+    type: 'citation' as const,
+    priority: 'important' as const,
+    created_at: listing.updated_at || new Date().toISOString(),
+    assigned_to: listing.assigned_to || null,
+    location_id: listing.location_id,
+    location_name: loc?.name || 'Unknown',
+    org_name: org?.name || 'Unknown',
+    org_slug: org?.slug || '',
+    citation: {
+      id: listing.id,
+      directory_name: listing.directory_name,
+      directory_url: listing.directory_url,
+      listing_url: listing.listing_url,
+      nap_correct: listing.nap_correct,
+      name_match: listing.name_match,
+      address_match: listing.address_match,
+      phone_match: listing.phone_match,
+      found_name: listing.found_name,
+      found_address: listing.found_address,
+      found_phone: listing.found_phone,
+      status: listing.status,
+      ai_recommendation: listing.ai_recommendation,
     },
   }
 }

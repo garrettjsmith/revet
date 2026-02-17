@@ -411,6 +411,57 @@ export function FeedCardItem({
     )
   }
 
+  // Citation
+  if (item.type === 'citation' && item.citation) {
+    const cit = item.citation
+    const isNotListed = cit.status === 'not_listed'
+    const issues: string[] = []
+    if (!isNotListed) {
+      if (!cit.name_match) issues.push('name')
+      if (!cit.address_match) issues.push('address')
+      if (!cit.phone_match) issues.push('phone')
+    }
+
+    return (
+      <div className="border border-warm-border/50 rounded-lg p-4">
+        <div className="flex items-center gap-2 mb-2">
+          <span className="text-sm font-medium text-ink">{item.location_name}</span>
+          <span className={`text-[10px] px-2 py-0.5 rounded-full ${
+            isNotListed ? 'text-red-600 bg-red-50' : 'text-teal-600 bg-teal-50'
+          }`}>
+            {isNotListed ? 'Not Listed' : 'NAP Mismatch'}
+          </span>
+        </div>
+        <div className="text-xs text-ink/70 mb-1 font-medium">{cit.directory_name}</div>
+        <div className="text-xs text-warm-gray mb-3">
+          {isNotListed
+            ? 'Business not found on this directory'
+            : `Incorrect ${issues.join(', ')}`}
+        </div>
+        <div className="flex items-center gap-2">
+          {cit.listing_url && (
+            <a
+              href={cit.listing_url}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="px-3 py-1.5 text-xs font-medium border border-warm-border text-ink rounded-full hover:border-ink transition-colors no-underline"
+            >
+              View Listing
+            </a>
+          )}
+          {onDismiss && (
+            <button
+              onClick={() => onDismiss(item)}
+              className="px-3 py-1.5 text-xs text-warm-gray hover:text-ink transition-colors"
+            >
+              Dismiss
+            </button>
+          )}
+        </div>
+      </div>
+    )
+  }
+
   return null
 }
 
