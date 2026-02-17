@@ -159,9 +159,12 @@ export async function POST(
   for (const section of actionableSections) {
     try {
       if (section.key === 'description') {
-        // Get existing services from attributes
+        // Get existing services from service_items
         const services = (profile.service_items || [])
-          .map((s: Record<string, unknown>) => s.displayName || s.name || '')
+          .map((s: Record<string, unknown>) => {
+            const freeLabel = (s as any).freeFormServiceItem?.label
+            return (s as any).structuredServiceItem?.description || (typeof freeLabel === 'object' ? freeLabel?.displayName : freeLabel) || ''
+          })
           .filter(Boolean) as string[]
 
         const correctionsContext = (corrections || [])
@@ -191,7 +194,10 @@ export async function POST(
         })
       } else if (section.key === 'categories') {
         const services = (profile.service_items || [])
-          .map((s: Record<string, unknown>) => s.displayName || s.name || '')
+          .map((s: Record<string, unknown>) => {
+            const freeLabel = (s as any).freeFormServiceItem?.label
+            return (s as any).structuredServiceItem?.description || (typeof freeLabel === 'object' ? freeLabel?.displayName : freeLabel) || ''
+          })
           .filter(Boolean) as string[]
 
         const currentCategories = [

@@ -247,9 +247,10 @@ export function GBPProfileContent({ profile, mediaItems, postItems, queuedPosts,
                 </div>
                 <div className="divide-y divide-warm-border/50">
                   {gbp.service_items.map((item: any, i: number) => {
+                    const freeLabel = item.freeFormServiceItem?.label
                     const label = item.structuredServiceItem?.description
                       || item.structuredServiceItem?.serviceTypeId?.replace(/_/g, ' ')
-                      || item.freeFormServiceItem?.label
+                      || (typeof freeLabel === 'object' ? freeLabel?.displayName : freeLabel)
                       || `Service ${i + 1}`
                     const price = item.price
                       ? `${item.price.currencyCode || '$'}${(parseInt(item.price.units || '0', 10) / 100).toFixed(2)}`

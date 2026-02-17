@@ -109,10 +109,14 @@ export async function POST(request: NextRequest) {
   })).filter((a: any) => a.name)
 
   // Parse GBP service items
-  const gbpServiceItems = (gbp?.service_items || []).map((item: any) => ({
-    name: item.structuredServiceItem?.description || item.freeFormServiceItem?.label || '',
-    description: item.freeFormServiceItem?.label || undefined,
-  })).filter((s: any) => s.name)
+  const gbpServiceItems = (gbp?.service_items || []).map((item: any) => {
+    const freeLabel = item.freeFormServiceItem?.label
+    const freeName = typeof freeLabel === 'object' ? freeLabel?.displayName : freeLabel
+    return {
+      name: item.structuredServiceItem?.description || freeName || '',
+      description: freeName || undefined,
+    }
+  }).filter((s: any) => s.name)
 
   try {
     const aiContent = await generateLanderContent({
