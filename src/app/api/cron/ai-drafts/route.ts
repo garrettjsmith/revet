@@ -18,7 +18,7 @@ const MAX_REVIEWS_PER_RUN = 50
  */
 export async function GET(request: NextRequest) {
   const authHeader = request.headers.get('authorization')
-  const apiKey = process.env.REVIEW_SYNC_API_KEY
+  const apiKey = process.env.CRON_SECRET
 
   if (apiKey && authHeader !== `Bearer ${apiKey}`) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })

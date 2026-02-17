@@ -20,7 +20,7 @@ import { NextRequest, NextResponse } from 'next/server'
 export async function POST(request: NextRequest) {
   try {
     const authHeader = request.headers.get('authorization')
-    const apiKey = process.env.REVIEW_SYNC_API_KEY
+    const apiKey = process.env.CRON_SECRET
 
     if (apiKey && authHeader !== `Bearer ${apiKey}`) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
