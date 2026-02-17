@@ -1,11 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import {
+  findBLLocation,
   createBLLocation,
   createCTReport,
   runCTReport,
   getCTReport,
   getCTResults,
+  createCBCampaign,
   searchBusinessCategory,
   type CTCitation,
 } from '@/lib/brightlocal'
@@ -15,14 +17,15 @@ export const maxDuration = 120
 /**
  * GET /api/cron/citation-sync
  *
- * Three-phase citation sync via BrightLocal Citation Tracker:
+ * Four-phase citation sync via BrightLocal:
  *
  * Phase 1 — Map: Find locations with GBP profiles but no BrightLocal report,
- *           create BL Location + CT report for them.
- * Phase 2 — Trigger: Find completed or stale audits and re-run them.
- *           Also run newly created reports for the first time.
- * Phase 3 — Pull: Fetch results from completed BrightLocal reports,
+ *           create BL Location (Management API) + CT report for them.
+ * Phase 2 — Trigger: Run pending CT report audits.
+ * Phase 3 — Pull: Fetch results from completed reports,
  *           upsert citation_listings, flag mismatches as action_needed.
+ * Phase 4 — Build: For locations with completed audits but no Citation Builder
+ *           campaign, create a CB campaign so missing citations can be submitted.
  *
  * Runs daily at 6 AM via Vercel cron.
  */
@@ -39,7 +42,7 @@ export async function GET(request: NextRequest) {
   }
 
   const supabase = createAdminClient()
-  const stats = { mapped: 0, triggered: 0, pulled: 0, errors: 0 }
+  const stats = { mapped: 0, triggered: 0, pulled: 0, campaigns: 0, errors: 0 }
 
   // ─── Phase 1: Map new locations to BrightLocal ─────────────
   try {
@@ -69,27 +72,32 @@ export async function GET(request: NextRequest) {
         if (!loc.phone || !loc.city || !loc.state) continue
 
         try {
-          // Step 1: Create BrightLocal Location if needed
+          // Step 1: Find or create BrightLocal Location
           let blLocId = loc.brightlocal_location_id
           if (!blLocId) {
-            const gbp = gbpByLocation.get(loc.id)
-            const website = gbp?.website_uri || loc.name.toLowerCase().replace(/\s+/g, '') + '.com'
-            const categoryName = gbp?.primary_category_name || 'Business'
-            const blCountry = loc.country === 'US' ? 'USA' : loc.country
-            const categoryId = await searchBusinessCategory(categoryName, blCountry) || '605'
+            // Check if location already exists in BL by reference
+            blLocId = await findBLLocation(loc.id)
 
-            blLocId = await createBLLocation({
-              name: loc.name,
-              phone: loc.phone,
-              address1: loc.address_line1 || undefined,
-              city: loc.city,
-              region: loc.state,
-              postcode: loc.postal_code || '',
-              country: blCountry,
-              website,
-              businessCategoryId: categoryId,
-              locationReference: loc.id,
-            })
+            if (!blLocId) {
+              const gbp = gbpByLocation.get(loc.id)
+              const website = gbp?.website_uri || loc.name.toLowerCase().replace(/\s+/g, '') + '.com'
+              const categoryName = gbp?.primary_category_name || 'Business'
+              const blCountry = loc.country === 'US' ? 'USA' : loc.country
+              const categoryId = await searchBusinessCategory(categoryName, blCountry) || '605'
+
+              blLocId = await createBLLocation({
+                name: loc.name,
+                phone: loc.phone,
+                address1: loc.address_line1 || undefined,
+                city: loc.city,
+                region: loc.state,
+                postcode: loc.postal_code || '',
+                country: blCountry,
+                website,
+                businessCategoryId: categoryId,
+                locationReference: loc.id,
+              })
+            }
 
             await supabase
               .from('locations')
@@ -180,7 +188,7 @@ export async function GET(request: NextRequest) {
       try {
         // Check if report is done
         const report = await getCTReport(audit.brightlocal_report_id)
-        if (report.status !== 'completed' && report.status !== 'Completed' && report.status !== 'complete') continue
+        if (report.status.toLowerCase() !== 'complete' && report.status.toLowerCase() !== 'completed') continue
 
         // Pull results
         const citations = await getCTResults(audit.brightlocal_report_id)
@@ -207,10 +215,11 @@ export async function GET(request: NextRequest) {
           const isLive = citStatus === 'active'
           const hasListing = !!cit.url
 
-          // Determine NAP correctness by comparing found values
-          const nameMatch = !cit['business-name'] || cit['business-name'] === expectedName
-          const phoneMatch = !cit.telephone || cit.telephone === expectedPhone
-          const napCorrect = nameMatch && phoneMatch
+          // Determine NAP correctness by comparing found values (normalized)
+          const nameMatch = !cit['business-name'] || normalizeText(cit['business-name']) === normalizeText(expectedName)
+          const phoneMatch = !cit.telephone || normalizePhone(cit.telephone) === normalizePhone(expectedPhone)
+          const addressMatch = !cit.address || normalizeText(cit.address) === normalizeText(expectedAddress)
+          const napCorrect = nameMatch && phoneMatch && addressMatch
 
           if (!isLive && !hasListing) {
             missing++
@@ -220,7 +229,7 @@ export async function GET(request: NextRequest) {
             incorrect++
           }
 
-          const listingStatus = determineListingStatus(cit)
+          const listingStatus = determineListingStatus(cit, napCorrect)
 
           await supabase
             .from('citation_listings')
@@ -239,7 +248,7 @@ export async function GET(request: NextRequest) {
                 found_phone: cit.telephone,
                 nap_correct: napCorrect,
                 name_match: nameMatch,
-                address_match: true, // BL doesn't provide granular address match in CT
+                address_match: addressMatch,
                 phone_match: phoneMatch,
                 status: listingStatus,
                 ai_recommendation: buildRecommendation(cit, isLive || hasListing, expectedName, expectedPhone),
@@ -281,15 +290,79 @@ export async function GET(request: NextRequest) {
     stats.errors++
   }
 
+  // ─── Phase 4: Create Citation Builder campaigns ────────────
+  try {
+    // Find locations that have a completed audit + BL location but no CB campaign
+    const { data: needsCB } = await supabase
+      .from('locations')
+      .select('id, brightlocal_location_id')
+      .eq('active', true)
+      .not('brightlocal_location_id', 'is', null)
+      .is('brightlocal_campaign_id', null)
+      .limit(5)
+
+    for (const loc of needsCB || []) {
+      // Only create campaign if there's at least one completed audit
+      const { count } = await supabase
+        .from('citation_audits')
+        .select('id', { count: 'exact', head: true })
+        .eq('location_id', loc.id)
+        .eq('status', 'completed')
+
+      if (!count || count === 0) continue
+
+      try {
+        const campaignId = await createCBCampaign(loc.brightlocal_location_id)
+
+        await supabase
+          .from('locations')
+          .update({ brightlocal_campaign_id: campaignId })
+          .eq('id', loc.id)
+
+        // Store campaign record
+        await supabase.from('citation_builder_campaigns').insert({
+          location_id: loc.id,
+          brightlocal_campaign_id: campaignId,
+          brightlocal_location_id: loc.brightlocal_location_id,
+          status: 'lookup',
+        })
+
+        stats.campaigns++
+      } catch (err) {
+        console.error(`[citation-sync] Failed to create CB campaign for ${loc.id}:`, err)
+        stats.errors++
+      }
+    }
+  } catch (err) {
+    console.error('[citation-sync] Phase 4 (build) failed:', err)
+    stats.errors++
+  }
+
   return NextResponse.json({ ok: true, ...stats })
 }
 
 // ─── Helpers ─────────────────────────────────────────────────
 
-function determineListingStatus(cit: CTCitation): string {
+/** Strip non-digits for phone comparison: "(555) 123-4567" → "5551234567" */
+function normalizePhone(phone: string | null | undefined): string {
+  if (!phone) return ''
+  const digits = phone.replace(/\D/g, '')
+  // Strip leading country code "1" if 11 digits
+  if (digits.length === 11 && digits.startsWith('1')) return digits.slice(1)
+  return digits
+}
+
+/** Lowercase, collapse whitespace, strip punctuation for name/address comparison */
+function normalizeText(text: string | null | undefined): string {
+  if (!text) return ''
+  return text.toLowerCase().replace(/[^\w\s]/g, '').replace(/\s+/g, ' ').trim()
+}
+
+function determineListingStatus(cit: CTCitation, napCorrect: boolean): string {
   const citStatus = cit['citation-status']
   const hasListing = !!cit.url
   if (citStatus !== 'active' && !hasListing) return 'not_listed'
+  if (!napCorrect) return 'action_needed'
   return 'found'
 }
 
@@ -304,8 +377,8 @@ function buildRecommendation(
   }
 
   const issues: string[] = []
-  if (cit['business-name'] && cit['business-name'] !== expectedName) issues.push('business name')
-  if (cit.telephone && cit.telephone !== expectedPhone) issues.push('phone number')
+  if (cit['business-name'] && normalizeText(cit['business-name']) !== normalizeText(expectedName)) issues.push('business name')
+  if (cit.telephone && normalizePhone(cit.telephone) !== normalizePhone(expectedPhone)) issues.push('phone number')
 
   if (issues.length === 0) return null
 
