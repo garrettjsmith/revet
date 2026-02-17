@@ -1,0 +1,124 @@
+import { NextRequest, NextResponse } from 'next/server'
+import { createAdminClient } from '@/lib/supabase/admin'
+import { createCTReport, runCTReport } from '@/lib/brightlocal'
+
+export const maxDuration = 120
+
+/**
+ * POST /api/citations/audit
+ *
+ * Manually trigger a citation audit for specific locations.
+ * Supports both CRON_SECRET auth and authenticated agency admin.
+ *
+ * Body: { location_ids?: string[] }
+ *   - If location_ids provided, audit only those locations
+ *   - If omitted, create new audits for all mapped locations that don't have a running audit
+ */
+export async function POST(request: NextRequest) {
+  // Auth: CRON_SECRET or agency admin
+  const authHeader = request.headers.get('authorization')
+  const cronSecret = process.env.CRON_SECRET
+
+  if (cronSecret && authHeader === `Bearer ${cronSecret}`) {
+    // Cron auth — proceed
+  } else {
+    const { createServerSupabase } = await import('@/lib/supabase/server')
+    const supabase = createServerSupabase()
+    const { data: { user } } = await supabase.auth.getUser()
+
+    if (!user) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    }
+
+    const adminClient = createAdminClient()
+    const { data: admin } = await adminClient
+      .from('org_members')
+      .select('is_agency_admin')
+      .eq('user_id', user.id)
+      .eq('is_agency_admin', true)
+      .limit(1)
+      .single()
+
+    if (!admin) {
+      return NextResponse.json({ error: 'Agency admin required' }, { status: 403 })
+    }
+  }
+
+  if (!process.env.BRIGHTLOCAL_API_KEY) {
+    return NextResponse.json({ error: 'BrightLocal not configured' }, { status: 400 })
+  }
+
+  const body = await request.json().catch(() => ({}))
+  const locationIds: string[] | undefined = body.location_ids
+  const supabase = createAdminClient()
+  const stats = { created: 0, triggered: 0, errors: 0 }
+
+  // Get locations to audit
+  let query = supabase
+    .from('locations')
+    .select('id, name, phone, address_line1, city, state, postal_code, country, brightlocal_report_id')
+    .eq('active', true)
+
+  if (locationIds && locationIds.length > 0) {
+    query = query.in('id', locationIds)
+  }
+
+  const { data: locations } = await query.limit(50)
+
+  for (const loc of locations || []) {
+    try {
+      // If no BrightLocal report yet, create one
+      if (!loc.brightlocal_report_id) {
+        if (!loc.phone || !loc.address_line1 || !loc.city || !loc.state) {
+          continue // Skip locations without sufficient address data
+        }
+
+        const reportId = await createCTReport({
+          reportName: `${loc.name} - Citation Audit`,
+          businessName: loc.name,
+          phone: loc.phone,
+          address: loc.address_line1,
+          city: loc.city,
+          state: loc.state,
+          postcode: loc.postal_code || '',
+          country: loc.country === 'US' ? 'USA' : loc.country,
+        })
+
+        await supabase
+          .from('locations')
+          .update({ brightlocal_report_id: reportId })
+          .eq('id', loc.id)
+
+        loc.brightlocal_report_id = reportId
+        stats.created++
+      }
+
+      // Create audit record and trigger
+      const { data: audit } = await supabase
+        .from('citation_audits')
+        .insert({
+          location_id: loc.id,
+          brightlocal_report_id: loc.brightlocal_report_id,
+          status: 'pending',
+        })
+        .select('id')
+        .single()
+
+      if (audit) {
+        await runCTReport(loc.brightlocal_report_id)
+
+        await supabase
+          .from('citation_audits')
+          .update({ status: 'running', started_at: new Date().toISOString() })
+          .eq('id', audit.id)
+
+        stats.triggered++
+      }
+    } catch (err) {
+      console.error(`[citation-audit] Failed for location ${loc.id}:`, err)
+      stats.errors++
+    }
+  }
+
+  return NextResponse.json({ ok: true, ...stats })
+}

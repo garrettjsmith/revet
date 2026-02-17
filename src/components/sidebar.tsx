@@ -95,6 +95,7 @@ export function Sidebar({ currentOrg, memberships, userEmail, isAgencyAdmin, loc
         { href: '/agency/organizations', label: 'Organizations', icon: OrganizationsIcon },
         { href: '/agency/locations', label: 'All Locations', icon: LocationIcon },
         { href: '/agency/landers', label: 'Landers', icon: LanderIcon },
+        { href: '/agency/citations', label: 'Citations', icon: CitationIcon },
         { href: '/agency/integrations', label: 'Integrations', icon: IntegrationsIcon },
         { href: '/agency/notifications', label: 'Notifications', icon: BellIcon },
       ],
@@ -108,6 +109,7 @@ export function Sidebar({ currentOrg, memberships, userEmail, isAgencyAdmin, loc
     { href: `${locationBasePath}/review-funnels`, label: 'Review Funnels', icon: FunnelIcon },
     { href: `${locationBasePath}/forms`, label: 'Forms', icon: FormIcon },
     { href: `${locationBasePath}/lander`, label: 'Lander', icon: LanderIcon },
+    { href: `${locationBasePath}/citations`, label: 'Citations', icon: CitationIcon },
     { href: `${locationBasePath}/notifications`, label: 'Notifications', icon: BellIcon },
   ] : null
 
@@ -604,6 +606,14 @@ function BellIcon({ className }: { className?: string }) {
     <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
       <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9" />
       <path d="M13.73 21a2 2 0 0 1-3.46 0" />
+    </svg>
+  )
+}
+
+function CitationIcon({ className }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
     </svg>
   )
 }

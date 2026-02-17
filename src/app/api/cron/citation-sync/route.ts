@@ -32,7 +32,7 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
 
-  if (!process.env.BRIGHTLOCAL_API_KEY || !process.env.BRIGHTLOCAL_API_SECRET) {
+  if (!process.env.BRIGHTLOCAL_API_KEY) {
     return NextResponse.json({ error: 'BrightLocal not configured' }, { status: 200 })
   }
 

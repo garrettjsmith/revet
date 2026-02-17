@@ -1,5 +1,3 @@
-import crypto from 'crypto'
-
 const BASE_URL = 'https://tools.brightlocal.com/seo-tools/api'
 
 interface BrightLocalResponse<T = unknown> {
@@ -33,20 +31,12 @@ export interface CTCitation {
   status: string // 'live' | 'not_found' etc.
 }
 
-function getAuth(): { apiKey: string; sig: string; expires: number } {
+function getApiKey(): string {
   const apiKey = process.env.BRIGHTLOCAL_API_KEY
-  const apiSecret = process.env.BRIGHTLOCAL_API_SECRET
-  if (!apiKey || !apiSecret) {
-    throw new Error('BRIGHTLOCAL_API_KEY and BRIGHTLOCAL_API_SECRET must be set')
+  if (!apiKey) {
+    throw new Error('BRIGHTLOCAL_API_KEY must be set')
   }
-
-  const expires = Math.floor(Date.now() / 1000) + 1800 // 30 min
-  const sig = crypto
-    .createHash('sha1')
-    .update(apiKey + apiSecret + expires)
-    .digest('hex')
-
-  return { apiKey, sig, expires }
+  return apiKey
 }
 
 async function blFetch<T>(
@@ -54,12 +44,10 @@ async function blFetch<T>(
   method: 'GET' | 'POST' | 'PUT' | 'DELETE',
   params: Record<string, string> = {}
 ): Promise<BrightLocalResponse<T>> {
-  const { apiKey, sig, expires } = getAuth()
+  const apiKey = getApiKey()
 
   const allParams = {
     'api-key': apiKey,
-    sig,
-    expires: String(expires),
     ...params,
   }
 
