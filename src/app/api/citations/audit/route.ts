@@ -56,7 +56,7 @@ export async function POST(request: NextRequest) {
   // Get locations to audit
   let query = supabase
     .from('locations')
-    .select('id, name, phone, address_line1, city, state, postal_code, country, brightlocal_report_id')
+    .select('id, name, type, phone, address_line1, city, state, postal_code, country, brightlocal_report_id')
     .eq('active', true)
 
   if (locationIds && locationIds.length > 0) {
@@ -75,8 +75,15 @@ export async function POST(request: NextRequest) {
     try {
       // If no BrightLocal report yet, create one
       if (!loc.brightlocal_report_id) {
-        if (!loc.phone || !loc.address_line1 || !loc.city || !loc.state) {
-          errors.push(`${loc.name}: missing address/phone data`)
+        const isSAB = loc.type === 'service_area'
+
+        // SABs need phone + city/state; physical locations also need address
+        if (!loc.phone || !loc.city || !loc.state) {
+          errors.push(`${loc.name}: missing phone, city, or state`)
+          continue
+        }
+        if (!isSAB && !loc.address_line1) {
+          errors.push(`${loc.name}: missing address`)
           continue
         }
 
@@ -84,7 +91,7 @@ export async function POST(request: NextRequest) {
           reportName: `${loc.name} - Citation Audit`,
           businessName: loc.name,
           phone: loc.phone,
-          address: loc.address_line1,
+          address: loc.address_line1 || '',
           city: loc.city,
           state: loc.state,
           postcode: loc.postal_code || '',
