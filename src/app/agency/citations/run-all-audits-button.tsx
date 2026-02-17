@@ -20,7 +20,8 @@ export function RunAllAuditsButton() {
       const data = await res.json()
       if (!res.ok) {
         setStatus('error')
-        setMessage(data.error || `Failed (${res.status})`)
+        const detail = data.errors?.length ? data.errors.join('; ') : ''
+        setMessage(detail || data.error || `Failed (${res.status})`)
       } else {
         setStatus('done')
         setMessage(`${data.triggered} audit${data.triggered === 1 ? '' : 's'} triggered`)
