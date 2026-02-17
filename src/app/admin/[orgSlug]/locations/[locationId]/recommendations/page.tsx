@@ -114,6 +114,12 @@ export default async function RecommendationsPage({
                     const statusConfig = STATUS_CONFIG[rec.status] || STATUS_CONFIG.pending
                     const displayValue = rec.edited_value || rec.proposed_value
                     const isActionable = rec.status === 'client_review'
+                    const currentStr = rec.current_value != null
+                      ? (typeof rec.current_value === 'string' ? rec.current_value : JSON.stringify(rec.current_value, null, 2))
+                      : null
+                    const proposedStr = typeof displayValue === 'string'
+                      ? displayValue
+                      : JSON.stringify(displayValue, null, 2)
 
                     return (
                       <div key={rec.id} className={`px-5 py-5 ${isActionable ? 'bg-amber-50/20' : ''}`}>
@@ -127,13 +133,11 @@ export default async function RecommendationsPage({
                         </div>
 
                         {/* Current value */}
-                        {rec.current_value && (
+                        {currentStr && (
                           <div className="mb-3">
                             <div className="text-[10px] text-warm-gray uppercase tracking-wider mb-1">Current</div>
                             <div className="text-xs text-warm-gray leading-relaxed bg-warm-light/50 rounded-lg px-3 py-2">
-                              {typeof rec.current_value === 'string'
-                                ? rec.current_value
-                                : JSON.stringify(rec.current_value, null, 2)}
+                              {currentStr}
                             </div>
                           </div>
                         )}
@@ -148,9 +152,7 @@ export default async function RecommendationsPage({
                               ? 'text-ink bg-white border border-warm-border'
                               : 'text-ink bg-warm-light/50'
                           }`}>
-                            {typeof displayValue === 'string'
-                              ? displayValue
-                              : JSON.stringify(displayValue, null, 2)}
+                            {proposedStr}
                           </div>
                         </div>
 
