@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import {
+  createBLLocation,
   createCTReport,
   runCTReport,
   getCTReport,
@@ -16,7 +17,7 @@ export const maxDuration = 120
  * Three-phase citation sync via BrightLocal Citation Tracker:
  *
  * Phase 1 — Map: Find locations with GBP profiles but no BrightLocal report,
- *           create CT reports for them.
+ *           create BL Location + CT report for them.
  * Phase 2 — Trigger: Find completed or stale audits and re-run them.
  *           Also run newly created reports for the first time.
  * Phase 3 — Pull: Fetch results from completed BrightLocal reports,
@@ -43,7 +44,7 @@ export async function GET(request: NextRequest) {
   try {
     const { data: unmapped } = await supabase
       .from('locations')
-      .select('id, name, phone, address_line1, city, state, postal_code, country')
+      .select('id, name, type, phone, address_line1, city, state, postal_code, country, brightlocal_location_id')
       .eq('active', true)
       .is('brightlocal_report_id', null)
       .limit(10)
@@ -53,26 +54,49 @@ export async function GET(request: NextRequest) {
       const locationIds = unmapped.map((l) => l.id)
       const { data: profiles } = await supabase
         .from('gbp_profiles')
-        .select('location_id')
+        .select('location_id, primary_category_name')
         .in('location_id', locationIds)
         .eq('sync_status', 'active')
 
       const profiledIds = new Set((profiles || []).map((p) => p.location_id))
+      const categoryByLocation = new Map(
+        (profiles || []).map((p) => [p.location_id, p.primary_category_name])
+      )
 
       for (const loc of unmapped) {
         if (!profiledIds.has(loc.id)) continue
-        if (!loc.phone || !loc.address_line1 || !loc.city || !loc.state) continue
+        if (!loc.phone || !loc.city || !loc.state) continue
 
         try {
+          // Step 1: Create BrightLocal Location if needed
+          let blLocId = loc.brightlocal_location_id
+          if (!blLocId) {
+            blLocId = await createBLLocation({
+              name: loc.name,
+              phone: loc.phone,
+              address1: loc.address_line1 || undefined,
+              city: loc.city,
+              stateCode: loc.state,
+              postcode: loc.postal_code || '',
+              country: loc.country === 'US' ? 'USA' : loc.country,
+              locationReference: loc.id,
+            })
+
+            await supabase
+              .from('locations')
+              .update({ brightlocal_location_id: blLocId })
+              .eq('id', loc.id)
+          }
+
+          // Step 2: Create CT report
+          const businessType = categoryByLocation.get(loc.id) || 'Business'
+          const primaryLocation = loc.postal_code || loc.city || ''
+          if (!primaryLocation) continue
+
           const reportId = await createCTReport({
-            reportName: `${loc.name} - Citation Audit`,
-            businessName: loc.name,
-            phone: loc.phone,
-            address: loc.address_line1,
-            city: loc.city,
-            state: loc.state,
-            postcode: loc.postal_code || '',
-            country: loc.country === 'US' ? 'USA' : loc.country,
+            locationId: blLocId,
+            businessType,
+            primaryLocation,
           })
 
           await supabase
@@ -146,7 +170,7 @@ export async function GET(request: NextRequest) {
       try {
         // Check if report is done
         const report = await getCTReport(audit.brightlocal_report_id)
-        if (report.status !== 'completed' && report.status !== 'Completed') continue
+        if (report.status !== 'completed' && report.status !== 'Completed' && report.status !== 'complete') continue
 
         // Pull results
         const citations = await getCTResults(audit.brightlocal_report_id)
@@ -169,10 +193,16 @@ export async function GET(request: NextRequest) {
         let missing = 0
 
         for (const cit of citations) {
-          const isLive = cit.status === 'live' || !!cit.listing_url
-          const napCorrect = cit.nap_correct
+          const citStatus = cit['citation-status']
+          const isLive = citStatus === 'active'
+          const hasListing = !!cit.url
 
-          if (!isLive) {
+          // Determine NAP correctness by comparing found values
+          const nameMatch = !cit['business-name'] || cit['business-name'] === expectedName
+          const phoneMatch = !cit.telephone || cit.telephone === expectedPhone
+          const napCorrect = nameMatch && phoneMatch
+
+          if (!isLive && !hasListing) {
             missing++
           } else if (napCorrect) {
             correct++
@@ -188,21 +218,21 @@ export async function GET(request: NextRequest) {
               {
                 location_id: audit.location_id,
                 audit_id: audit.id,
-                directory_name: cit.site_name,
-                directory_url: cit.site_url,
-                listing_url: cit.listing_url,
+                directory_name: cit.source,
+                directory_url: null,
+                listing_url: cit.url,
                 expected_name: expectedName,
                 expected_address: expectedAddress,
                 expected_phone: expectedPhone,
-                found_name: cit.name_found,
-                found_address: cit.address_found,
-                found_phone: cit.phone_found,
+                found_name: cit['business-name'],
+                found_address: cit.address,
+                found_phone: cit.telephone,
                 nap_correct: napCorrect,
-                name_match: cit.name_match,
-                address_match: cit.address_match,
-                phone_match: cit.phone_match,
+                name_match: nameMatch,
+                address_match: true, // BL doesn't provide granular address match in CT
+                phone_match: phoneMatch,
                 status: listingStatus,
-                ai_recommendation: buildRecommendation(cit, isLive),
+                ai_recommendation: buildRecommendation(cit, isLive || hasListing, expectedName, expectedPhone),
                 last_checked_at: new Date().toISOString(),
                 updated_at: new Date().toISOString(),
               },
@@ -247,25 +277,27 @@ export async function GET(request: NextRequest) {
 // ─── Helpers ─────────────────────────────────────────────────
 
 function determineListingStatus(cit: CTCitation): string {
-  const isLive = cit.status === 'live' || !!cit.listing_url
-  if (!isLive) return 'not_listed'
-  if (cit.nap_correct) return 'found'
-  return 'action_needed'
+  const citStatus = cit['citation-status']
+  const hasListing = !!cit.url
+  if (citStatus !== 'active' && !hasListing) return 'not_listed'
+  return 'found'
 }
 
-function buildRecommendation(cit: CTCitation, isLive: boolean): string | null {
+function buildRecommendation(
+  cit: CTCitation,
+  isLive: boolean,
+  expectedName: string,
+  expectedPhone: string,
+): string | null {
   if (!isLive) {
-    return `Not listed on ${cit.site_name}. Submit business listing to improve citation coverage.`
+    return `Not listed on ${cit.source}. Submit business listing to improve citation coverage.`
   }
 
-  if (cit.nap_correct) return null
-
   const issues: string[] = []
-  if (!cit.name_match) issues.push('business name')
-  if (!cit.address_match) issues.push('address')
-  if (!cit.phone_match) issues.push('phone number')
+  if (cit['business-name'] && cit['business-name'] !== expectedName) issues.push('business name')
+  if (cit.telephone && cit.telephone !== expectedPhone) issues.push('phone number')
 
   if (issues.length === 0) return null
 
-  return `Incorrect ${issues.join(', ')} on ${cit.site_name}. Update the listing to match current business information.`
+  return `Incorrect ${issues.join(', ')} on ${cit.source}. Update the listing to match current business information.`
 }
