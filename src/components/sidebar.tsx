@@ -141,7 +141,6 @@ export function Sidebar({ currentOrg, memberships, userEmail, isAgencyAdmin, loc
         { href: `${basePath}/posts/review`, label: 'Post Review', icon: PostIcon },
         { href: `${basePath}/forms`, label: 'Forms', icon: FormIcon },
         { href: `${basePath}/reports`, label: 'Reports', icon: ReportIcon },
-        { href: `${basePath}/brand`, label: 'Brand Config', icon: IntegrationsIcon },
       ],
     },
   ]
