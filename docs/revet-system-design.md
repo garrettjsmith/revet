@@ -390,9 +390,9 @@ All variables are documented in `.env.example`. Falcon adds two new variables to
 | `LOCALFALCON_API_KEY` | Yes | LocalFalcon Data Retrieval API key for rank tracking |
 | `IDEOGRAM_API_KEY` | No | Ideogram API key for GBP post image generation. Posts will be text-only if not set. |
 | `FALCON_AGENT_MODEL` | No | Claude model ID for Falcon agent tasks. Default: `claude-sonnet-4-5-20250929` |
-| `FALCON_CRON_SECRET` | Yes* | Secret token to authenticate cron job endpoints. Required in production to prevent unauthorized triggering of agent tasks. |
+| `REVIEW_SYNC_API_KEY` | Yes* | Bearer token to authenticate cron job endpoints (review sync, post generation, digest emails, LocalFalcon sync). Required in production. |
 
-*`FALCON_CRON_SECRET` is required in production but optional for local development.
+*`REVIEW_SYNC_API_KEY` is required in production but optional for local development.
 
 No new external services required. Falcon runs on the existing stack: Supabase for data, Anthropic for AI, Resend for email, Vercel for compute, LocalFalcon for rank data.
 
