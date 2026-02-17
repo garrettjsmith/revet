@@ -1,7 +1,6 @@
-import { createServerSupabase } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { getOrgBySlug } from '@/lib/org'
-import { getLocation, checkAgencyAdmin } from '@/lib/locations'
+import { getLocation } from '@/lib/locations'
 import { notFound } from 'next/navigation'
 import Link from 'next/link'
 import { CitationTable } from './citation-table'
@@ -20,7 +19,6 @@ export default async function LocationCitationsPage({
   if (!location) notFound()
 
   const basePath = `/admin/${params.orgSlug}/locations/${params.locationId}`
-  const isAgencyAdmin = await checkAgencyAdmin()
   const adminClient = createAdminClient()
 
   // Fetch latest audit + all listings in parallel
@@ -72,22 +70,14 @@ export default async function LocationCitationsPage({
         <span className="text-ink">Citations</span>
       </div>
 
-      <div className="flex items-center justify-between mb-6">
-        <h1 className="text-2xl font-serif text-ink">Citations</h1>
-        {isAgencyAdmin && hasData && (
-          <RunAuditButton locationId={location.id} />
-        )}
-      </div>
+      <h1 className="text-2xl font-serif text-ink mb-6">Citations</h1>
 
       {!hasData ? (
         <div className="text-center py-16">
           <div className="text-warm-gray text-sm mb-2">No citation data yet.</div>
-          <div className="text-warm-gray/60 text-xs mb-6">
+          <div className="text-warm-gray/60 text-xs">
             Citations are audited automatically once a GBP profile is synced.
           </div>
-          {isAgencyAdmin && (
-            <RunAuditButton locationId={location.id} />
-          )}
         </div>
       ) : (
         <>
@@ -106,9 +96,6 @@ export default async function LocationCitationsPage({
                 ? new Date(audit.completed_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
                 : audit.status === 'running' ? 'In progress...' : 'Pending'
               }
-              {audit.status === 'failed' && (
-                <span className="text-red-500 ml-2">Failed: {audit.last_error}</span>
-              )}
             </div>
           )}
 
@@ -157,10 +144,3 @@ function FilterPill({ href, active, label, count }: { href: string; active: bool
     </Link>
   )
 }
-
-function RunAuditButton({ locationId }: { locationId: string }) {
-  return <RunAuditButtonClient locationId={locationId} />
-}
-
-// Client component import for button interactivity
-import { RunAuditButtonClient } from './run-audit-button'

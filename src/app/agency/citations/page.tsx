@@ -2,6 +2,7 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { requireAgencyAdmin } from '@/lib/locations'
 import Link from 'next/link'
 import { RunAllAuditsButton } from './run-all-audits-button'
+import { RunAuditButtonClient } from './run-audit-button'
 
 export const dynamic = 'force-dynamic'
 
@@ -117,6 +118,7 @@ export default async function AgencyCitationsPage() {
                 <th className="text-center px-3 py-3 font-medium text-warm-gray">Issues</th>
                 <th className="text-left px-4 py-3 font-medium text-warm-gray">Last Audit</th>
                 <th className="text-left px-4 py-3 font-medium text-warm-gray">Status</th>
+                <th className="text-right px-4 py-3 font-medium text-warm-gray"></th>
               </tr>
             </thead>
             <tbody>
@@ -125,14 +127,13 @@ export default async function AgencyCitationsPage() {
                 const audit = latestAudit.get(loc.id)
                 // eslint-disable-next-line @typescript-eslint/no-explicit-any
                 const orgData = loc.organizations as any
-                const orgSlug = orgData?.slug || ''
                 const issues = (stats?.incorrect || 0) + (stats?.missing || 0)
 
                 return (
                   <tr key={loc.id} className="border-b border-warm-border/50 last:border-0 hover:bg-warm-light/20 transition-colors">
                     <td className="px-4 py-3">
                       <Link
-                        href={`/admin/${orgSlug}/locations/${loc.id}/citations`}
+                        href={`/agency/citations/${loc.id}`}
                         className="font-medium text-ink hover:underline no-underline"
                       >
                         {loc.name}
@@ -176,6 +177,9 @@ export default async function AgencyCitationsPage() {
                       ) : (
                         <span className="text-[10px] text-warm-gray bg-warm-light px-2 py-0.5 rounded-full">Pending</span>
                       )}
+                    </td>
+                    <td className="px-4 py-3 text-right">
+                      <RunAuditButtonClient locationId={loc.id} />
                     </td>
                   </tr>
                 )
