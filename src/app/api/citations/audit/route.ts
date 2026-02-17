@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
-import { createCTReport, runCTReport } from '@/lib/brightlocal'
+import { createBLLocation, createCTReport, runCTReport } from '@/lib/brightlocal'
 
 export const maxDuration = 120
 
@@ -56,7 +56,7 @@ export async function POST(request: NextRequest) {
   // Get locations to audit
   let query = supabase
     .from('locations')
-    .select('id, name, type, phone, address_line1, city, state, postal_code, country, brightlocal_report_id')
+    .select('id, name, type, phone, address_line1, city, state, postal_code, country, brightlocal_location_id, brightlocal_report_id')
     .eq('active', true)
 
   if (locationIds && locationIds.length > 0) {
@@ -69,33 +69,61 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'No matching locations found' }, { status: 404 })
   }
 
+  // Pre-fetch GBP profiles for business category
+  const locIds = locations.map((l) => l.id)
+  const { data: gbpProfiles } = await supabase
+    .from('gbp_profiles')
+    .select('location_id, primary_category_name')
+    .in('location_id', locIds)
+
+  const categoryByLocation = new Map<string, string | null>(
+    (gbpProfiles || []).map((p) => [p.location_id, p.primary_category_name])
+  )
+
   const errors: string[] = []
 
   for (const loc of locations) {
     try {
-      // If no BrightLocal report yet, create one
-      if (!loc.brightlocal_report_id) {
-        const isSAB = loc.type === 'service_area'
-
-        // SABs need phone + city/state; physical locations also need address
+      // Step 1: Ensure BrightLocal Location exists
+      if (!loc.brightlocal_location_id) {
         if (!loc.phone || !loc.city || !loc.state) {
           errors.push(`${loc.name}: missing phone, city, or state`)
           continue
         }
-        if (!isSAB && !loc.address_line1) {
-          errors.push(`${loc.name}: missing address`)
+
+        const blLocId = await createBLLocation({
+          name: loc.name,
+          phone: loc.phone,
+          address1: loc.address_line1 || undefined,
+          city: loc.city,
+          stateCode: loc.state,
+          postcode: loc.postal_code || '',
+          country: loc.country === 'US' ? 'USA' : loc.country,
+          locationReference: loc.id,
+        })
+
+        await supabase
+          .from('locations')
+          .update({ brightlocal_location_id: blLocId })
+          .eq('id', loc.id)
+
+        loc.brightlocal_location_id = blLocId
+      }
+
+      // Step 2: Ensure CT report exists
+      if (!loc.brightlocal_report_id) {
+        const businessType = categoryByLocation.get(loc.id) || 'Business'
+        const primaryLocation = loc.postal_code || loc.city || ''
+
+        if (!primaryLocation) {
+          errors.push(`${loc.name}: missing postal code or city for competitor lookup`)
           continue
         }
 
         const reportId = await createCTReport({
-          reportName: `${loc.name} - Citation Audit`,
-          businessName: loc.name,
-          phone: loc.phone,
-          address: loc.address_line1 || '',
-          city: loc.city,
-          state: loc.state,
-          postcode: loc.postal_code || '',
-          country: loc.country === 'US' ? 'USA' : loc.country,
+          locationId: loc.brightlocal_location_id,
+          businessType,
+          primaryLocation,
         })
 
         await supabase
@@ -107,7 +135,7 @@ export async function POST(request: NextRequest) {
         stats.created++
       }
 
-      // Create audit record and trigger
+      // Step 3: Create audit record and trigger
       const { data: audit, error: insertError } = await supabase
         .from('citation_audits')
         .insert({

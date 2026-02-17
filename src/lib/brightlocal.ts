@@ -4,31 +4,43 @@ interface BrightLocalResponse<T = unknown> {
   success: boolean
   errors?: unknown
   response?: T
+  // /v2/ct/get returns report at top level, not nested under response
+  report?: T
 }
 
-interface CTReport {
+interface CTReportStatus {
   report_id: string
   report_name: string
   status: string
 }
 
-interface CTResult {
-  citation_results: CTCitation[]
-  report_status: string
+/** Shape returned by /v2/ct/get-results — results grouped by status */
+interface CTResultsResponse {
+  results: {
+    active?: CTCitation[]
+    pending?: CTCitation[]
+    possible?: CTCitation[]
+  }
 }
 
+/**
+ * Citation fields from BrightLocal use hyphenated keys.
+ * We normalize to underscore on read.
+ */
 export interface CTCitation {
-  site_name: string
-  site_url: string | null
-  listing_url: string | null
-  nap_correct: boolean
-  name_found: string | null
-  address_found: string | null
-  phone_found: string | null
-  name_match: boolean
-  address_match: boolean
-  phone_match: boolean
-  status: string // 'live' | 'not_found' etc.
+  citation_id: number
+  source: string
+  url: string | null
+  'citation-status': string // 'active' | 'pending' | 'possible'
+  status: string // 'Got it' etc.
+  'domain-authority': string | null
+  'site-type': string | null
+  'listing-type': string | null
+  'business-name': string | null
+  address: string | null
+  postcode: string | null
+  telephone: string | null
+  'date-identified': string | null
 }
 
 function formatErrors(errors: unknown): string {
@@ -82,36 +94,75 @@ async function blFetch<T>(
   return response.json()
 }
 
+// ─── Locations API ──────────────────────────────────────────
+
 /**
- * Create a Citation Tracker report for a location.
+ * Create a BrightLocal Location. This holds the NAP data that
+ * Citation Tracker reports reference via location-id.
+ * Returns the BrightLocal location ID.
+ */
+export async function createBLLocation(params: {
+  name: string
+  phone: string
+  address1?: string
+  city: string
+  stateCode: string
+  postcode: string
+  country: string
+  website?: string
+  locationReference?: string
+  businessCategoryId?: string
+}): Promise<string> {
+  const postParams: Record<string, string> = {
+    name: params.name,
+    telephone: params.phone,
+    city: params.city,
+    'state-code': params.stateCode,
+    postcode: params.postcode,
+    country: params.country,
+  }
+  if (params.address1) postParams['address1'] = params.address1
+  if (params.website) postParams['url'] = params.website
+  if (params.locationReference) postParams['location-reference'] = params.locationReference
+  if (params.businessCategoryId) postParams['business-category-id'] = params.businessCategoryId
+
+  const res = await blFetch<{ 'location-id': number }>(
+    '/v2/clients-and-locations/locations/',
+    'POST',
+    postParams
+  )
+
+  if (!res.success || !res.response?.['location-id']) {
+    throw new Error(`Failed to create BL location: ${formatErrors(res.errors)}`)
+  }
+
+  return String(res.response['location-id'])
+}
+
+// ─── Citation Tracker API ───────────────────────────────────
+
+/**
+ * Create a Citation Tracker report for a BrightLocal location.
+ * Requires a location-id (from createBLLocation), business-type,
+ * and primary-location (ZIP code for competitor lookup).
  * Returns the BrightLocal report ID.
  */
 export async function createCTReport(params: {
-  reportName: string
-  businessName: string
-  phone: string
-  address: string
-  city: string
-  state: string
-  postcode: string
-  country?: string
+  locationId: string
+  businessType: string
+  primaryLocation: string
 }): Promise<string> {
-  const res = await blFetch<{ report_id: string }>('/v2/ct/add', 'POST', {
-    'report-name': params.reportName,
-    'business-names': JSON.stringify([params.businessName]),
-    phone: params.phone,
-    address1: params.address,
-    city: params.city,
-    state: params.state,
-    postcode: params.postcode,
-    country: params.country || 'USA',
+  const res = await blFetch<{ 'report-id': number }>('/v2/ct/add', 'POST', {
+    'location-id': params.locationId,
+    'business-type': params.businessType,
+    'primary-location': params.primaryLocation,
   })
 
-  if (!res.success || !res.response?.report_id) {
+  if (!res.success || !res.response?.['report-id']) {
     throw new Error(`Failed to create CT report: ${formatErrors(res.errors)}`)
   }
 
-  return String(res.response.report_id)
+  return String(res.response['report-id'])
 }
 
 /**
@@ -129,24 +180,30 @@ export async function runCTReport(reportId: string): Promise<void> {
 
 /**
  * Get a Citation Tracker report status.
+ * Note: BrightLocal returns the report under a top-level "report" key,
+ * not under "response".
  */
-export async function getCTReport(reportId: string): Promise<CTReport> {
-  const res = await blFetch<CTReport>('/v2/ct/get', 'GET', {
+export async function getCTReport(reportId: string): Promise<CTReportStatus> {
+  const res = await blFetch<CTReportStatus>('/v2/ct/get', 'GET', {
     'report-id': reportId,
   })
 
-  if (!res.success || !res.response) {
+  // BrightLocal returns { success: true, report: { ... } }
+  const report = res.report || res.response
+  if (!res.success || !report) {
     throw new Error(`Failed to get CT report ${reportId}: ${formatErrors(res.errors)}`)
   }
 
-  return res.response
+  return report
 }
 
 /**
  * Get Citation Tracker results (the actual citation listings).
+ * BrightLocal returns results grouped as active/pending/possible arrays.
+ * We merge active citations into a single flat list.
  */
 export async function getCTResults(reportId: string): Promise<CTCitation[]> {
-  const res = await blFetch<CTResult>('/v2/ct/get-results', 'GET', {
+  const res = await blFetch<CTResultsResponse>('/v2/ct/get-results', 'GET', {
     'report-id': reportId,
   })
 
@@ -154,7 +211,12 @@ export async function getCTResults(reportId: string): Promise<CTCitation[]> {
     throw new Error(`Failed to get CT results for ${reportId}: ${formatErrors(res.errors)}`)
   }
 
-  return res.response.citation_results || []
+  const { results } = res.response
+  return [
+    ...(results.active || []),
+    ...(results.pending || []),
+    ...(results.possible || []),
+  ]
 }
 
 /**

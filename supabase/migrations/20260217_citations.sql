@@ -3,6 +3,7 @@
 
 -- ─── BrightLocal mapping on locations ────────────────────────
 ALTER TABLE locations
+  ADD COLUMN IF NOT EXISTS brightlocal_location_id text,
   ADD COLUMN IF NOT EXISTS brightlocal_report_id text;
 
 -- ─── Citation audits (one row per audit run per location) ────
