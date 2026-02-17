@@ -639,6 +639,22 @@ export interface CitationListing {
   updated_at: string
 }
 
+// Citation Builder
+
+export type CitationBuilderStatus = 'lookup' | 'ready' | 'confirmed' | 'in_progress' | 'complete' | 'failed'
+
+export interface CitationBuilderCampaign {
+  id: string
+  location_id: string
+  brightlocal_campaign_id: string
+  brightlocal_location_id: string
+  status: CitationBuilderStatus
+  lookup_completed_at: string | null
+  last_error: string | null
+  created_at: string
+  updated_at: string
+}
+
 // Chat
 
 export type ChatMessageRole = 'user' | 'assistant' | 'tool_call' | 'tool_result'

@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
-import { createBLLocation, createCTReport, runCTReport, searchBusinessCategory } from '@/lib/brightlocal'
+import { findBLLocation, createBLLocation, createCTReport, runCTReport, searchBusinessCategory } from '@/lib/brightlocal'
 
 export const maxDuration = 120
 
@@ -93,23 +93,28 @@ export async function POST(request: NextRequest) {
           continue
         }
 
-        const website = gbp?.website_uri || loc.name.toLowerCase().replace(/\s+/g, '') + '.com'
-        const categoryName = gbp?.primary_category_name || 'Business'
-        const blCountry = loc.country === 'US' ? 'USA' : loc.country
-        const categoryId = await searchBusinessCategory(categoryName, blCountry) || '605'
+        // Check if location already exists in BL by reference
+        let blLocId = await findBLLocation(loc.id)
 
-        const blLocId = await createBLLocation({
-          name: loc.name,
-          phone: loc.phone,
-          address1: loc.address_line1 || undefined,
-          city: loc.city,
-          region: loc.state,
-          postcode: loc.postal_code || '',
-          country: blCountry,
-          website,
-          businessCategoryId: categoryId,
-          locationReference: loc.id,
-        })
+        if (!blLocId) {
+          const website = gbp?.website_uri || loc.name.toLowerCase().replace(/\s+/g, '') + '.com'
+          const categoryName = gbp?.primary_category_name || 'Business'
+          const blCountry = loc.country === 'US' ? 'USA' : loc.country
+          const categoryId = await searchBusinessCategory(categoryName, blCountry) || '605'
+
+          blLocId = await createBLLocation({
+            name: loc.name,
+            phone: loc.phone,
+            address1: loc.address_line1 || undefined,
+            city: loc.city,
+            region: loc.state,
+            postcode: loc.postal_code || '',
+            country: blCountry,
+            website,
+            businessCategoryId: categoryId,
+            locationReference: loc.id,
+          })
+        }
 
         await supabase
           .from('locations')

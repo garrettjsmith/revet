@@ -1,11 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import {
+  findBLLocation,
   createBLLocation,
   createCTReport,
   runCTReport,
   getCTReport,
   getCTResults,
+  createCBCampaign,
   searchBusinessCategory,
   type CTCitation,
 } from '@/lib/brightlocal'
@@ -15,14 +17,15 @@ export const maxDuration = 120
 /**
  * GET /api/cron/citation-sync
  *
- * Three-phase citation sync via BrightLocal Citation Tracker:
+ * Four-phase citation sync via BrightLocal:
  *
  * Phase 1 — Map: Find locations with GBP profiles but no BrightLocal report,
- *           create BL Location + CT report for them.
- * Phase 2 — Trigger: Find completed or stale audits and re-run them.
- *           Also run newly created reports for the first time.
- * Phase 3 — Pull: Fetch results from completed BrightLocal reports,
+ *           create BL Location (Management API) + CT report for them.
+ * Phase 2 — Trigger: Run pending CT report audits.
+ * Phase 3 — Pull: Fetch results from completed reports,
  *           upsert citation_listings, flag mismatches as action_needed.
+ * Phase 4 — Build: For locations with completed audits but no Citation Builder
+ *           campaign, create a CB campaign so missing citations can be submitted.
  *
  * Runs daily at 6 AM via Vercel cron.
  */
@@ -39,7 +42,7 @@ export async function GET(request: NextRequest) {
   }
 
   const supabase = createAdminClient()
-  const stats = { mapped: 0, triggered: 0, pulled: 0, errors: 0 }
+  const stats = { mapped: 0, triggered: 0, pulled: 0, campaigns: 0, errors: 0 }
 
   // ─── Phase 1: Map new locations to BrightLocal ─────────────
   try {
@@ -69,27 +72,32 @@ export async function GET(request: NextRequest) {
         if (!loc.phone || !loc.city || !loc.state) continue
 
         try {
-          // Step 1: Create BrightLocal Location if needed
+          // Step 1: Find or create BrightLocal Location
           let blLocId = loc.brightlocal_location_id
           if (!blLocId) {
-            const gbp = gbpByLocation.get(loc.id)
-            const website = gbp?.website_uri || loc.name.toLowerCase().replace(/\s+/g, '') + '.com'
-            const categoryName = gbp?.primary_category_name || 'Business'
-            const blCountry = loc.country === 'US' ? 'USA' : loc.country
-            const categoryId = await searchBusinessCategory(categoryName, blCountry) || '605'
+            // Check if location already exists in BL by reference
+            blLocId = await findBLLocation(loc.id)
 
-            blLocId = await createBLLocation({
-              name: loc.name,
-              phone: loc.phone,
-              address1: loc.address_line1 || undefined,
-              city: loc.city,
-              region: loc.state,
-              postcode: loc.postal_code || '',
-              country: blCountry,
-              website,
-              businessCategoryId: categoryId,
-              locationReference: loc.id,
-            })
+            if (!blLocId) {
+              const gbp = gbpByLocation.get(loc.id)
+              const website = gbp?.website_uri || loc.name.toLowerCase().replace(/\s+/g, '') + '.com'
+              const categoryName = gbp?.primary_category_name || 'Business'
+              const blCountry = loc.country === 'US' ? 'USA' : loc.country
+              const categoryId = await searchBusinessCategory(categoryName, blCountry) || '605'
+
+              blLocId = await createBLLocation({
+                name: loc.name,
+                phone: loc.phone,
+                address1: loc.address_line1 || undefined,
+                city: loc.city,
+                region: loc.state,
+                postcode: loc.postal_code || '',
+                country: blCountry,
+                website,
+                businessCategoryId: categoryId,
+                locationReference: loc.id,
+              })
+            }
 
             await supabase
               .from('locations')
@@ -279,6 +287,54 @@ export async function GET(request: NextRequest) {
     }
   } catch (err) {
     console.error('[citation-sync] Phase 3 (pull) failed:', err)
+    stats.errors++
+  }
+
+  // ─── Phase 4: Create Citation Builder campaigns ────────────
+  try {
+    // Find locations that have a completed audit + BL location but no CB campaign
+    const { data: needsCB } = await supabase
+      .from('locations')
+      .select('id, brightlocal_location_id')
+      .eq('active', true)
+      .not('brightlocal_location_id', 'is', null)
+      .is('brightlocal_campaign_id', null)
+      .limit(5)
+
+    for (const loc of needsCB || []) {
+      // Only create campaign if there's at least one completed audit
+      const { count } = await supabase
+        .from('citation_audits')
+        .select('id', { count: 'exact', head: true })
+        .eq('location_id', loc.id)
+        .eq('status', 'completed')
+
+      if (!count || count === 0) continue
+
+      try {
+        const campaignId = await createCBCampaign(loc.brightlocal_location_id)
+
+        await supabase
+          .from('locations')
+          .update({ brightlocal_campaign_id: campaignId })
+          .eq('id', loc.id)
+
+        // Store campaign record
+        await supabase.from('citation_builder_campaigns').insert({
+          location_id: loc.id,
+          brightlocal_campaign_id: campaignId,
+          brightlocal_location_id: loc.brightlocal_location_id,
+          status: 'lookup',
+        })
+
+        stats.campaigns++
+      } catch (err) {
+        console.error(`[citation-sync] Failed to create CB campaign for ${loc.id}:`, err)
+        stats.errors++
+      }
+    }
+  } catch (err) {
+    console.error('[citation-sync] Phase 4 (build) failed:', err)
     stats.errors++
   }
 
