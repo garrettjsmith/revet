@@ -220,6 +220,70 @@ export function OrgReportDashboard({ orgSlug, summary, sentimentCounts, location
         </button>
       </div>
 
+      {/* Action Items — locations needing attention */}
+      {(() => {
+        const actionable = locations
+          .filter((l) => l.health === 'at_risk' || l.health === 'attention')
+          .sort((a, b) => {
+            const order = { at_risk: 2, attention: 1, healthy: 0 }
+            return order[b.health] - order[a.health]
+          })
+          .slice(0, 4)
+          .map((l) => {
+            const reasons: string[] = []
+            if (l.avg_rating !== null && l.avg_rating < 3.0) reasons.push(`Rating ${l.avg_rating.toFixed(1)}`)
+            else if (l.avg_rating !== null && l.avg_rating < 4.0) reasons.push(`Rating ${l.avg_rating.toFixed(1)}`)
+            if (l.days_since_last_review !== null && l.days_since_last_review > 30) reasons.push(`No reviews in ${l.days_since_last_review}d`)
+            if (l.response_rate < 50 && l.total_reviews > 0) reasons.push(`${l.response_rate}% reply rate`)
+            if (l.gbp_actions_trend < -10) reasons.push(`Actions ${l.gbp_actions_trend}%`)
+            return { ...l, reasons }
+          })
+
+        if (actionable.length === 0) return null
+
+        return (
+          <div className="border border-warm-border rounded-xl overflow-hidden">
+            <div className="px-5 py-3 border-b border-warm-border bg-warm-light/30 flex items-center justify-between">
+              <h2 className="text-sm font-medium text-ink">
+                {actionable.length} location{actionable.length !== 1 ? 's' : ''} need{actionable.length === 1 ? 's' : ''} attention
+              </h2>
+              <button
+                onClick={() => setHealthFilter(healthFilter === 'at_risk' ? 'all' : 'at_risk')}
+                className="text-[10px] text-warm-gray hover:text-ink transition-colors"
+              >
+                View all at-risk
+              </button>
+            </div>
+            <div className="divide-y divide-warm-border/50">
+              {actionable.map((l) => (
+                <Link
+                  key={l.id}
+                  href={`/admin/${orgSlug}/locations/${l.id}`}
+                  className="flex items-center gap-4 px-5 py-3 hover:bg-warm-light/50 transition-colors no-underline"
+                >
+                  <div className={`w-2 h-2 rounded-full shrink-0 ${l.health === 'at_risk' ? 'bg-red-500' : 'bg-amber-500'}`} />
+                  <div className="flex-1 min-w-0">
+                    <div className="text-sm text-ink font-medium truncate">{l.name}</div>
+                    <div className="text-[10px] text-warm-gray">{[l.city, l.state].filter(Boolean).join(', ')}</div>
+                  </div>
+                  <div className="flex items-center gap-2 shrink-0">
+                    {l.reasons.slice(0, 2).map((r, i) => (
+                      <span key={i} className={`text-[10px] font-medium px-2 py-0.5 rounded-full border ${
+                        l.health === 'at_risk'
+                          ? 'text-red-700 bg-red-50 border-red-200'
+                          : 'text-amber-700 bg-amber-50 border-amber-200'
+                      }`}>
+                        {r}
+                      </span>
+                    ))}
+                  </div>
+                </Link>
+              ))}
+            </div>
+          </div>
+        )
+      })()}
+
       {/* Charts Row */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* GBP Performance Chart */}
