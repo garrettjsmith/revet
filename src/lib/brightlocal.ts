@@ -163,6 +163,45 @@ async function legacyFetch<T>(
   return response.json()
 }
 
+// ─── US state abbreviation → full name mapping ─────────────
+
+const US_STATES: Record<string, string> = {
+  AL: 'Alabama', AK: 'Alaska', AZ: 'Arizona', AR: 'Arkansas', CA: 'California',
+  CO: 'Colorado', CT: 'Connecticut', DE: 'Delaware', FL: 'Florida', GA: 'Georgia',
+  HI: 'Hawaii', ID: 'Idaho', IL: 'Illinois', IN: 'Indiana', IA: 'Iowa',
+  KS: 'Kansas', KY: 'Kentucky', LA: 'Louisiana', ME: 'Maine', MD: 'Maryland',
+  MA: 'Massachusetts', MI: 'Michigan', MN: 'Minnesota', MS: 'Mississippi', MO: 'Missouri',
+  MT: 'Montana', NE: 'Nebraska', NV: 'Nevada', NH: 'New Hampshire', NJ: 'New Jersey',
+  NM: 'New Mexico', NY: 'New York', NC: 'North Carolina', ND: 'North Dakota', OH: 'Ohio',
+  OK: 'Oklahoma', OR: 'Oregon', PA: 'Pennsylvania', RI: 'Rhode Island', SC: 'South Carolina',
+  SD: 'South Dakota', TN: 'Tennessee', TX: 'Texas', UT: 'Utah', VT: 'Vermont',
+  VA: 'Virginia', WA: 'Washington', WV: 'West Virginia', WI: 'Wisconsin', WY: 'Wyoming',
+  DC: 'District of Columbia', PR: 'Puerto Rico', VI: 'Virgin Islands', GU: 'Guam',
+  AS: 'American Samoa', MP: 'Northern Mariana Islands',
+}
+
+/** Resolve a state value to { region, region_code } for the Management API */
+function resolveRegion(state: string): { region?: string; region_code?: string } {
+  const trimmed = state.trim()
+  const upper = trimmed.toUpperCase()
+
+  // Check if it's a known abbreviation
+  if (US_STATES[upper]) {
+    return { region: US_STATES[upper], region_code: upper }
+  }
+
+  // Check if it's a full state name — reverse lookup for the code
+  const entry = Object.entries(US_STATES).find(
+    ([, name]) => name.toLowerCase() === trimmed.toLowerCase()
+  )
+  if (entry) {
+    return { region: entry[1], region_code: entry[0] }
+  }
+
+  // Unknown — pass through as region (handles non-US states)
+  return { region: trimmed }
+}
+
 // ─── Management API: Business Categories ────────────────────
 
 /**
@@ -227,6 +266,8 @@ export async function createBLLocation(params: {
   businessCategoryId: string
   locationReference: string
 }): Promise<string> {
+  const regionFields = params.region ? resolveRegion(params.region) : {}
+
   const body: Record<string, unknown> = {
     business_name: params.name,
     location_reference: params.locationReference,
@@ -236,7 +277,7 @@ export async function createBLLocation(params: {
     address: {
       address1: params.address1 || params.name, // address1 is required
       ...(params.city ? { city: params.city } : {}),
-      ...(params.region ? { region: params.region } : {}),
+      ...regionFields,
       ...(params.postcode ? { postcode: params.postcode } : {}),
     },
     urls: {
