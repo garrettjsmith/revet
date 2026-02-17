@@ -180,7 +180,7 @@ export async function GET(request: NextRequest) {
       try {
         // Check if report is done
         const report = await getCTReport(audit.brightlocal_report_id)
-        if (report.status !== 'completed' && report.status !== 'Completed' && report.status !== 'complete') continue
+        if (report.status.toLowerCase() !== 'complete' && report.status.toLowerCase() !== 'completed') continue
 
         // Pull results
         const citations = await getCTResults(audit.brightlocal_report_id)
@@ -207,10 +207,11 @@ export async function GET(request: NextRequest) {
           const isLive = citStatus === 'active'
           const hasListing = !!cit.url
 
-          // Determine NAP correctness by comparing found values
-          const nameMatch = !cit['business-name'] || cit['business-name'] === expectedName
-          const phoneMatch = !cit.telephone || cit.telephone === expectedPhone
-          const napCorrect = nameMatch && phoneMatch
+          // Determine NAP correctness by comparing found values (normalized)
+          const nameMatch = !cit['business-name'] || normalizeText(cit['business-name']) === normalizeText(expectedName)
+          const phoneMatch = !cit.telephone || normalizePhone(cit.telephone) === normalizePhone(expectedPhone)
+          const addressMatch = !cit.address || normalizeText(cit.address) === normalizeText(expectedAddress)
+          const napCorrect = nameMatch && phoneMatch && addressMatch
 
           if (!isLive && !hasListing) {
             missing++
@@ -220,7 +221,7 @@ export async function GET(request: NextRequest) {
             incorrect++
           }
 
-          const listingStatus = determineListingStatus(cit)
+          const listingStatus = determineListingStatus(cit, napCorrect)
 
           await supabase
             .from('citation_listings')
@@ -239,7 +240,7 @@ export async function GET(request: NextRequest) {
                 found_phone: cit.telephone,
                 nap_correct: napCorrect,
                 name_match: nameMatch,
-                address_match: true, // BL doesn't provide granular address match in CT
+                address_match: addressMatch,
                 phone_match: phoneMatch,
                 status: listingStatus,
                 ai_recommendation: buildRecommendation(cit, isLive || hasListing, expectedName, expectedPhone),
@@ -286,10 +287,26 @@ export async function GET(request: NextRequest) {
 
 // ─── Helpers ─────────────────────────────────────────────────
 
-function determineListingStatus(cit: CTCitation): string {
+/** Strip non-digits for phone comparison: "(555) 123-4567" → "5551234567" */
+function normalizePhone(phone: string | null | undefined): string {
+  if (!phone) return ''
+  const digits = phone.replace(/\D/g, '')
+  // Strip leading country code "1" if 11 digits
+  if (digits.length === 11 && digits.startsWith('1')) return digits.slice(1)
+  return digits
+}
+
+/** Lowercase, collapse whitespace, strip punctuation for name/address comparison */
+function normalizeText(text: string | null | undefined): string {
+  if (!text) return ''
+  return text.toLowerCase().replace(/[^\w\s]/g, '').replace(/\s+/g, ' ').trim()
+}
+
+function determineListingStatus(cit: CTCitation, napCorrect: boolean): string {
   const citStatus = cit['citation-status']
   const hasListing = !!cit.url
   if (citStatus !== 'active' && !hasListing) return 'not_listed'
+  if (!napCorrect) return 'action_needed'
   return 'found'
 }
 
@@ -304,8 +321,8 @@ function buildRecommendation(
   }
 
   const issues: string[] = []
-  if (cit['business-name'] && cit['business-name'] !== expectedName) issues.push('business name')
-  if (cit.telephone && cit.telephone !== expectedPhone) issues.push('phone number')
+  if (cit['business-name'] && normalizeText(cit['business-name']) !== normalizeText(expectedName)) issues.push('business name')
+  if (cit.telephone && normalizePhone(cit.telephone) !== normalizePhone(expectedPhone)) issues.push('phone number')
 
   if (issues.length === 0) return null
 

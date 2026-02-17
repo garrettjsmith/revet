@@ -244,7 +244,7 @@ export async function getCTResults(reportId: string): Promise<CTCitation[]> {
  * Delete a Citation Tracker report.
  */
 export async function deleteCTReport(reportId: string): Promise<void> {
-  await blFetch('/v2/ct/delete', 'DELETE', {
+  await blFetch('/v2/ct/delete', 'POST', {
     'report-id': reportId,
   })
 }
