@@ -20,7 +20,8 @@ export function RunAuditButtonClient({ locationId }: { locationId: string }) {
       const data = await res.json()
       if (!res.ok) {
         setStatus('error')
-        setMessage(data.error || `Failed (${res.status})`)
+        const detail = data.errors?.length ? data.errors[0] : ''
+        setMessage(detail || data.error || `Failed (${res.status})`)
       } else {
         setStatus('done')
         setMessage(`${data.triggered} audit${data.triggered === 1 ? '' : 's'} triggered`)
@@ -36,7 +37,7 @@ export function RunAuditButtonClient({ locationId }: { locationId: string }) {
   return (
     <div className="flex items-center gap-2">
       {message && (
-        <span className={`text-xs max-w-xs truncate ${status === 'error' ? 'text-red-500' : 'text-emerald-600'}`}>
+        <span className={`text-xs max-w-sm truncate ${status === 'error' ? 'text-red-500' : 'text-emerald-600'}`}>
           {message}
         </span>
       )}
