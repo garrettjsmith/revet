@@ -48,6 +48,15 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'No reviews to sync' }, { status: 400 })
     }
 
+    // Pre-query existing review IDs so we only alert on truly new reviews
+    const { data: existingRows } = await supabase
+      .from('reviews')
+      .select('platform_review_id')
+      .eq('source_id', source_id)
+      .in('platform_review_id', incomingReviews.map((r: any) => r.platform_review_id))
+
+    const existingIds = new Set((existingRows || []).map(r => r.platform_review_id))
+
     let processedCount = 0
 
     for (const review of incomingReviews) {
@@ -91,18 +100,23 @@ export async function POST(request: NextRequest) {
       })
       .eq('id', source_id)
 
-    // Process alert rules (non-blocking — don't let alert failures prevent sync success)
-    try {
-      await processAlertRules(
-        supabase,
-        (source.locations as any).org_id,
-        source.location_id,
-        (source.locations as any).name,
-        source.platform,
-        incomingReviews
-      )
-    } catch (alertErr) {
-      console.error('[reviews/sync] Alert processing failed (reviews still synced):', alertErr)
+    // Only alert on reviews that didn't previously exist — prevents flooding
+    // on initial sync or when cron/pubsub re-fetches known reviews
+    const newReviews = incomingReviews.filter((r: any) => !existingIds.has(r.platform_review_id))
+
+    if (newReviews.length > 0) {
+      try {
+        await processAlertRules(
+          supabase,
+          (source.locations as any).org_id,
+          source.location_id,
+          (source.locations as any).name,
+          source.platform,
+          newReviews
+        )
+      } catch (alertErr) {
+        console.error('[reviews/sync] Alert processing failed (reviews still synced):', alertErr)
+      }
     }
 
     return NextResponse.json({
