@@ -111,6 +111,77 @@ export function buildReviewAlertEmail({
 }
 
 /**
+ * Build an HTML email for a review response alert (reply posted to a review).
+ */
+export function buildReviewResponseEmail({
+  locationName,
+  platform,
+  reviewerName,
+  rating,
+  reviewBody,
+  replyBody,
+  repliedAt,
+}: {
+  locationName: string
+  platform: string
+  reviewerName: string | null
+  rating: number | null
+  reviewBody: string | null
+  replyBody: string
+  repliedAt: string
+}) {
+  const stars = rating
+    ? Array.from({ length: 5 }, (_, i) =>
+        `<span style="color:${i < rating ? '#FBBF24' : '#D5CFC5'};font-size:18px;">&#9733;</span>`
+      ).join('')
+    : ''
+
+  const escapedReview = (reviewBody || 'No review text').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+  const escapedReply = replyBody.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+
+  return `
+<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8"></head>
+<body style="margin:0;padding:0;background:#FAF8F5;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;">
+  <div style="max-width:560px;margin:0 auto;padding:32px 16px;">
+    <div style="background:#ffffff;border:1px solid #e8e4dc;border-radius:12px;overflow:hidden;">
+      <div style="background:#1a1a1a;padding:20px 24px;">
+        <h1 style="margin:0;color:#FAF8F5;font-size:16px;font-weight:600;">Response Posted</h1>
+        <p style="margin:4px 0 0;color:#9b9590;font-size:12px;">${locationName} &middot; ${platform}</p>
+      </div>
+      <div style="padding:20px 24px;">
+        <div style="margin-bottom:12px;">
+          ${stars}
+        </div>
+        <p style="margin:0 0 8px;color:#6b6560;font-size:13px;font-weight:500;">
+          ${reviewerName || 'Anonymous'}
+        </p>
+        <p style="margin:0 0 16px;color:#1a1a1a;font-size:14px;line-height:1.6;">
+          &ldquo;${escapedReview}&rdquo;
+        </p>
+        <div style="border-top:1px solid #e8e4dc;padding-top:16px;">
+          <p style="margin:0 0 8px;color:#6b6560;font-size:12px;font-weight:600;text-transform:uppercase;letter-spacing:0.5px;">
+            Your Reply
+          </p>
+          <p style="margin:0 0 8px;color:#1a1a1a;font-size:14px;line-height:1.6;">
+            ${escapedReply}
+          </p>
+          <p style="margin:0;color:#9b9590;font-size:11px;">
+            Replied ${repliedAt}
+          </p>
+        </div>
+      </div>
+    </div>
+    <p style="text-align:center;margin:16px 0 0;color:#c4bfb8;font-size:10px;">
+      Sent by revet.app
+    </p>
+  </div>
+</body>
+</html>`
+}
+
+/**
  * Build an HTML email for negative review funnel feedback.
  */
 export function buildFeedbackEmail({
@@ -195,6 +266,344 @@ export function buildFormSubmissionEmail({
         <p style="margin:16px 0 0;color:#9b9590;font-size:11px;">
           Submitted ${submittedAt}
         </p>
+      </div>
+    </div>
+    <p style="text-align:center;margin:16px 0 0;color:#c4bfb8;font-size:10px;">
+      Sent by revet.app
+    </p>
+  </div>
+</body>
+</html>`
+}
+
+/**
+ * Build an HTML email for the daily review digest.
+ */
+export function buildReviewDigestEmail({
+  orgName,
+  date,
+  totalReviews,
+  avgRating,
+  positiveCount,
+  neutralCount,
+  negativeCount,
+  locations,
+  needsAttention,
+  aiDraftsReady,
+  repliesSent,
+}: {
+  orgName: string
+  date: string
+  totalReviews: number
+  avgRating: number | null
+  positiveCount: number
+  neutralCount: number
+  negativeCount: number
+  locations: { name: string; reviewCount: number; avgRating: number | null }[]
+  needsAttention: { locationName: string; reviewerName: string | null; rating: number | null; body: string | null; publishedAt: string }[]
+  aiDraftsReady?: number
+  repliesSent?: number
+}) {
+  const avgStars = avgRating
+    ? Array.from({ length: 5 }, (_, i) =>
+        `<span style="color:${i < Math.round(avgRating) ? '#FBBF24' : '#D5CFC5'};font-size:20px;">&#9733;</span>`
+      ).join('')
+    : ''
+
+  const locationRows = locations.length > 1
+    ? locations.map((loc) => {
+        const locAvg = loc.avgRating ? loc.avgRating.toFixed(1) : '--'
+        return `
+          <tr>
+            <td style="padding:6px 0;color:#1a1a1a;font-size:14px;">${loc.name}</td>
+            <td style="padding:6px 0;color:#6b6560;font-size:14px;text-align:right;">${loc.reviewCount} review${loc.reviewCount === 1 ? '' : 's'}</td>
+            <td style="padding:6px 0;color:#6b6560;font-size:14px;text-align:right;padding-left:16px;">${locAvg} avg</td>
+          </tr>`
+      }).join('')
+    : ''
+
+  const attentionItems = needsAttention.slice(0, 5).map((r) => {
+    const stars = r.rating
+      ? Array.from({ length: 5 }, (_, i) =>
+          `<span style="color:${i < r.rating! ? '#FBBF24' : '#D5CFC5'};font-size:14px;">&#9733;</span>`
+        ).join('')
+      : ''
+    const escaped = (r.body || 'No review text').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    const snippet = escaped.length > 120 ? escaped.slice(0, 120) + '...' : escaped
+    return `
+      <div style="padding:12px 0;border-bottom:1px solid #e8e4dc;">
+        <div>${stars}</div>
+        <p style="margin:4px 0;color:#1a1a1a;font-size:13px;line-height:1.5;">&ldquo;${snippet}&rdquo;</p>
+        <p style="margin:0;color:#9b9590;font-size:11px;">${r.reviewerName || 'Anonymous'} &middot; ${r.locationName} &middot; ${r.publishedAt}</p>
+      </div>`
+  }).join('')
+
+  return `
+<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8"></head>
+<body style="margin:0;padding:0;background:#FAF8F5;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;">
+  <div style="max-width:560px;margin:0 auto;padding:32px 16px;">
+    <div style="background:#ffffff;border:1px solid #e8e4dc;border-radius:12px;overflow:hidden;">
+      <div style="background:#1a1a1a;padding:20px 24px;">
+        <h1 style="margin:0;color:#FAF8F5;font-size:16px;font-weight:600;">Daily Review Summary</h1>
+        <p style="margin:4px 0 0;color:#9b9590;font-size:12px;">${orgName} &middot; ${date}</p>
+      </div>
+      <div style="padding:20px 24px;">
+        <div style="text-align:center;padding:16px 0 20px;">
+          <p style="margin:0;font-size:36px;font-weight:700;color:#1a1a1a;">${totalReviews}</p>
+          <p style="margin:2px 0 12px;color:#6b6560;font-size:14px;">new review${totalReviews === 1 ? '' : 's'} yesterday</p>
+          ${avgStars ? `<div>${avgStars} <span style="color:#6b6560;font-size:14px;">${avgRating!.toFixed(1)}</span></div>` : ''}
+        </div>
+        <div style="display:flex;justify-content:center;gap:24px;padding:12px 0;border-top:1px solid #e8e4dc;border-bottom:1px solid #e8e4dc;">
+          <div style="text-align:center;">
+            <p style="margin:0;font-size:20px;font-weight:600;color:#16a34a;">${positiveCount}</p>
+            <p style="margin:2px 0 0;color:#6b6560;font-size:11px;">positive</p>
+          </div>
+          <div style="text-align:center;">
+            <p style="margin:0;font-size:20px;font-weight:600;color:#9b9590;">${neutralCount}</p>
+            <p style="margin:2px 0 0;color:#6b6560;font-size:11px;">neutral</p>
+          </div>
+          <div style="text-align:center;">
+            <p style="margin:0;font-size:20px;font-weight:600;color:#dc2626;">${negativeCount}</p>
+            <p style="margin:2px 0 0;color:#6b6560;font-size:11px;">negative</p>
+          </div>
+        </div>
+        ${locationRows ? `
+        <div style="padding:16px 0 0;">
+          <p style="margin:0 0 8px;color:#6b6560;font-size:12px;font-weight:600;text-transform:uppercase;letter-spacing:0.5px;">By Location</p>
+          <table style="width:100%;border-collapse:collapse;">${locationRows}</table>
+        </div>` : ''}
+        ${attentionItems ? `
+        <div style="padding:16px 0 0;">
+          <p style="margin:0 0 4px;color:#dc2626;font-size:12px;font-weight:600;text-transform:uppercase;letter-spacing:0.5px;">Needs Attention</p>
+          ${attentionItems}
+        </div>` : ''}
+        ${(aiDraftsReady || 0) > 0 || (repliesSent || 0) > 0 ? `
+        <div style="padding:16px 0 0;border-top:1px solid #e8e4dc;margin-top:16px;">
+          <p style="margin:0 0 8px;color:#6b6560;font-size:12px;font-weight:600;text-transform:uppercase;letter-spacing:0.5px;">Response Activity</p>
+          ${(repliesSent || 0) > 0 ? `<p style="margin:4px 0;color:#16a34a;font-size:13px;">${repliesSent} repl${repliesSent === 1 ? 'y' : 'ies'} sent in the last 24h</p>` : ''}
+          ${(aiDraftsReady || 0) > 0 ? `<p style="margin:4px 0;color:#d97706;font-size:13px;">${aiDraftsReady} AI-drafted repl${aiDraftsReady === 1 ? 'y' : 'ies'} ready for review</p>` : ''}
+        </div>` : ''}
+      </div>
+    </div>
+    <p style="text-align:center;margin:16px 0 0;color:#c4bfb8;font-size:10px;">
+      Sent by revet.app
+    </p>
+  </div>
+</body>
+</html>`
+}
+
+/**
+ * Build an HTML email alerting that Google has modified a business profile.
+ */
+export function buildProfileUpdateEmail({
+  locationName,
+  profileUrl,
+}: {
+  locationName: string
+  profileUrl: string
+}) {
+  return `
+<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8"></head>
+<body style="margin:0;padding:0;background:#FAF8F5;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;">
+  <div style="max-width:560px;margin:0 auto;padding:32px 16px;">
+    <div style="background:#ffffff;border:1px solid #bfdbfe;border-radius:12px;overflow:hidden;">
+      <div style="background:#1e40af;padding:20px 24px;">
+        <h1 style="margin:0;color:#ffffff;font-size:16px;font-weight:600;">Profile Update Detected</h1>
+        <p style="margin:4px 0 0;color:#93c5fd;font-size:12px;">${locationName}</p>
+      </div>
+      <div style="padding:20px 24px;">
+        <p style="margin:0 0 16px;color:#1a1a1a;font-size:14px;line-height:1.6;">
+          Google has suggested changes to the business profile for <strong>${locationName}</strong>. Review and accept or reject the changes to keep your listing accurate.
+        </p>
+        <a href="${profileUrl}" style="display:inline-block;padding:10px 20px;background:#1a1a1a;color:#FAF8F5;text-decoration:none;border-radius:999px;font-size:13px;font-weight:500;">
+          Review Changes
+        </a>
+      </div>
+    </div>
+    <p style="text-align:center;margin:16px 0 0;color:#c4bfb8;font-size:10px;">
+      Sent by revet.app
+    </p>
+  </div>
+</body>
+</html>`
+}
+
+/**
+ * Build an HTML email notifying a client that posts are ready for review.
+ */
+export function buildPostReviewEmail({
+  orgName,
+  locationName,
+  postSummary,
+  mediaUrl,
+  scheduledFor,
+  reviewUrl,
+  postCount,
+}: {
+  orgName: string
+  locationName: string
+  postSummary: string
+  mediaUrl?: string | null
+  scheduledFor?: string | null
+  reviewUrl: string
+  postCount?: number
+}) {
+  const escapedSummary = postSummary.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+  const count = postCount || 1
+  const scheduleText = scheduledFor
+    ? new Date(scheduledFor).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+    : null
+
+  return `
+<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8"></head>
+<body style="margin:0;padding:0;background:#FAF8F5;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;">
+  <div style="max-width:560px;margin:0 auto;padding:32px 16px;">
+    <div style="background:#ffffff;border:1px solid #e8e4dc;border-radius:12px;overflow:hidden;">
+      <div style="background:#1a1a1a;padding:20px 24px;">
+        <h1 style="margin:0;color:#FAF8F5;font-size:16px;font-weight:600;">
+          ${count > 1 ? `${count} Posts` : 'Post'} Ready for Review
+        </h1>
+        <p style="margin:4px 0 0;color:#9b9590;font-size:12px;">${locationName} &middot; ${orgName}</p>
+      </div>
+      <div style="padding:20px 24px;">
+        ${mediaUrl ? `<img src="${mediaUrl}" alt="" style="width:100%;border-radius:8px;margin-bottom:16px;" />` : ''}
+        <p style="margin:0 0 12px;color:#1a1a1a;font-size:14px;line-height:1.6;">
+          ${escapedSummary}${count > 1 ? `<br><span style="color:#9b9590;font-size:12px;">+ ${count - 1} more post${count > 2 ? 's' : ''}</span>` : ''}
+        </p>
+        ${scheduleText ? `<p style="margin:0 0 16px;color:#9b9590;font-size:12px;">Scheduled for ${scheduleText}</p>` : ''}
+        <a href="${reviewUrl}" style="display:inline-block;padding:10px 20px;background:#1a1a1a;color:#FAF8F5;text-decoration:none;border-radius:999px;font-size:13px;font-weight:500;">
+          Review Posts
+        </a>
+      </div>
+    </div>
+    <p style="text-align:center;margin:16px 0 0;color:#c4bfb8;font-size:10px;">
+      Sent by revet.app
+    </p>
+  </div>
+</body>
+</html>`
+}
+
+/**
+ * Build an HTML email for profile recommendation client approval.
+ */
+export function buildProfileRecommendationEmail({
+  locationName,
+  orgName,
+  field,
+  proposedValue,
+  reviewUrl,
+}: {
+  locationName: string
+  orgName: string
+  field: string
+  proposedValue: string
+  reviewUrl: string
+}) {
+  const fieldLabel = field === 'description' ? 'Business Description' : field.charAt(0).toUpperCase() + field.slice(1)
+  const escapedValue = proposedValue.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+
+  return `
+<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8"></head>
+<body style="margin:0;padding:0;background:#FAF8F5;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;">
+  <div style="max-width:560px;margin:0 auto;padding:32px 16px;">
+    <div style="background:#ffffff;border:1px solid #e8e4dc;border-radius:12px;overflow:hidden;">
+      <div style="background:#1a1a1a;padding:20px 24px;">
+        <h1 style="margin:0;color:#FAF8F5;font-size:16px;font-weight:600;">Profile Update for Review</h1>
+        <p style="margin:4px 0 0;color:#9b9590;font-size:12px;">${locationName} &middot; ${orgName}</p>
+      </div>
+      <div style="padding:20px 24px;">
+        <p style="margin:0 0 8px;color:#6b6560;font-size:12px;font-weight:600;text-transform:uppercase;letter-spacing:0.5px;">
+          ${fieldLabel}
+        </p>
+        <div style="background:#faf8f5;border:1px solid #e8e4dc;border-radius:8px;padding:16px;margin-bottom:20px;">
+          <p style="margin:0;color:#1a1a1a;font-size:14px;line-height:1.6;">${escapedValue}</p>
+        </div>
+        <a href="${reviewUrl}" style="display:inline-block;padding:10px 20px;background:#1a1a1a;color:#FAF8F5;text-decoration:none;border-radius:999px;font-size:13px;font-weight:500;">
+          Review &amp; Approve
+        </a>
+      </div>
+    </div>
+    <p style="text-align:center;margin:16px 0 0;color:#c4bfb8;font-size:10px;">
+      Sent by revet.app
+    </p>
+  </div>
+</body>
+</html>`
+}
+
+/**
+ * Build an HTML email for the work queue digest.
+ * Sent to agency admins summarizing pending queue items.
+ */
+export function buildQueueDigestEmail({
+  recipientName,
+  totalItems,
+  reviewCount,
+  draftCount,
+  googleUpdateCount,
+  postCount,
+  syncErrorCount,
+  profileOptCount,
+  staleLanderCount,
+  queueUrl,
+}: {
+  recipientName: string | null
+  totalItems: number
+  reviewCount: number
+  draftCount: number
+  googleUpdateCount: number
+  postCount: number
+  syncErrorCount: number
+  profileOptCount?: number
+  staleLanderCount?: number
+  queueUrl: string
+}) {
+  const urgentCount = reviewCount + googleUpdateCount
+  const greeting = recipientName ? `Hi ${recipientName},` : 'Hi,'
+
+  const rows = [
+    reviewCount > 0 ? `<tr><td style="padding:6px 0;color:#1a1a1a;font-size:14px;">Negative reviews</td><td style="padding:6px 0;color:#dc2626;font-size:14px;text-align:right;font-weight:600;">${reviewCount}</td></tr>` : '',
+    googleUpdateCount > 0 ? `<tr><td style="padding:6px 0;color:#1a1a1a;font-size:14px;">Google profile updates</td><td style="padding:6px 0;color:#2563eb;font-size:14px;text-align:right;font-weight:600;">${googleUpdateCount}</td></tr>` : '',
+    draftCount > 0 ? `<tr><td style="padding:6px 0;color:#1a1a1a;font-size:14px;">AI drafts ready</td><td style="padding:6px 0;color:#d97706;font-size:14px;text-align:right;font-weight:600;">${draftCount}</td></tr>` : '',
+    postCount > 0 ? `<tr><td style="padding:6px 0;color:#1a1a1a;font-size:14px;">Posts pending review</td><td style="padding:6px 0;color:#6b6560;font-size:14px;text-align:right;font-weight:600;">${postCount}</td></tr>` : '',
+    (profileOptCount || 0) > 0 ? `<tr><td style="padding:6px 0;color:#1a1a1a;font-size:14px;">Profile optimizations</td><td style="padding:6px 0;color:#7c3aed;font-size:14px;text-align:right;font-weight:600;">${profileOptCount}</td></tr>` : '',
+    (staleLanderCount || 0) > 0 ? `<tr><td style="padding:6px 0;color:#1a1a1a;font-size:14px;">Stale lander content</td><td style="padding:6px 0;color:#d97706;font-size:14px;text-align:right;font-weight:600;">${staleLanderCount}</td></tr>` : '',
+    syncErrorCount > 0 ? `<tr><td style="padding:6px 0;color:#1a1a1a;font-size:14px;">Sync errors</td><td style="padding:6px 0;color:#dc2626;font-size:14px;text-align:right;font-weight:600;">${syncErrorCount}</td></tr>` : '',
+  ].filter(Boolean).join('')
+
+  return `
+<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8"></head>
+<body style="margin:0;padding:0;background:#FAF8F5;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;">
+  <div style="max-width:560px;margin:0 auto;padding:32px 16px;">
+    <div style="background:#ffffff;border:1px solid #e8e4dc;border-radius:12px;overflow:hidden;">
+      <div style="background:#1a1a1a;padding:20px 24px;">
+        <h1 style="margin:0;color:#FAF8F5;font-size:16px;font-weight:600;">Work Queue Summary</h1>
+        <p style="margin:4px 0 0;color:#9b9590;font-size:12px;">
+          ${totalItems} item${totalItems === 1 ? '' : 's'} need${totalItems === 1 ? 's' : ''} attention${urgentCount > 0 ? ` (${urgentCount} urgent)` : ''}
+        </p>
+      </div>
+      <div style="padding:20px 24px;">
+        <p style="margin:0 0 16px;color:#1a1a1a;font-size:14px;line-height:1.6;">
+          ${greeting} You have <strong>${totalItems}</strong> item${totalItems === 1 ? '' : 's'} in your work queue.
+        </p>
+        <table style="width:100%;border-collapse:collapse;margin-bottom:20px;">
+          ${rows}
+        </table>
+        <a href="${queueUrl}" style="display:inline-block;padding:10px 20px;background:#1a1a1a;color:#FAF8F5;text-decoration:none;border-radius:999px;font-size:13px;font-weight:500;">
+          Open Work Queue
+        </a>
       </div>
     </div>
     <p style="text-align:center;margin:16px 0 0;color:#c4bfb8;font-size:10px;">

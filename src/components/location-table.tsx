@@ -4,6 +4,7 @@ import { useState, useMemo } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import type { Location } from '@/lib/types'
+import { BulkProfileEditor } from '@/components/bulk-profile-editor'
 
 const TYPE_LABELS: Record<string, string> = {
   place: 'Place',
@@ -48,6 +49,7 @@ export function LocationTable({ locations, orgSlug, compact = false, isAgencyAdm
   const [bulkMoveTargetOrg, setBulkMoveTargetOrg] = useState<string>('')
   const [bulkMoveProgress, setBulkMoveProgress] = useState<{ current: number; total: number } | null>(null)
   const [moveMessage, setMoveMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
+  const [showBulkEdit, setShowBulkEdit] = useState(false)
 
   const itemsPerPage = 15
   const basePath = `/admin/${orgSlug}`
@@ -697,6 +699,17 @@ export function LocationTable({ locations, orgSlug, compact = false, isAgencyAdm
                 : 'Move'}
             </button>
           </div>
+
+          <div className="w-px h-5 bg-cream/20" />
+
+          <button
+            onClick={() => setShowBulkEdit(true)}
+            disabled={bulkMoveProgress !== null}
+            className="px-4 py-1.5 bg-cream text-ink text-sm font-medium rounded-full hover:bg-cream/90 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+          >
+            Edit Profiles
+          </button>
+
           <button
             onClick={clearSelection}
             disabled={bulkMoveProgress !== null}
@@ -705,6 +718,17 @@ export function LocationTable({ locations, orgSlug, compact = false, isAgencyAdm
             Clear
           </button>
         </div>
+      )}
+
+      {/* Bulk profile editor modal */}
+      {showBulkEdit && (
+        <BulkProfileEditor
+          locationIds={Array.from(selected)}
+          onClose={() => {
+            setShowBulkEdit(false)
+            clearSelection()
+          }}
+        />
       )}
     </div>
   )

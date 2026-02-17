@@ -1,6 +1,8 @@
 import { createServerSupabase } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
 import { Sidebar } from '@/components/sidebar'
+import { ChatProvider } from '@/components/chat-context'
+import { ChatPane } from '@/components/chat-pane'
 import type { Organization, OrgMember, Location } from '@/lib/types'
 
 export const dynamic = 'force-dynamic'
@@ -52,17 +54,24 @@ export default async function OrgLayout({
     .order('name')
 
   return (
-    <div className="flex min-h-screen">
-      <Sidebar
-        currentOrg={currentOrg}
-        memberships={allMemberships}
-        userEmail={user.email || ''}
-        isAgencyAdmin={isAgencyAdmin}
-        locations={(orgLocations || []) as Pick<Location, 'id' | 'name' | 'city' | 'state' | 'type'>[]}
-      />
-      <main className="flex-1 p-8 max-w-6xl">
-        {children}
-      </main>
-    </div>
+    <ChatProvider>
+      <div className="flex min-h-screen">
+        <Sidebar
+          currentOrg={currentOrg}
+          memberships={allMemberships}
+          userEmail={user.email || ''}
+          isAgencyAdmin={isAgencyAdmin}
+          locations={(orgLocations || []) as Pick<Location, 'id' | 'name' | 'city' | 'state' | 'type'>[]}
+        />
+        <main className="flex-1 min-w-0 p-8">
+          {children}
+        </main>
+        <ChatPane
+          orgSlug={currentOrg.slug}
+          orgName={currentOrg.name}
+          isAgencyAdmin={isAgencyAdmin}
+        />
+      </div>
+    </ChatProvider>
   )
 }

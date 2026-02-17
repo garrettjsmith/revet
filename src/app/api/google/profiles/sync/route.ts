@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { fetchGBPProfile, normalizeGBPProfile, fetchLocationAttributes } from '@/lib/google/profiles'
 import { getValidAccessToken, GoogleAuthError } from '@/lib/google/auth'
+import { sendEmail, buildProfileUpdateEmail } from '@/lib/email'
 
 export const maxDuration = 120
 
@@ -18,7 +19,7 @@ export const maxDuration = 120
  */
 export async function POST(request: NextRequest) {
   const authHeader = request.headers.get('authorization')
-  const apiKey = process.env.REVIEW_SYNC_API_KEY
+  const apiKey = process.env.CRON_SECRET
 
   if (apiKey && authHeader === `Bearer ${apiKey}`) {
     // API key auth
@@ -86,6 +87,15 @@ export async function POST(request: NextRequest) {
     const displayName = mapping.external_resource_name || locationName
 
     try {
+      // Check previous state for Google update detection
+      const { data: existingProfile } = await supabase
+        .from('gbp_profiles')
+        .select('has_google_updated')
+        .eq('location_id', locationId)
+        .single()
+
+      const wasPreviouslyUpdated = existingProfile?.has_google_updated || false
+
       // Fetch full profile from Google
       const raw = await fetchGBPProfile(locationName)
       const normalized = normalizeGBPProfile(raw)
@@ -123,6 +133,24 @@ export async function POST(request: NextRequest) {
         results.push({ location_id: locationId, name: displayName, ok: false, error: upsertError.message })
       } else {
         results.push({ location_id: locationId, name: displayName, ok: true })
+
+        // Send alert if has_google_updated just became true
+        if (normalized.has_google_updated && !wasPreviouslyUpdated) {
+          sendProfileUpdateAlert(supabase, locationId, displayName).catch((err) => {
+            console.error(`[profiles/sync] Profile update alert failed for ${locationId}:`, err)
+          })
+        }
+
+        // Flag lander AI content as stale so it gets regenerated
+        supabase
+          .from('local_landers')
+          .update({ ai_content_stale: true })
+          .eq('location_id', locationId)
+          .eq('active', true)
+          .not('ai_content', 'is', null)
+          .then(({ error }) => {
+            if (error) console.error(`[profiles/sync] Stale flag error for ${locationId}:`, error)
+          })
       }
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'Unknown error'
@@ -150,3 +178,47 @@ export async function POST(request: NextRequest) {
 
 // Vercel cron sends GET — delegate to the same handler
 export const GET = POST
+
+/**
+ * Send email alert when Google modifies a profile.
+ */
+async function sendProfileUpdateAlert(
+  supabase: ReturnType<typeof createAdminClient>,
+  locationId: string,
+  locationName: string
+) {
+  // Get org + slug for building the profile URL
+  const { data: location } = await supabase
+    .from('locations')
+    .select('org_id, organizations(slug)')
+    .eq('id', locationId)
+    .single()
+
+  if (!location) return
+
+  const orgSlug = (location.organizations as any)?.slug
+  if (!orgSlug) return
+
+  const profileUrl = `${process.env.NEXT_PUBLIC_APP_URL || 'https://app.revet.app'}/admin/${orgSlug}/locations/${locationId}/gbp-profile`
+
+  // Get agency admin emails
+  const { data: admins } = await supabase
+    .from('org_members')
+    .select('email:auth_users(email)')
+    .eq('org_id', (location as any).org_id)
+    .eq('is_agency_admin', true)
+
+  const emails = (admins || [])
+    .map((a: any) => a.email?.email)
+    .filter(Boolean) as string[]
+
+  if (emails.length === 0) return
+
+  sendEmail({
+    to: emails,
+    subject: `Profile update detected: ${locationName}`,
+    html: buildProfileUpdateEmail({ locationName, profileUrl }),
+  }).catch((err) => {
+    console.error('[profiles/sync] Profile update email failed:', err)
+  })
+}

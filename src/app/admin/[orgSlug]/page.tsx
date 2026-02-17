@@ -3,6 +3,7 @@ import { getOrgBySlug } from '@/lib/org'
 import { getOrgLocations, checkAgencyAdmin } from '@/lib/locations'
 import Link from 'next/link'
 import { LocationTable } from '@/components/location-table'
+import { ActionItems } from '@/components/action-items'
 
 export const dynamic = 'force-dynamic'
 
@@ -102,6 +103,9 @@ export default async function OrgDashboard({ params }: { params: { orgSlug: stri
           + New Location
         </Link>
       </div>
+
+      {/* Action Items — what needs attention */}
+      <ActionItems apiPath={`/api/admin/action-items?orgId=${org.id}`} />
 
       {/* Stats */}
       <div className="grid grid-cols-4 gap-4 mb-8">

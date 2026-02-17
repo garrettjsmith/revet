@@ -266,7 +266,7 @@ export async function POST(request: NextRequest) {
 
       if (newSources && newSources.length > 0) {
         const backfillUrl = `${process.env.NEXT_PUBLIC_APP_URL}/api/google/reviews/backfill`
-        const apiKey = process.env.REVIEW_SYNC_API_KEY
+        const apiKey = process.env.CRON_SECRET
 
         fetch(backfillUrl, {
           method: 'POST',

@@ -99,3 +99,56 @@ export async function fetchPerformanceMetrics(
 
   return rows
 }
+
+/**
+ * Fetch search keyword impressions for a GBP location (monthly).
+ *
+ * Google returns keyword data at monthly granularity. Request one month
+ * at a time to get per-month breakdowns. Data older than ~18 months
+ * is unavailable — sync regularly to build a long-term history.
+ *
+ * @param locationName - e.g. "locations/abc123"
+ * @param year - e.g. 2026
+ * @param month - 1-12
+ */
+export async function fetchSearchKeywords(
+  locationName: string,
+  year: number,
+  month: number
+): Promise<Array<{ keyword: string; impressions: number | null; threshold: number | null }>> {
+  const allKeywords: Array<{ keyword: string; impressions: number | null; threshold: number | null }> = []
+  let pageToken: string | undefined
+
+  do {
+    const params = new URLSearchParams({
+      'monthlyRange.startMonth.year': String(year),
+      'monthlyRange.startMonth.month': String(month),
+      'monthlyRange.endMonth.year': String(year),
+      'monthlyRange.endMonth.month': String(month),
+    })
+    if (pageToken) params.set('pageToken', pageToken)
+
+    const response = await googleFetch(
+      `${PERFORMANCE_API}/${locationName}/searchkeywords/impressions/monthly?${params}`
+    )
+
+    if (!response.ok) {
+      const err = await response.json().catch(() => ({}))
+      throw new Error(`Failed to fetch search keywords: ${response.status} ${JSON.stringify(err)}`)
+    }
+
+    const data = await response.json()
+
+    for (const entry of data.searchKeywordsCounts || []) {
+      allKeywords.push({
+        keyword: entry.searchKeyword,
+        impressions: entry.insightsValue?.value ? parseInt(entry.insightsValue.value, 10) : null,
+        threshold: entry.insightsValue?.threshold ? parseInt(entry.insightsValue.threshold, 10) : null,
+      })
+    }
+
+    pageToken = data.nextPageToken
+  } while (pageToken)
+
+  return allKeywords
+}

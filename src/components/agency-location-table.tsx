@@ -3,6 +3,9 @@
 import { useState, useMemo } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
+import { BulkProfileEditor } from '@/components/bulk-profile-editor'
+
+type ServiceTier = 'starter' | 'standard' | 'premium'
 
 interface Location {
   id: string
@@ -16,6 +19,7 @@ interface Location {
   avgRating: string | null
   syncStatus: 'active' | 'pending' | 'error' | 'none'
   hasLander: boolean
+  serviceTier: ServiceTier
 }
 
 interface Organization {
@@ -24,9 +28,16 @@ interface Organization {
   slug: string
 }
 
+interface AgencyMember {
+  id: string
+  email: string
+}
+
 interface AgencyLocationTableProps {
   locations: Location[]
   orgs: Organization[]
+  orgManagers?: Record<string, { userId: string; email: string }[]>
+  agencyMembers?: AgencyMember[]
 }
 
 type SortField = 'name' | 'orgName' | 'city' | 'reviews' | 'syncStatus'
@@ -34,7 +45,7 @@ type SortDirection = 'asc' | 'desc'
 
 const ITEMS_PER_PAGE = 15
 
-export function AgencyLocationTable({ locations, orgs }: AgencyLocationTableProps) {
+export function AgencyLocationTable({ locations, orgs, orgManagers = {}, agencyMembers = [] }: AgencyLocationTableProps) {
   const router = useRouter()
 
   // Filter states
@@ -43,6 +54,7 @@ export function AgencyLocationTable({ locations, orgs }: AgencyLocationTableProp
   const [selectedStatus, setSelectedStatus] = useState<string>('all')
   const [selectedCity, setSelectedCity] = useState<string>('all')
   const [selectedLander, setSelectedLander] = useState<string>('all')
+  const [selectedTier, setSelectedTier] = useState<string>('all')
 
   // Sort state
   const [sortField, setSortField] = useState<SortField>('name')
@@ -58,6 +70,9 @@ export function AgencyLocationTable({ locations, orgs }: AgencyLocationTableProp
   const [bulkMoveOrgId, setBulkMoveOrgId] = useState<string>('')
   const [isMoving, setIsMoving] = useState(false)
   const [moveProgress, setMoveProgress] = useState({ current: 0, total: 0 })
+
+  // Bulk edit state
+  const [showBulkEdit, setShowBulkEdit] = useState(false)
 
   // Kebab menu state
   const [activeKebabId, setActiveKebabId] = useState<string | null>(null)
@@ -102,6 +117,9 @@ export function AgencyLocationTable({ locations, orgs }: AgencyLocationTableProp
       if (selectedLander === 'has_lander' && !loc.hasLander) return false
       if (selectedLander === 'no_lander' && loc.hasLander) return false
 
+      // Tier filter
+      if (selectedTier !== 'all' && loc.serviceTier !== selectedTier) return false
+
       return true
     })
 
@@ -129,7 +147,7 @@ export function AgencyLocationTable({ locations, orgs }: AgencyLocationTableProp
     })
 
     return filtered
-  }, [locations, searchQuery, selectedOrgId, selectedStatus, selectedCity, selectedLander, sortField, sortDirection])
+  }, [locations, searchQuery, selectedOrgId, selectedStatus, selectedCity, selectedLander, selectedTier, sortField, sortDirection])
 
   // Paginate
   const totalPages = Math.ceil(filteredAndSortedLocations.length / ITEMS_PER_PAGE)
@@ -329,6 +347,17 @@ export function AgencyLocationTable({ locations, orgs }: AgencyLocationTableProp
           <option value="has_lander">Has Lander</option>
           <option value="no_lander">No Lander</option>
         </select>
+
+        <select
+          value={selectedTier}
+          onChange={(e) => handleFilterChange(() => setSelectedTier(e.target.value))}
+          className="px-3 py-2 border border-warm-border rounded-lg text-sm bg-cream text-ink"
+        >
+          <option value="all">All Tiers</option>
+          <option value="starter">Starter</option>
+          <option value="standard">Standard</option>
+          <option value="premium">Premium</option>
+        </select>
       </div>
 
       {/* Table */}
@@ -356,6 +385,9 @@ export function AgencyLocationTable({ locations, orgs }: AgencyLocationTableProp
               >
                 Organization <SortIcon field="orgName" />
               </th>
+              <th className="text-left px-5 py-3 text-[11px] text-warm-gray uppercase tracking-wider font-medium">
+                Manager
+              </th>
               <th
                 className="text-left px-5 py-3 text-[11px] text-warm-gray uppercase tracking-wider font-medium cursor-pointer select-none hover:text-ink"
                 onClick={() => handleSort('city')}
@@ -375,6 +407,9 @@ export function AgencyLocationTable({ locations, orgs }: AgencyLocationTableProp
                 Status <SortIcon field="syncStatus" />
               </th>
               <th className="text-left px-5 py-3 text-[11px] text-warm-gray uppercase tracking-wider font-medium">
+                Tier
+              </th>
+              <th className="text-left px-5 py-3 text-[11px] text-warm-gray uppercase tracking-wider font-medium">
                 Lander
               </th>
               <th className="text-left px-5 py-3 w-10"></th>
@@ -383,7 +418,7 @@ export function AgencyLocationTable({ locations, orgs }: AgencyLocationTableProp
           <tbody className="bg-cream">
             {paginatedLocations.length === 0 ? (
               <tr>
-                <td colSpan={8} className="px-5 py-8 text-center text-warm-gray text-sm">
+                <td colSpan={10} className="px-5 py-8 text-center text-warm-gray text-sm">
                   No locations found
                 </td>
               </tr>
@@ -412,6 +447,13 @@ export function AgencyLocationTable({ locations, orgs }: AgencyLocationTableProp
                   <td className="px-5 py-3">
                     <div className="text-xs text-warm-gray">{location.orgName}</div>
                   </td>
+                  <td className="px-5 py-3">
+                    <ManagerSelect
+                      orgId={location.orgId}
+                      managers={orgManagers[location.orgId] || []}
+                      agencyMembers={agencyMembers}
+                    />
+                  </td>
                   <td className="px-5 py-3 text-sm text-ink">
                     {location.city || '—'}
                   </td>
@@ -431,6 +473,12 @@ export function AgencyLocationTable({ locations, orgs }: AgencyLocationTableProp
                   </td>
                   <td className="px-5 py-3">
                     {getStatusBadge(location.syncStatus)}
+                  </td>
+                  <td className="px-5 py-3">
+                    <TierSelect
+                      locationId={location.id}
+                      value={location.serviceTier}
+                    />
                   </td>
                   <td className="px-5 py-3">
                     {location.hasLander && (
@@ -580,6 +628,42 @@ export function AgencyLocationTable({ locations, orgs }: AgencyLocationTableProp
                 Create Landers
               </button>
 
+              <div className="w-px h-5 bg-cream/20" />
+
+              <button
+                onClick={() => setShowBulkEdit(true)}
+                className="px-4 py-1.5 bg-cream text-ink text-sm font-medium rounded hover:bg-cream/90"
+              >
+                Edit Profiles
+              </button>
+
+              <div className="w-px h-5 bg-cream/20" />
+
+              <select
+                defaultValue=""
+                onChange={async (e) => {
+                  const tier = e.target.value
+                  if (!tier) return
+                  const ids = Array.from(selectedLocationIds)
+                  for (const id of ids) {
+                    await fetch(`/api/locations/${id}/service-tier`, {
+                      method: 'PATCH',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({ service_tier: tier }),
+                    })
+                  }
+                  e.target.value = ''
+                  setSelectedLocationIds(new Set())
+                  router.refresh()
+                }}
+                className="px-3 py-1.5 border border-cream/20 rounded bg-ink text-cream text-sm"
+              >
+                <option value="">Set tier...</option>
+                <option value="starter">Starter</option>
+                <option value="standard">Standard</option>
+                <option value="premium">Premium</option>
+              </select>
+
               <button
                 onClick={() => setSelectedLocationIds(new Set())}
                 className="ml-auto px-3 py-1.5 text-sm text-cream/80 hover:text-cream"
@@ -590,6 +674,158 @@ export function AgencyLocationTable({ locations, orgs }: AgencyLocationTableProp
           )}
         </div>
       )}
+
+      {/* Bulk profile editor modal */}
+      {showBulkEdit && (
+        <BulkProfileEditor
+          locationIds={Array.from(selectedLocationIds)}
+          onClose={() => {
+            setShowBulkEdit(false)
+            setSelectedLocationIds(new Set())
+          }}
+        />
+      )}
     </div>
+  )
+}
+
+// ─── Tier Select ─────────────────────────────────────────────
+
+const tierStyles: Record<ServiceTier, { label: string; classes: string }> = {
+  starter: { label: 'Starter', classes: 'bg-gray-100 text-gray-600' },
+  standard: { label: 'Standard', classes: 'bg-blue-50 text-blue-700' },
+  premium: { label: 'Premium', classes: 'bg-amber-50 text-amber-700' },
+}
+
+function ManagerSelect({
+  orgId,
+  managers: initialManagers,
+  agencyMembers,
+}: {
+  orgId: string
+  managers: { userId: string; email: string }[]
+  agencyMembers: AgencyMember[]
+}) {
+  const [managers, setManagers] = useState(initialManagers)
+  const [open, setOpen] = useState(false)
+
+  const addManager = async (userId: string) => {
+    const member = agencyMembers.find((m) => m.id === userId)
+    if (!member) return
+
+    setManagers((prev) => [...prev, { userId, email: member.email }])
+    setOpen(false)
+
+    await fetch('/api/agency/account-managers', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ org_id: orgId, user_id: userId }),
+    })
+  }
+
+  const removeManager = async (userId: string) => {
+    setManagers((prev) => prev.filter((m) => m.userId !== userId))
+
+    await fetch('/api/agency/account-managers', {
+      method: 'DELETE',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ org_id: orgId, user_id: userId }),
+    })
+  }
+
+  const assignable = agencyMembers.filter(
+    (m) => !managers.some((mgr) => mgr.userId === m.id)
+  )
+
+  return (
+    <div className="relative">
+      {managers.length > 0 ? (
+        <div className="flex flex-wrap gap-1">
+          {managers.map((m) => (
+            <span
+              key={m.userId}
+              className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] bg-violet-50 text-violet-700"
+            >
+              {m.email.split('@')[0]}
+              <button
+                onClick={() => removeManager(m.userId)}
+                className="text-violet-400 hover:text-violet-700 leading-none"
+              >
+                x
+              </button>
+            </span>
+          ))}
+          {assignable.length > 0 && (
+            <button
+              onClick={() => setOpen(!open)}
+              className="text-[10px] text-warm-gray hover:text-ink"
+            >
+              +
+            </button>
+          )}
+        </div>
+      ) : (
+        <button
+          onClick={() => setOpen(!open)}
+          className="text-[10px] text-warm-gray hover:text-ink"
+        >
+          Assign...
+        </button>
+      )}
+
+      {open && (
+        <>
+          <div className="fixed inset-0 z-10" onClick={() => setOpen(false)} />
+          <div className="absolute z-20 mt-1 bg-cream border border-warm-border rounded-lg shadow-lg py-1 min-w-[160px]">
+            {assignable.map((m) => (
+              <button
+                key={m.id}
+                onClick={() => addManager(m.id)}
+                className="w-full text-left px-3 py-1.5 text-xs text-ink hover:bg-warm-light transition-colors"
+              >
+                {m.email.split('@')[0]}
+                <span className="text-warm-gray ml-1 text-[10px]">({m.email})</span>
+              </button>
+            ))}
+            {assignable.length === 0 && (
+              <div className="px-3 py-1.5 text-xs text-warm-gray">No members available</div>
+            )}
+          </div>
+        </>
+      )}
+    </div>
+  )
+}
+
+function TierSelect({ locationId, value }: { locationId: string; value: ServiceTier }) {
+  const [tier, setTier] = useState<ServiceTier>(value)
+  const [saving, setSaving] = useState(false)
+
+  const handleChange = async (newTier: ServiceTier) => {
+    setTier(newTier)
+    setSaving(true)
+    try {
+      await fetch(`/api/locations/${locationId}/service-tier`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ service_tier: newTier }),
+      })
+    } catch { /* ignore */ }
+    setSaving(false)
+  }
+
+  const style = tierStyles[tier]
+
+  return (
+    <select
+      value={tier}
+      onChange={(e) => handleChange(e.target.value as ServiceTier)}
+      disabled={saving}
+      className={`px-2 py-0.5 rounded text-xs font-medium border-none cursor-pointer ${style.classes} ${saving ? 'opacity-50' : ''}`}
+    >
+      <option value="starter">Starter</option>
+      <option value="standard">Standard</option>
+      <option value="premium">Premium</option>
+    </select>
   )
 }

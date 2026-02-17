@@ -52,14 +52,22 @@ Agency (single tenant, agency admin)
 
 ### 2. Environment Variables
 
-Copy `.env.example` to `.env.local`:
+Copy `.env.example` to `.env.local` and fill in values:
 
 ```
+# Required
 NEXT_PUBLIC_SUPABASE_URL=https://YOUR_PROJECT.supabase.co
 NEXT_PUBLIC_SUPABASE_ANON_KEY=your-anon-key
 SUPABASE_SERVICE_ROLE_KEY=your-service-role-key
 NEXT_PUBLIC_APP_URL=https://use.revet.app
+ANTHROPIC_API_KEY=your-anthropic-api-key
 RESEND_API_KEY=your-resend-key
+
+# Optional
+LOCALFALCON_API_KEY=your-localfalcon-api-key        # Rank tracking via LocalFalcon
+IDEOGRAM_API_KEY=your-ideogram-api-key              # GBP post image generation (text-only without)
+FALCON_AGENT_MODEL=claude-sonnet-4-5-20250929       # Claude model for Ask Rev agent
+CRON_SECRET=your-cron-secret                        # Cron job auth (required in production)
 ```
 
 ### 3. Run

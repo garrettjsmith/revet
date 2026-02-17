@@ -26,6 +26,16 @@ export interface OrgMember {
   email?: string
 }
 
+export interface OrgAccountManager {
+  id: string
+  org_id: string
+  user_id: string
+  created_at: string
+  // joined
+  email?: string
+  org_name?: string
+}
+
 export type LocationType = 'place' | 'practitioner' | 'service_area'
 
 export interface Location {
@@ -45,10 +55,14 @@ export interface Location {
   postal_code: string | null
   country: string
   metadata: Record<string, unknown>
+  service_tier: 'starter' | 'standard' | 'premium'
+  setup_status: 'pending' | 'audited' | 'optimizing' | 'optimized'
   active: boolean
   created_at: string
   updated_at: string
 }
+
+export type ServiceTier = 'starter' | 'standard' | 'premium'
 
 export interface ReviewProfile {
   id: string
@@ -177,6 +191,8 @@ export interface Review {
   sentiment: ReviewSentiment | null
   internal_notes: string | null
   assigned_to: string | null
+  ai_draft: string | null
+  ai_draft_generated_at: string | null
   platform_metadata: Record<string, unknown>
   fetched_at: string
   created_at: string
@@ -385,6 +401,100 @@ export interface GBPPost {
   updated_at: string
 }
 
+export type PostQueueStatus = 'draft' | 'client_review' | 'pending' | 'sending' | 'confirmed' | 'failed' | 'rejected'
+
+export interface GBPPostQueue {
+  id: string
+  location_id: string
+  topic_type: GBPPostTopicType
+  summary: string
+  action_type: string | null
+  action_url: string | null
+  media_url: string | null
+  event_title: string | null
+  event_start: string | null
+  event_end: string | null
+  offer_coupon_code: string | null
+  offer_terms: string | null
+  status: PostQueueStatus
+  scheduled_for: string | null
+  queued_by: string
+  assigned_to: string | null
+  topic_id: string | null
+  source: 'manual' | 'ai'
+  attempts: number
+  last_error: string | null
+  gbp_post_name: string | null
+  sent_at: string | null
+  created_at: string
+  updated_at: string
+}
+
+// Post Topics
+
+export type PostTopicSource = 'ai' | 'manual'
+
+export interface GBPPostTopic {
+  id: string
+  location_id: string
+  topic: string
+  source: PostTopicSource
+  used_at: string | null
+  used_in_queue_id: string | null
+  use_count: number
+  active: boolean
+  created_at: string
+}
+
+// Brand Config
+
+export interface BrandConfig {
+  id: string
+  org_id: string
+  brand_voice: string | null
+  design_style: string | null
+  primary_color: string | null
+  secondary_color: string | null
+  font_style: string | null
+  sample_image_urls: string[]
+  voice_selections: VoiceSelections
+  style_selections: StyleSelections
+  logo_url: string | null
+  post_approval_mode: 'approve_first' | 'auto_post'
+  created_at: string
+  updated_at: string
+}
+
+export interface VoiceSelections {
+  personality?: string
+  tone?: string[]
+  formality?: string
+  notes?: string
+}
+
+export interface StyleSelections {
+  aesthetic?: string
+  color_mood?: string
+  typography?: string
+  notes?: string
+}
+
+export interface IntakeData {
+  keywords?: string[]
+  services?: { name: string; description: string }[]
+  target_cities?: string[]
+  highlights?: string[]
+  founding_year?: string
+  founding_city?: string
+  service_radius?: string
+  hours_of_operation?: string
+  holiday_closures?: string
+  business_description?: string
+  additional_notes?: string
+  cloud_folder_url?: string
+  client_contact_phone?: string
+}
+
 // GBP Performance
 
 export interface GBPPerformanceMetric {
@@ -431,4 +541,79 @@ export interface ReviewReplyQueue {
   sent_at: string | null
   created_at: string
   updated_at: string
+}
+
+// Profile Optimization
+
+export type RecommendationStatus = 'pending' | 'approved' | 'client_review' | 'applied' | 'rejected'
+export type RecommendationField = 'description' | 'categories' | 'attributes' | 'hours'
+
+export interface ProfileRecommendation {
+  id: string
+  location_id: string
+  batch_id: string
+  field: RecommendationField
+  current_value: unknown
+  proposed_value: unknown
+  ai_rationale: string | null
+  status: RecommendationStatus
+  requires_client_approval: boolean
+  edited_value: unknown | null
+  approved_by: string | null
+  approved_at: string | null
+  applied_at: string | null
+  created_at: string
+}
+
+export interface AICorrection {
+  id: string
+  org_id: string
+  location_id: string | null
+  field: string
+  original_text: string
+  corrected_text: string
+  context: Record<string, unknown>
+  created_at: string
+}
+
+export interface AuditHistory {
+  id: string
+  location_id: string
+  score: number
+  sections: AuditSectionData[]
+  created_at: string
+}
+
+export interface AuditSectionData {
+  key: string
+  label: string
+  score: number
+  maxScore: number
+  status: 'good' | 'warning' | 'poor'
+  suggestion: string | null
+}
+
+// Chat
+
+export type ChatMessageRole = 'user' | 'assistant' | 'tool_call' | 'tool_result'
+
+export interface ChatConversation {
+  id: string
+  user_id: string
+  org_id: string | null
+  location_id: string | null
+  title: string | null
+  created_at: string
+  updated_at: string
+}
+
+export interface ChatMessage {
+  id: string
+  conversation_id: string
+  role: ChatMessageRole
+  content: string | null
+  tool_name: string | null
+  tool_input: Record<string, unknown> | null
+  tool_result: Record<string, unknown> | null
+  created_at: string
 }

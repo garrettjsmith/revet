@@ -1,5 +1,6 @@
 import { createAdminClient } from '@/lib/supabase/admin'
-import { sendEmail, buildReviewAlertEmail } from '@/lib/email'
+import { sendEmail, buildReviewAlertEmail, buildReviewResponseEmail } from '@/lib/email'
+import { generateReviewReply } from '@/lib/ai/generate-reply'
 import { NextRequest, NextResponse } from 'next/server'
 
 /**
@@ -19,7 +20,7 @@ import { NextRequest, NextResponse } from 'next/server'
 export async function POST(request: NextRequest) {
   try {
     const authHeader = request.headers.get('authorization')
-    const apiKey = process.env.REVIEW_SYNC_API_KEY
+    const apiKey = process.env.CRON_SECRET
 
     if (apiKey && authHeader !== `Bearer ${apiKey}`) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
@@ -48,14 +49,20 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'No reviews to sync' }, { status: 400 })
     }
 
-    // Pre-query existing review IDs so we only alert on truly new reviews
-    const { data: existingRows } = await supabase
-      .from('reviews')
-      .select('platform_review_id')
-      .eq('source_id', source_id)
-      .in('platform_review_id', incomingReviews.map((r: any) => r.platform_review_id))
+    // Pre-fetch existing reviews to detect new reviews and new replies
+    const platformReviewIds = incomingReviews
+      .map((r: any) => r.platform_review_id)
+      .filter(Boolean)
 
-    const existingIds = new Set((existingRows || []).map(r => r.platform_review_id))
+    const { data: existingReviews } = await supabase
+      .from('reviews')
+      .select('platform_review_id, reply_body')
+      .eq('source_id', source_id)
+      .in('platform_review_id', platformReviewIds)
+
+    const existingReplyMap = new Map(
+      (existingReviews || []).map((r: any) => [r.platform_review_id, r.reply_body])
+    )
 
     let processedCount = 0
 
@@ -100,10 +107,13 @@ export async function POST(request: NextRequest) {
       })
       .eq('id', source_id)
 
-    // Only alert on reviews that didn't previously exist — prevents flooding
+    // Filter to truly new reviews (not previously in DB) — prevents flooding
     // on initial sync or when cron/pubsub re-fetches known reviews
-    const newReviews = incomingReviews.filter((r: any) => !existingIds.has(r.platform_review_id))
+    const newReviews = incomingReviews.filter((r: any) =>
+      !existingReplyMap.has(r.platform_review_id) && !r.reply_body
+    )
 
+    // Process alert rules — only for new reviews, non-blocking
     if (newReviews.length > 0) {
       try {
         await processAlertRules(
@@ -117,6 +127,36 @@ export async function POST(request: NextRequest) {
       } catch (alertErr) {
         console.error('[reviews/sync] Alert processing failed (reviews still synced):', alertErr)
       }
+    }
+
+    // Detect reviews that newly received replies
+    const reviewsWithNewReplies = incomingReviews.filter((review: any) => {
+      if (!review.reply_body) return false
+      // Only alert if the review existed before without a reply
+      if (!existingReplyMap.has(review.platform_review_id)) return false
+      return !existingReplyMap.get(review.platform_review_id)
+    })
+
+    if (reviewsWithNewReplies.length > 0) {
+      await processResponseAlerts(
+        supabase,
+        (source.locations as any).org_id,
+        source.location_id,
+        (source.locations as any).name,
+        source.platform,
+        reviewsWithNewReplies
+      )
+    }
+
+    // Process autopilot for truly new reviews
+    if (newReviews.length > 0) {
+      await processAutopilot(
+        supabase,
+        source_id,
+        source.location_id,
+        (source.locations as any).name,
+        newReviews
+      )
     }
 
     return NextResponse.json({
@@ -153,9 +193,8 @@ async function processAlertRules(
     .eq('active', true)
     .or(`location_id.is.null,location_id.eq.${locationId}`)
 
-  if (!rules || rules.length === 0) return
-
   // Pre-fetch subscription-based emails for this location
+  // Always check subscriptions, even if no explicit rules exist
   const subEmailCache = new Map<string, string[]>()
   for (const alertType of ['new_review', 'negative_review']) {
     const { data: emails } = await supabase.rpc('get_subscription_emails', {
@@ -166,7 +205,8 @@ async function processAlertRules(
     subEmailCache.set(alertType, (emails || []).map((r: { email: string }) => r.email))
   }
 
-  for (const rule of rules) {
+  // Process explicit alert rules
+  for (const rule of rules || []) {
     for (const review of reviews) {
       let shouldAlert = false
 
@@ -196,31 +236,197 @@ async function processAlertRules(
       const allEmails = Array.from(new Set([...ruleEmails, ...subEmails]))
 
       if (allEmails.length > 0) {
-        const publishedAt = new Date(review.published_at).toLocaleDateString('en-US', {
-          weekday: 'short',
-          month: 'short',
-          day: 'numeric',
-          year: 'numeric',
-        })
+        sendAlertEmail(allEmails, rule.rule_type, locationName, platform, review)
+      }
+    }
+  }
 
-        sendEmail({
-          to: allEmails,
-          subject: rule.rule_type === 'negative_review'
-            ? `Negative review: ${locationName}`
-            : `New review: ${locationName}`,
-          html: buildReviewAlertEmail({
-            locationName,
-            platform,
-            reviewerName: review.reviewer_name,
-            rating: review.rating,
-            body: review.body,
-            publishedAt,
-            alertType: rule.rule_type,
-          }),
-        }).catch((err) => {
-          console.error('[reviews/sync] Alert email failed:', err)
+  // If no explicit 'new_review' rule exists, still notify subscription-based recipients
+  const hasNewReviewRule = (rules || []).some((r: any) => r.rule_type === 'new_review')
+  if (!hasNewReviewRule) {
+    const subEmails = subEmailCache.get('new_review') || []
+    if (subEmails.length > 0) {
+      for (const review of reviews) {
+        sendAlertEmail(subEmails, 'new_review', locationName, platform, review)
+      }
+    }
+  }
+
+  // If no explicit 'negative_review' rule exists, still notify subscription-based recipients
+  const hasNegativeRule = (rules || []).some((r: any) => r.rule_type === 'negative_review')
+  if (!hasNegativeRule) {
+    const subEmails = subEmailCache.get('negative_review') || []
+    if (subEmails.length > 0) {
+      for (const review of reviews) {
+        if (review.rating !== null && review.rating <= 3) {
+          sendAlertEmail(subEmails, 'negative_review', locationName, platform, review)
+        }
+      }
+    }
+  }
+}
+
+function sendAlertEmail(
+  emails: string[],
+  ruleType: string,
+  locationName: string,
+  platform: string,
+  review: any
+) {
+  const publishedAt = new Date(review.published_at).toLocaleDateString('en-US', {
+    weekday: 'short',
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric',
+  })
+
+  sendEmail({
+    to: emails,
+    subject: ruleType === 'negative_review'
+      ? `Negative review: ${locationName}`
+      : `New review: ${locationName}`,
+    html: buildReviewAlertEmail({
+      locationName,
+      platform,
+      reviewerName: review.reviewer_name,
+      rating: review.rating,
+      body: review.body,
+      publishedAt,
+      alertType: ruleType,
+    }),
+  }).catch((err) => {
+    console.error('[reviews/sync] Alert email failed:', err)
+  })
+}
+
+async function processResponseAlerts(
+  supabase: ReturnType<typeof createAdminClient>,
+  orgId: string,
+  locationId: string,
+  locationName: string,
+  platform: string,
+  reviews: any[]
+) {
+  const { data: emails } = await supabase.rpc('get_subscription_emails', {
+    p_org_id: orgId,
+    p_location_id: locationId,
+    p_alert_type: 'review_response',
+  })
+
+  const recipients = (emails || []).map((r: { email: string }) => r.email)
+  if (recipients.length === 0) return
+
+  for (const review of reviews) {
+    const repliedAt = new Date(review.reply_published_at || new Date()).toLocaleDateString('en-US', {
+      weekday: 'short',
+      month: 'short',
+      day: 'numeric',
+      year: 'numeric',
+    })
+
+    sendEmail({
+      to: recipients,
+      subject: `Response posted: ${locationName}`,
+      html: buildReviewResponseEmail({
+        locationName,
+        platform,
+        reviewerName: review.reviewer_name,
+        rating: review.rating,
+        reviewBody: review.body,
+        replyBody: review.reply_body,
+        repliedAt,
+      }),
+    }).catch((err) => {
+      console.error('[reviews/sync] Response alert email failed:', err)
+    })
+  }
+}
+
+async function processAutopilot(
+  supabase: ReturnType<typeof createAdminClient>,
+  sourceId: string,
+  locationId: string,
+  locationName: string,
+  reviews: any[]
+) {
+  if (!process.env.ANTHROPIC_API_KEY) return
+
+  // Check if autopilot is enabled for this location
+  const { data: config } = await supabase
+    .from('review_autopilot_config')
+    .select('*')
+    .eq('location_id', locationId)
+    .eq('enabled', true)
+    .single()
+
+  if (!config) return
+
+  const autoRatings: number[] = (config as any).auto_reply_ratings || [4, 5]
+
+  // Limit to 10 reviews per sync run to stay within timeout
+  const eligible = reviews
+    .filter((r: any) => r.rating !== null && autoRatings.includes(r.rating))
+    .slice(0, 10)
+
+  if (eligible.length === 0) return
+
+  for (const review of eligible) {
+    // Look up the DB review record
+    const { data: dbReview } = await supabase
+      .from('reviews')
+      .select('id, ai_draft')
+      .eq('source_id', sourceId)
+      .eq('platform_review_id', review.platform_review_id)
+      .single()
+
+    if (!dbReview || dbReview.ai_draft) continue
+
+    // Check no existing queue entry
+    const { data: existingQueue } = await supabase
+      .from('review_reply_queue')
+      .select('id')
+      .eq('review_id', dbReview.id)
+      .limit(1)
+
+    if (existingQueue && existingQueue.length > 0) continue
+
+    try {
+      const draft = await generateReviewReply({
+        businessName: locationName,
+        businessContext: (config as any).business_context,
+        reviewerName: review.reviewer_name,
+        rating: review.rating,
+        reviewBody: review.body,
+        tone: (config as any).tone,
+      })
+
+      // Save draft on the review
+      await supabase
+        .from('reviews')
+        .update({
+          ai_draft: draft,
+          ai_draft_generated_at: new Date().toISOString(),
+        })
+        .eq('id', dbReview.id)
+
+      // If not requiring approval, queue for auto-posting with random delay
+      if (!(config as any).require_approval) {
+        const minDelay = ((config as any).delay_min_minutes || 30) * 60 * 1000
+        const maxDelay = ((config as any).delay_max_minutes || 180) * 60 * 1000
+        const delay = minDelay + Math.random() * (maxDelay - minDelay)
+        const scheduledFor = new Date(Date.now() + delay).toISOString()
+
+        await supabase.from('review_reply_queue').insert({
+          review_id: dbReview.id,
+          reply_body: draft,
+          queued_by: '00000000-0000-0000-0000-000000000000',
+          status: 'pending',
+          source: 'ai_autopilot',
+          scheduled_for: scheduledFor,
         })
       }
+    } catch (err) {
+      console.error(`[reviews/sync] Autopilot generation failed for review ${dbReview.id}:`, err)
     }
   }
 }

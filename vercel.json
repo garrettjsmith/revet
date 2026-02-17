@@ -12,6 +12,42 @@
     {
       "path": "/api/google/profiles/sync",
       "schedule": "0 3 * * *"
+    },
+    {
+      "path": "/api/cron/review-digest",
+      "schedule": "0 14 * * *"
+    },
+    {
+      "path": "/api/cron/reply-queue",
+      "schedule": "*/5 * * * *"
+    },
+    {
+      "path": "/api/google/media/sync",
+      "schedule": "0 4 * * *"
+    },
+    {
+      "path": "/api/google/posts/sync",
+      "schedule": "0 5 * * *"
+    },
+    {
+      "path": "/api/cron/post-queue",
+      "schedule": "*/5 * * * *"
+    },
+    {
+      "path": "/api/cron/ai-drafts",
+      "schedule": "*/30 * * * *"
+    },
+    {
+      "path": "/api/cron/post-generate",
+      "schedule": "0 10 * * 1"
+    },
+    {
+      "path": "/api/cron/queue-digest",
+      "schedule": "0 13 * * *"
+    },
+    {
+      "path": "/api/cron/profile-optimize",
+      "schedule": "0 10 15 * *"
     }
   ]
 }

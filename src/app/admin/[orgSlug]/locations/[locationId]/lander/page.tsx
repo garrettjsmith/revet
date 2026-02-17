@@ -1,9 +1,11 @@
 import { createServerSupabase } from '@/lib/supabase/server'
+import { createAdminClient } from '@/lib/supabase/admin'
 import { getOrgBySlug } from '@/lib/org'
 import { getLocation, checkAgencyAdmin } from '@/lib/locations'
 import { getTemplate } from '@/lib/lander-templates'
 import { notFound } from 'next/navigation'
 import Link from 'next/link'
+import { GenerateAIContentCard } from './generate-ai-content'
 
 export const dynamic = 'force-dynamic'
 
@@ -51,6 +53,14 @@ export default async function LanderDashboardPage({
   }
 
   const landerUrl = `${process.env.NEXT_PUBLIC_APP_URL || 'https://use.revet.app'}/l/${lander.slug}`
+
+  // Fetch lander stats
+  const adminClient = createAdminClient()
+  const { data: stats } = await adminClient
+    .from('lander_stats')
+    .select('*')
+    .eq('lander_id', lander.id)
+    .single()
 
   return (
     <div>
@@ -101,6 +111,39 @@ export default async function LanderDashboardPage({
         <InfoCard label="FAQ" value={lander.show_faq ? 'Shown' : 'Hidden'} />
       </div>
 
+      {/* Performance Stats */}
+      {stats && (stats.total_views > 0 || stats.total_phone_clicks > 0) && (
+        <div className="mb-8">
+          <h2 className="text-sm font-medium text-ink mb-3">Performance</h2>
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+            <StatCard label="Page Views" value={stats.views_30d || 0} subLabel="30 days" total={stats.total_views || 0} />
+            <StatCard label="Phone Clicks" value={stats.phone_clicks_7d || 0} subLabel="7 days" total={stats.total_phone_clicks || 0} />
+            <StatCard label="Direction Clicks" value={stats.directions_clicks_7d || 0} subLabel="7 days" total={stats.total_directions_clicks || 0} />
+            <StatCard label="Website Clicks" value={stats.website_clicks_7d || 0} subLabel="7 days" total={stats.total_website_clicks || 0} />
+          </div>
+        </div>
+      )}
+
+      {/* Stale content alert */}
+      {lander.ai_content_stale && (
+        <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 mb-6">
+          <div className="text-xs font-medium text-amber-700 mb-1">Content Outdated</div>
+          <div className="text-xs text-amber-600">
+            Business profile has been updated since this lander content was last generated.
+            {isAgencyAdmin && ' Regenerate to keep the landing page accurate.'}
+          </div>
+        </div>
+      )}
+
+      {/* AI Content */}
+      {isAgencyAdmin && (
+        <GenerateAIContentCard
+          landerId={lander.id}
+          generatedAt={lander.ai_content_generated_at}
+          hasContent={!!lander.ai_content}
+        />
+      )}
+
       {/* Last updated */}
       <div className="border border-warm-border rounded-xl p-4">
         <div className="text-[11px] text-warm-gray uppercase tracking-wider mb-1">Last Updated</div>
@@ -144,6 +187,18 @@ function InfoCard({ label, value }: { label: string; value: string }) {
     <div className="border border-warm-border rounded-xl p-4">
       <div className="text-[11px] text-warm-gray uppercase tracking-wider mb-1">{label}</div>
       <div className="text-sm font-medium text-ink">{value}</div>
+    </div>
+  )
+}
+
+function StatCard({ label, value, subLabel, total }: { label: string; value: number; subLabel: string; total: number }) {
+  return (
+    <div className="border border-warm-border rounded-xl p-4">
+      <div className="text-[11px] text-warm-gray uppercase tracking-wider mb-1">{label}</div>
+      <div className="text-xl font-serif text-ink">{value.toLocaleString()}</div>
+      <div className="text-[10px] text-warm-gray mt-0.5">
+        {subLabel} · {total.toLocaleString()} total
+      </div>
     </div>
   )
 }

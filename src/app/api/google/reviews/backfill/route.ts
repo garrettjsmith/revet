@@ -21,7 +21,7 @@ export const maxDuration = 300
  */
 export async function POST(request: NextRequest) {
   const authHeader = request.headers.get('authorization')
-  const apiKey = process.env.REVIEW_SYNC_API_KEY
+  const apiKey = process.env.CRON_SECRET
 
   // Allow API key auth OR authenticated agency admin
   let authorized = false

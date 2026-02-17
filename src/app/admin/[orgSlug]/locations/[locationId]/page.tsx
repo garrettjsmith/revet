@@ -6,6 +6,8 @@ import { notFound } from 'next/navigation'
 import Link from 'next/link'
 import type { ProfileStats, FormTemplate, Review, GBPProfile } from '@/lib/types'
 import AuditTrail from '@/components/audit-trail'
+import { PerformanceMini } from '@/components/performance-mini'
+import { RecentLocationTracker } from '@/components/recent-location-tracker'
 
 export const dynamic = 'force-dynamic'
 
@@ -29,6 +31,10 @@ export default async function LocationDetailPage({
   const basePath = `/admin/${params.orgSlug}/locations/${params.locationId}`
   const isAgencyAdmin = await checkAgencyAdmin()
 
+  const now = new Date()
+  const thirtyDaysAgo = new Date(now)
+  thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30)
+
   // Run all independent queries in parallel
   const [
     { data: forms },
@@ -38,6 +44,7 @@ export default async function LocationDetailPage({
     { data: reviewSource },
     { data: gbpProfile },
     { data: stats },
+    { data: allReviews },
   ] = await Promise.all([
     supabase
       .from('form_templates')
@@ -75,6 +82,10 @@ export default async function LocationDetailPage({
       .select('*')
       .eq('location_id', location.id)
       .returns<ProfileStats[]>(),
+    adminClient
+      .from('reviews')
+      .select('rating, published_at, reply_body')
+      .eq('location_id', location.id),
   ])
 
   const formList = (forms || []) as FormTemplate[]
@@ -90,6 +101,40 @@ export default async function LocationDetailPage({
     ? ({ active: 'Synced', error: 'Sync error', paused: 'Paused', pending: 'Pending' }[reviewSource.sync_status as string] || 'Pending')
     : 'Not linked'
 
+  // Health calculation
+  const allRevs = allReviews || []
+  const totalRevs = allRevs.length
+  const avgRating = reviewSource?.average_rating ? Number(reviewSource.average_rating) : null
+  const repliedCount = allRevs.filter((r: any) => r.reply_body).length
+  const responseRate = totalRevs > 0 ? Math.round((repliedCount / totalRevs) * 100) : 0
+  const lastReviewDate = allRevs.length > 0
+    ? allRevs.reduce((latest: string | null, r: any) => {
+        if (!latest || (r.published_at && r.published_at > latest)) return r.published_at
+        return latest
+      }, null as string | null)
+    : null
+  const daysSinceLastReview = lastReviewDate
+    ? Math.floor((now.getTime() - new Date(lastReviewDate).getTime()) / 86400000)
+    : null
+
+  let health: 'healthy' | 'attention' | 'at_risk' = 'healthy'
+  const healthReasons: string[] = []
+  if (avgRating !== null && avgRating < 3.0) { health = 'at_risk'; healthReasons.push('Rating below 3.0') }
+  else if (avgRating !== null && avgRating < 4.0) { health = 'attention'; healthReasons.push('Rating below 4.0') }
+  if (daysSinceLastReview !== null && daysSinceLastReview > 60) { health = 'at_risk'; healthReasons.push('No reviews in 60+ days') }
+  else if (daysSinceLastReview !== null && daysSinceLastReview > 30 && health !== 'at_risk') { health = 'attention'; healthReasons.push('No reviews in 30+ days') }
+  if (responseRate < 50 && totalRevs > 0) {
+    if (health === 'healthy') health = 'attention'
+    healthReasons.push(`Response rate ${responseRate}%`)
+  }
+
+  const healthConfig = {
+    healthy: { label: 'Healthy', classes: 'border-emerald-200 bg-emerald-50/50', textClass: 'text-emerald-700', dotClass: 'bg-emerald-500' },
+    attention: { label: 'Needs Attention', classes: 'border-amber-200 bg-amber-50/50', textClass: 'text-amber-700', dotClass: 'bg-amber-500' },
+    at_risk: { label: 'At Risk', classes: 'border-red-200 bg-red-50/50', textClass: 'text-red-700', dotClass: 'bg-red-500' },
+  }
+  const hc = healthConfig[health]
+
   const statCards = [
     { label: 'Reviews', value: reviewCount || 0 },
     { label: 'Avg Rating', value: reviewSource?.average_rating ? Number(reviewSource.average_rating).toFixed(1) : '—' },
@@ -99,6 +144,14 @@ export default async function LocationDetailPage({
 
   return (
     <div>
+      <RecentLocationTracker
+        locationId={location.id}
+        locationName={location.name}
+        city={location.city}
+        state={location.state}
+        orgSlug={params.orgSlug}
+        orgName={org.name}
+      />
       {/* Location header */}
       <div className="flex items-center justify-between mb-6">
         <div>
@@ -146,6 +199,75 @@ export default async function LocationDetailPage({
         ))}
       </div>
 
+      {/* Health Status */}
+      <div className={`border rounded-xl px-5 py-4 mb-8 ${hc.classes}`}>
+        <div className="flex items-center justify-between mb-3">
+          <div className="flex items-center gap-2.5">
+            <div className={`w-2.5 h-2.5 rounded-full ${hc.dotClass}`} />
+            <span className={`text-sm font-medium ${hc.textClass}`}>{hc.label}</span>
+          </div>
+          <div className="flex items-center gap-4 text-xs text-warm-gray">
+            <span>{responseRate}% response rate</span>
+            {daysSinceLastReview !== null && (
+              <span>Last review {daysSinceLastReview}d ago</span>
+            )}
+          </div>
+        </div>
+        {/* Factor breakdown */}
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+          {/* Rating factor */}
+          <div className="flex items-start gap-2">
+            <div className={`w-1.5 h-1.5 rounded-full mt-1.5 shrink-0 ${
+              avgRating === null ? 'bg-warm-border' : avgRating >= 4.0 ? 'bg-emerald-500' : avgRating >= 3.0 ? 'bg-amber-500' : 'bg-red-500'
+            }`} />
+            <div>
+              <div className="text-xs text-ink font-medium">
+                Rating: {avgRating !== null ? avgRating.toFixed(1) : 'N/A'}
+              </div>
+              <div className="text-[10px] text-warm-gray">
+                {avgRating === null ? 'No rating data yet'
+                  : avgRating >= 4.0 ? 'Above 4.0 target'
+                  : avgRating >= 3.0 ? 'Below 4.0 — aim for more positive reviews'
+                  : 'Below 3.0 — address negative reviews urgently'}
+              </div>
+            </div>
+          </div>
+          {/* Recency factor */}
+          <div className="flex items-start gap-2">
+            <div className={`w-1.5 h-1.5 rounded-full mt-1.5 shrink-0 ${
+              daysSinceLastReview === null ? 'bg-warm-border' : daysSinceLastReview <= 30 ? 'bg-emerald-500' : daysSinceLastReview <= 60 ? 'bg-amber-500' : 'bg-red-500'
+            }`} />
+            <div>
+              <div className="text-xs text-ink font-medium">
+                Recency: {daysSinceLastReview !== null ? `${daysSinceLastReview}d ago` : 'No reviews'}
+              </div>
+              <div className="text-[10px] text-warm-gray">
+                {daysSinceLastReview === null ? 'No reviews to measure'
+                  : daysSinceLastReview <= 30 ? 'Recent activity within 30 days'
+                  : daysSinceLastReview <= 60 ? 'No reviews in 30+ days — request new reviews'
+                  : 'No reviews in 60+ days — review generation needed'}
+              </div>
+            </div>
+          </div>
+          {/* Response rate factor */}
+          <div className="flex items-start gap-2">
+            <div className={`w-1.5 h-1.5 rounded-full mt-1.5 shrink-0 ${
+              totalRevs === 0 ? 'bg-warm-border' : responseRate >= 50 ? 'bg-emerald-500' : 'bg-amber-500'
+            }`} />
+            <div>
+              <div className="text-xs text-ink font-medium">
+                Response rate: {responseRate}%
+              </div>
+              <div className="text-[10px] text-warm-gray">
+                {totalRevs === 0 ? 'No reviews to respond to'
+                  : responseRate >= 50 ? `Replying to ${repliedCount} of ${totalRevs} reviews`
+                  : `Only ${repliedCount} of ${totalRevs} replied — reply to pending reviews`}
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
       {/* Google Business Profile */}
       <div className="border border-warm-border rounded-xl overflow-hidden mb-8">
         <div className="px-5 py-4 border-b border-warm-border flex items-center justify-between">
@@ -158,42 +280,45 @@ export default async function LocationDetailPage({
           </Link>
         </div>
         {gbp ? (
-          <div className="px-5 py-4 flex items-center justify-between">
-            <div className="flex items-center gap-4">
-              <span className={`inline-flex items-center gap-1.5 text-xs font-medium ${
-                gbp.open_status === 'OPEN' ? 'text-emerald-600' : 'text-amber-600'
-              }`}>
-                <span className={`w-1.5 h-1.5 rounded-full ${
-                  gbp.open_status === 'OPEN' ? 'bg-emerald-500' : 'bg-amber-500'
-                }`} />
-                {gbp.open_status === 'OPEN' ? 'Open' : gbp.open_status === 'CLOSED_TEMPORARILY' ? 'Temporarily Closed' : gbp.open_status || 'Unknown'}
-              </span>
-              {gbp.primary_category_name && (
-                <>
-                  <span className="text-warm-border">&middot;</span>
-                  <span className="text-xs text-warm-gray">{gbp.primary_category_name}</span>
-                </>
-              )}
-              {gbp.last_synced_at && (
-                <>
-                  <span className="text-warm-border">&middot;</span>
-                  <span className="text-xs text-warm-gray">
-                    Synced {new Date(gbp.last_synced_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
-                  </span>
-                </>
+          <>
+            <div className="px-5 py-4 flex items-center justify-between">
+              <div className="flex items-center gap-4">
+                <span className={`inline-flex items-center gap-1.5 text-xs font-medium ${
+                  gbp.open_status === 'OPEN' ? 'text-emerald-600' : 'text-amber-600'
+                }`}>
+                  <span className={`w-1.5 h-1.5 rounded-full ${
+                    gbp.open_status === 'OPEN' ? 'bg-emerald-500' : 'bg-amber-500'
+                  }`} />
+                  {gbp.open_status === 'OPEN' ? 'Open' : gbp.open_status === 'CLOSED_TEMPORARILY' ? 'Temporarily Closed' : gbp.open_status || 'Unknown'}
+                </span>
+                {gbp.primary_category_name && (
+                  <>
+                    <span className="text-warm-border">&middot;</span>
+                    <span className="text-xs text-warm-gray">{gbp.primary_category_name}</span>
+                  </>
+                )}
+                {gbp.last_synced_at && (
+                  <>
+                    <span className="text-warm-border">&middot;</span>
+                    <span className="text-xs text-warm-gray">
+                      Synced {new Date(gbp.last_synced_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+                    </span>
+                  </>
+                )}
+              </div>
+              {gbp.maps_uri && (
+                <a
+                  href={gbp.maps_uri}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-xs text-warm-gray hover:text-ink no-underline transition-colors"
+                >
+                  Maps →
+                </a>
               )}
             </div>
-            {gbp.maps_uri && (
-              <a
-                href={gbp.maps_uri}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="text-xs text-warm-gray hover:text-ink no-underline transition-colors"
-              >
-                Maps →
-              </a>
-            )}
-          </div>
+            <PerformanceMini locationId={location.id} />
+          </>
         ) : reviewSource ? (
           <div className="px-5 py-4 flex items-center justify-between">
             <div className="flex items-center gap-4">

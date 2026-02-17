@@ -90,7 +90,7 @@ export async function POST(request: NextRequest) {
     // Normalize and sync
     const normalizedReviews = data.reviews.map(normalizeGoogleReview)
 
-    const apiKey = process.env.REVIEW_SYNC_API_KEY
+    const apiKey = process.env.CRON_SECRET
     const syncResponse = await fetch(`${process.env.NEXT_PUBLIC_APP_URL}/api/reviews/sync`, {
       method: 'POST',
       headers: {

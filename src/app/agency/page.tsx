@@ -2,6 +2,7 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { requireAgencyAdmin } from '@/lib/locations'
 import Link from 'next/link'
 import { SyncNowButton } from '@/components/sync-now-button'
+import { ActionItems } from '@/components/action-items'
 
 export const dynamic = 'force-dynamic'
 
@@ -41,7 +42,6 @@ export default async function AgencyOverview() {
     { count: locationCount },
     { count: reviewCount },
     { data: reviewSources },
-    { data: organizations },
   ] = await Promise.all([
     adminClient.from('organizations').select('*', { count: 'exact', head: true }),
     adminClient.from('locations').select('*', { count: 'exact', head: true }),
@@ -49,16 +49,6 @@ export default async function AgencyOverview() {
     adminClient
       .from('review_sources')
       .select('id, sync_status, last_synced_at, location_id, platform, locations(name, org_id, organizations(name, slug))'),
-    adminClient
-      .from('organizations')
-      .select(`
-        id,
-        name,
-        slug,
-        locations(id),
-        reviews:locations(reviews(id, rating))
-      `)
-      .order('name'),
   ])
 
   // Calculate sync health metrics
@@ -79,28 +69,12 @@ export default async function AgencyOverview() {
     (source: any) => source.sync_status !== 'active'
   ) || []) as unknown as ReviewSource[]
 
-  // Calculate org metrics
-  const orgMetrics = organizations?.map((org: any) => {
-    const locationCount = org.locations?.length || 0
-    const allReviews = org.locations?.flatMap((loc: any) => loc.reviews || []) || []
-    const reviewCount = allReviews.length
-    const avgRating = reviewCount > 0
-      ? allReviews.reduce((sum: number, r: any) => sum + (r.rating || 0), 0) / reviewCount
-      : null
-
-    return {
-      id: org.id,
-      name: org.name,
-      slug: org.slug,
-      locationCount,
-      reviewCount,
-      avgRating,
-    }
-  }) || []
-
   return (
     <div>
       <h1 className="text-2xl font-serif text-ink mb-8">Agency Overview</h1>
+
+      {/* Action Items — what needs attention */}
+      <ActionItems apiPath="/api/agency/action-items" />
 
       {/* Stat cards */}
       <div className="grid grid-cols-4 gap-4 mb-8">
@@ -241,69 +215,19 @@ export default async function AgencyOverview() {
         </div>
       </div>
 
-      {/* Organizations table */}
-      <div className="border border-warm-border rounded-xl overflow-hidden">
-        <div className="px-5 py-4 border-b border-warm-border">
-          <h2 className="text-sm font-semibold text-ink">Organizations</h2>
+      {/* Organizations quick link */}
+      <div className="border border-warm-border rounded-xl px-5 py-4 flex items-center justify-between">
+        <div className="text-sm text-warm-gray">
+          <span className="font-medium text-ink">{orgCount || 0}</span> organizations
+          {' · '}
+          <span className="font-medium text-ink">{locationCount || 0}</span> locations
         </div>
-        {orgMetrics.length === 0 ? (
-          <div className="p-12 text-center text-warm-gray text-sm">
-            No organizations yet.
-          </div>
-        ) : (
-          <table className="w-full">
-            <thead>
-              <tr className="border-b border-warm-border">
-                <th className="text-left text-[11px] text-warm-gray uppercase tracking-wider font-medium px-5 py-3">
-                  Organization
-                </th>
-                <th className="text-left text-[11px] text-warm-gray uppercase tracking-wider font-medium px-5 py-3">
-                  Locations
-                </th>
-                <th className="text-left text-[11px] text-warm-gray uppercase tracking-wider font-medium px-5 py-3">
-                  Reviews
-                </th>
-                <th className="text-left text-[11px] text-warm-gray uppercase tracking-wider font-medium px-5 py-3">
-                  Avg Rating
-                </th>
-                <th className="text-left text-[11px] text-warm-gray uppercase tracking-wider font-medium px-5 py-3">
-
-                </th>
-              </tr>
-            </thead>
-            <tbody>
-              {orgMetrics.map((org: any) => (
-                <tr key={org.id} className="border-b border-warm-border/50 hover:bg-warm-light/50">
-                  <td className="px-5 py-3.5">
-                    <Link
-                      href={`/admin/${org.slug}`}
-                      className="text-sm font-medium text-ink hover:underline"
-                    >
-                      {org.name}
-                    </Link>
-                  </td>
-                  <td className="px-5 py-3.5 text-sm text-warm-gray">
-                    {org.locationCount}
-                  </td>
-                  <td className="px-5 py-3.5 text-sm text-warm-gray">
-                    {org.reviewCount}
-                  </td>
-                  <td className="px-5 py-3.5 text-sm text-warm-gray">
-                    {org.avgRating !== null ? org.avgRating.toFixed(1) : '—'}
-                  </td>
-                  <td className="px-5 py-3.5">
-                    <Link
-                      href={`/admin/${org.slug}`}
-                      className="text-xs text-warm-gray hover:text-ink no-underline"
-                    >
-                      View →
-                    </Link>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        )}
+        <Link
+          href="/agency/organizations"
+          className="text-xs text-warm-gray hover:text-ink no-underline transition-colors"
+        >
+          View all →
+        </Link>
       </div>
     </div>
   )
