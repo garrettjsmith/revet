@@ -1,6 +1,6 @@
 'use client'
 
-type FilterType = 'all' | 'reviews' | 'posts' | 'profiles' | 'errors' | 'landers'
+type FilterType = 'all' | 'reviews' | 'posts' | 'profiles' | 'errors' | 'landers' | 'citations'
 type ScopeType = 'all' | 'mine'
 
 interface FeedHeaderProps {
@@ -11,6 +11,7 @@ interface FeedHeaderProps {
     profiles: number
     errors: number
     landers: number
+    citations: number
   } | null
   filter: FilterType
   setFilter: (f: FilterType) => void
@@ -19,15 +20,16 @@ interface FeedHeaderProps {
   isAgencyAdmin: boolean
 }
 
-type CountKeys = 'total' | 'reviews' | 'posts' | 'profiles' | 'errors' | 'landers'
+type CountKeys = 'total' | 'reviews' | 'posts' | 'profiles' | 'errors' | 'landers' | 'citations'
 
 const TABS: { key: FilterType; label: string; countKey: CountKeys }[] = [
   { key: 'all', label: 'All', countKey: 'total' },
   { key: 'reviews', label: 'Reviews', countKey: 'reviews' },
   { key: 'posts', label: 'Posts', countKey: 'posts' },
   { key: 'profiles', label: 'Profiles', countKey: 'profiles' },
-  { key: 'errors', label: 'Errors', countKey: 'errors' },
+  { key: 'citations', label: 'Citations', countKey: 'citations' },
   { key: 'landers', label: 'Landers', countKey: 'landers' },
+  { key: 'errors', label: 'Errors', countKey: 'errors' },
 ]
 
 export function FeedHeader({ counts, filter, setFilter, scope, setScope, isAgencyAdmin }: FeedHeaderProps) {

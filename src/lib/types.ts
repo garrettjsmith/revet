@@ -594,6 +594,51 @@ export interface AuditSectionData {
   suggestion: string | null
 }
 
+// Citations
+
+export type CitationAuditStatus = 'pending' | 'running' | 'completed' | 'failed'
+export type CitationListingStatus = 'found' | 'action_needed' | 'submitted' | 'verified' | 'not_listed' | 'dismissed'
+
+export interface CitationAudit {
+  id: string
+  location_id: string
+  brightlocal_report_id: string
+  status: CitationAuditStatus
+  total_found: number
+  total_correct: number
+  total_incorrect: number
+  total_missing: number
+  last_error: string | null
+  started_at: string | null
+  completed_at: string | null
+  created_at: string
+}
+
+export interface CitationListing {
+  id: string
+  location_id: string
+  audit_id: string | null
+  directory_name: string
+  directory_url: string | null
+  listing_url: string | null
+  expected_name: string | null
+  expected_address: string | null
+  expected_phone: string | null
+  found_name: string | null
+  found_address: string | null
+  found_phone: string | null
+  nap_correct: boolean
+  name_match: boolean
+  address_match: boolean
+  phone_match: boolean
+  status: CitationListingStatus
+  ai_recommendation: string | null
+  assigned_to: string | null
+  last_checked_at: string | null
+  created_at: string
+  updated_at: string
+}
+
 // Chat
 
 export type ChatMessageRole = 'user' | 'assistant' | 'tool_call' | 'tool_result'

@@ -48,6 +48,10 @@
     {
       "path": "/api/cron/profile-optimize",
       "schedule": "0 10 15 * *"
+    },
+    {
+      "path": "/api/cron/citation-sync",
+      "schedule": "0 6 * * *"
     }
   ]
 }

@@ -38,6 +38,7 @@ const TYPE_LABELS: Record<string, string> = {
   google_update: 'Google Updates',
   sync_error: 'Sync Errors',
   stale_lander: 'Stale Landers',
+  citation: 'Citation Issues',
 }
 
 const TYPE_LABEL_SINGULAR: Record<string, string> = {
@@ -48,6 +49,7 @@ const TYPE_LABEL_SINGULAR: Record<string, string> = {
   google_update: 'Google Update',
   sync_error: 'Sync Error',
   stale_lander: 'Stale Lander',
+  citation: 'Citation Issue',
 }
 
 function getTypeLabel(type: string, count: number) {
@@ -317,6 +319,15 @@ function PreviewLine({ item }: { item: WorkItem }) {
     return (
       <div className="text-[11px] text-amber-600 truncate">
         {item.location_name}: /l/{item.stale_lander.slug}
+      </div>
+    )
+  }
+
+  if (item.type === 'citation' && item.citation) {
+    const isNotListed = item.citation.status === 'not_listed'
+    return (
+      <div className="text-[11px] text-teal-600 truncate">
+        {item.location_name}: {item.citation.directory_name} — {isNotListed ? 'not listed' : 'NAP mismatch'}
       </div>
     )
   }
