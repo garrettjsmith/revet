@@ -16,7 +16,7 @@ const FULL_READ_MASK = [
   'name', 'title', 'storeCode', 'languageCode', 'phoneNumbers',
   'categories', 'storefrontAddress', 'websiteUri', 'regularHours',
   'specialHours', 'serviceArea', 'labels', 'latlng', 'openInfo',
-  'metadata', 'profile', 'moreHours', 'serviceItems',
+  'metadata', 'profile', 'moreHours', 'serviceItems', 'menuUri',
 ].join(',')
 
 // ─── Profile Fetch ──────────────────────────────────────────
@@ -69,6 +69,7 @@ export interface GBPProfileRaw {
   }
   profile?: { description?: string }
   serviceItems?: Array<Record<string, unknown>>
+  menuUri?: string
 }
 
 /**
@@ -92,14 +93,24 @@ export async function fetchGBPProfile(locationName: string): Promise<GBPProfileR
  * Transform raw Google profile data into our DB column format.
  */
 export function normalizeGBPProfile(raw: GBPProfileRaw) {
+  // Infer verification state from hasVoiceOfMerchant (separate Verification API
+  // is not needed — VoM true means the business is verified and owner-confirmed).
+  const verificationState = raw.metadata?.hasVoiceOfMerchant === true
+    ? 'VERIFIED'
+    : raw.metadata?.hasVoiceOfMerchant === false
+      ? 'UNVERIFIED'
+      : null
+
   return {
     business_name: raw.title || null,
     description: raw.profile?.description || null,
     website_uri: raw.websiteUri || null,
+    menu_uri: raw.menuUri || null,
     phone_primary: raw.phoneNumbers?.primaryPhone || null,
     primary_category_id: raw.categories?.primaryCategory?.name?.replace('categories/', '') || null,
     primary_category_name: raw.categories?.primaryCategory?.displayName || null,
     open_status: raw.openInfo?.status || null,
+    verification_state: verificationState,
     latitude: raw.latlng?.latitude || null,
     longitude: raw.latlng?.longitude || null,
     maps_uri: raw.metadata?.mapsUri || null,

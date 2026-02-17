@@ -47,13 +47,22 @@ export async function POST(request: NextRequest) {
   const startStr = body.date_range?.start || startDate.toISOString().split('T')[0]
   const endStr = body.date_range?.end || endDate.toISOString().split('T')[0]
 
-  // Get GBP location mappings (up to 10 per run, only those linked to a location)
-  const { data: mappings } = await supabase
+  // Get ALL GBP location mappings linked to a location, then pick the 10
+  // least-recently-synced so every location rotates through over multiple runs.
+  const { data: allMappings } = await supabase
     .from('agency_integration_mappings')
-    .select('external_resource_id, location_id, external_resource_name')
+    .select('id, external_resource_id, location_id, external_resource_name, metadata')
     .eq('resource_type', 'gbp_location')
     .not('location_id', 'is', null)
-    .limit(10)
+
+  // Sort by last_performance_sync_at (nulls first = never synced), take first 10
+  const mappings = (allMappings || [])
+    .sort((a, b) => {
+      const aTime = (a.metadata as any)?.last_performance_sync_at || ''
+      const bTime = (b.metadata as any)?.last_performance_sync_at || ''
+      return aTime.localeCompare(bTime)
+    })
+    .slice(0, 10)
 
   if (!mappings || mappings.length === 0) {
     return NextResponse.json({ ok: true, message: 'No GBP locations mapped', synced: 0 })
@@ -70,6 +79,10 @@ export async function POST(request: NextRequest) {
       const metrics = await fetchPerformanceMetrics(locationName, startStr, endStr)
 
       if (metrics.length === 0) {
+        console.warn(
+          `[performance/sync] No metrics returned for ${mapping.external_resource_name || mapping.external_resource_id}`,
+          `(location_id: ${mapping.location_id}, range: ${startStr} to ${endStr})`
+        )
         results.push({ location_id: mapping.location_id!, metrics_synced: 0 })
         continue
       }
@@ -91,6 +104,13 @@ export async function POST(request: NextRequest) {
         results.push({ location_id: mapping.location_id!, metrics_synced: 0, error: upsertError.message })
       } else {
         results.push({ location_id: mapping.location_id!, metrics_synced: rows.length })
+
+        // Update mapping metadata so this location rotates to the back of the queue
+        const existingMeta = (mapping.metadata as Record<string, unknown>) || {}
+        await supabase
+          .from('agency_integration_mappings')
+          .update({ metadata: { ...existingMeta, last_performance_sync_at: new Date().toISOString() } })
+          .eq('id', mapping.id)
       }
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'Unknown error'

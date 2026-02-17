@@ -58,13 +58,16 @@ export async function fetchPerformanceMetrics(
   startDate: string,
   endDate: string
 ): Promise<Array<{ date: string; metric: string; value: number }>> {
+  // Google's API expects integer values (e.g. 2, not "02") for date fields
+  const [sYear, sMonth, sDay] = startDate.split('-')
+  const [eYear, eMonth, eDay] = endDate.split('-')
   const params = new URLSearchParams({
-    'dailyRange.startDate.year': startDate.split('-')[0],
-    'dailyRange.startDate.month': startDate.split('-')[1],
-    'dailyRange.startDate.day': startDate.split('-')[2],
-    'dailyRange.endDate.year': endDate.split('-')[0],
-    'dailyRange.endDate.month': endDate.split('-')[1],
-    'dailyRange.endDate.day': endDate.split('-')[2],
+    'dailyRange.startDate.year': sYear,
+    'dailyRange.startDate.month': String(parseInt(sMonth, 10)),
+    'dailyRange.startDate.day': String(parseInt(sDay, 10)),
+    'dailyRange.endDate.year': eYear,
+    'dailyRange.endDate.month': String(parseInt(eMonth, 10)),
+    'dailyRange.endDate.day': String(parseInt(eDay, 10)),
   })
 
   // Add all metrics
@@ -83,6 +86,14 @@ export async function fetchPerformanceMetrics(
 
   const data: MultiDailyMetricResponse = await response.json()
   const rows: Array<{ date: string; metric: string; value: number }> = []
+
+  if (!data.multiDailyMetricTimeSeries || data.multiDailyMetricTimeSeries.length === 0) {
+    console.warn(
+      `[performance] Empty multiDailyMetricTimeSeries for ${locationName}`,
+      `(range: ${startDate} to ${endDate}).`,
+      `Response keys: ${JSON.stringify(Object.keys(data))}`
+    )
+  }
 
   for (const series of data.multiDailyMetricTimeSeries || []) {
     const metricName = METRIC_DB_MAP[series.dailyMetric] || series.dailyMetric

@@ -120,7 +120,7 @@ export async function POST(request: NextRequest) {
             gbp_location_name: locationName,
             gbp_account_name: accountName,
             ...normalized,
-            attributes: attributes.length > 0 ? attributes : normalized.raw_google_data,
+            attributes: attributes,
             sync_status: 'active',
             last_synced_at: new Date().toISOString(),
             sync_error: null,

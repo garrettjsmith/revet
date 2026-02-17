@@ -328,6 +328,7 @@ export interface GBPProfile {
   business_name: string | null
   description: string | null
   website_uri: string | null
+  menu_uri: string | null
   phone_primary: string | null
   primary_category_id: string | null
   primary_category_name: string | null

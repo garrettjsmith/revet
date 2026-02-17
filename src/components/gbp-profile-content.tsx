@@ -238,6 +238,32 @@ export function GBPProfileContent({ profile, mediaItems, postItems, queuedPosts,
                 </div>
               </div>
             )}
+
+            {/* Services */}
+            {(gbp.service_items || []).length > 0 && (
+              <div className="border border-warm-border rounded-xl overflow-hidden">
+                <div className="px-5 py-4 border-b border-warm-border">
+                  <h2 className="text-sm font-semibold text-ink">Services</h2>
+                </div>
+                <div className="divide-y divide-warm-border/50">
+                  {gbp.service_items.map((item: any, i: number) => {
+                    const label = item.structuredServiceItem?.description
+                      || item.structuredServiceItem?.serviceTypeId?.replace(/_/g, ' ')
+                      || item.freeFormServiceItem?.label
+                      || `Service ${i + 1}`
+                    const price = item.price
+                      ? `${item.price.currencyCode || '$'}${(parseInt(item.price.units || '0', 10) / 100).toFixed(2)}`
+                      : null
+                    return (
+                      <div key={i} className="px-5 py-3 flex items-center justify-between">
+                        <span className="text-xs text-ink">{label}</span>
+                        {price && <span className="text-xs text-warm-gray font-mono">{price}</span>}
+                      </div>
+                    )
+                  })}
+                </div>
+              </div>
+            )}
           </div>
 
           {/* Right column — Hours + Links */}
@@ -277,6 +303,47 @@ export function GBPProfileContent({ profile, mediaItems, postItems, queuedPosts,
               </div>
             </div>
 
+            {/* More Hours (e.g. delivery, drive-through, senior hours) */}
+            {(gbp.more_hours || []).length > 0 && (
+              <div className="border border-warm-border rounded-xl overflow-hidden">
+                <div className="px-5 py-4 border-b border-warm-border">
+                  <h2 className="text-sm font-semibold text-ink">Additional Hours</h2>
+                </div>
+                <div className="divide-y divide-warm-border/50">
+                  {gbp.more_hours.map((mh: any, idx: number) => (
+                    <div key={idx} className="p-5">
+                      <div className="text-[10px] text-warm-gray uppercase tracking-wider mb-2">
+                        {mh.hoursTypeId?.replace(/_/g, ' ') || `Hours ${idx + 1}`}
+                      </div>
+                      {(mh.periods || []).length > 0 ? (
+                        <div className="space-y-1.5">
+                          {DAY_ORDER.map((day) => {
+                            const periods = (mh.periods || []).filter((p: any) => p.openDay === day)
+                            if (periods.length === 0) return null
+                            return (
+                              <div key={day} className="flex items-center justify-between text-xs">
+                                <span className="text-warm-gray font-medium w-10">{DAY_SHORT[day]}</span>
+                                <div className="text-ink">
+                                  {periods.map((p: any, i: number) => (
+                                    <span key={i}>
+                                      {i > 0 && ', '}
+                                      {formatTime(p.openTime)} – {formatTime(p.closeTime)}
+                                    </span>
+                                  ))}
+                                </div>
+                              </div>
+                            )
+                          })}
+                        </div>
+                      ) : (
+                        <p className="text-xs text-warm-gray">No periods set</p>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
             {/* Quick Links */}
             <div className="border border-warm-border rounded-xl overflow-hidden">
               <div className="px-5 py-4 border-b border-warm-border">
@@ -301,6 +368,13 @@ export function GBPProfileContent({ profile, mediaItems, postItems, queuedPosts,
                   <a href={gbp.website_uri} target="_blank" rel="noopener noreferrer"
                     className="flex items-center justify-between text-xs text-ink hover:text-ink/70 no-underline transition-colors">
                     <span>Website</span>
+                    <span className="text-warm-gray">→</span>
+                  </a>
+                )}
+                {gbp.menu_uri && (
+                  <a href={gbp.menu_uri} target="_blank" rel="noopener noreferrer"
+                    className="flex items-center justify-between text-xs text-ink hover:text-ink/70 no-underline transition-colors">
+                    <span>Menu</span>
                     <span className="text-warm-gray">→</span>
                   </a>
                 )}
