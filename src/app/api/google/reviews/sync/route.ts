@@ -13,11 +13,11 @@ export const maxDuration = 120
  * Processes up to 20 locations per run (sorted by last_synced_at ASC for fairness).
  * Also retries errored sources (they get a second chance each cycle).
  *
- * Auth: REVIEW_SYNC_API_KEY bearer token (same as the generic sync endpoint).
+ * Auth: CRON_SECRET bearer token (same as the generic sync endpoint).
  */
 export async function POST(request: NextRequest) {
   const authHeader = request.headers.get('authorization')
-  const apiKey = process.env.REVIEW_SYNC_API_KEY
+  const apiKey = process.env.CRON_SECRET
 
   if (apiKey && authHeader !== `Bearer ${apiKey}`) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })

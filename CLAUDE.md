@@ -95,6 +95,11 @@ Agency (is_agency_admin flag on org_members)
 - Use `createAdminClient()` for public-facing endpoints (no user session)
 - Use `createServerSupabase()` for authenticated endpoints
 
+### Environment Variables
+
+- **NEVER invent new environment variable names.** Only use variables defined in `.env.example`. If a new env var is needed, add it to `.env.example` first and confirm with the user.
+- Cron/sync route auth uses `CRON_SECRET` — check `.env.example` for the canonical name before referencing any env var in code.
+
 ## Coding Standards
 
 - **TypeScript strict.** No `any` unless interfacing with Supabase's generic responses.
