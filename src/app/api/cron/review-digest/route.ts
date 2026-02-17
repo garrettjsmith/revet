@@ -81,6 +81,7 @@ export async function GET(request: NextRequest) {
   }
 
   let sentCount = 0
+  const emailPromises: Promise<unknown>[] = []
 
   const orgEntries = Array.from(orgMap.entries())
   for (const [orgId, { orgName, reviews, locationIds: orgLocationIds }] of orgEntries) {
@@ -157,28 +158,32 @@ export async function GET(request: NextRequest) {
       .not('reply_body', 'is', null)
       .gte('reply_update_time', since)
 
-    sendEmail({
-      to: Array.from(allEmails),
-      subject: `${orgName}: ${totalReviews} review${totalReviews === 1 ? '' : 's'} yesterday`,
-      html: buildReviewDigestEmail({
-        orgName,
-        date: dateLabel,
-        totalReviews,
-        avgRating,
-        positiveCount,
-        neutralCount,
-        negativeCount,
-        locations: locationSummaries,
-        needsAttention,
-        aiDraftsReady: aiDraftsReady || 0,
-        repliesSent: repliesSent || 0,
-      }),
-    }).catch((err) => {
-      console.error(`[cron/review-digest] Email failed for org ${orgId}:`, err)
-    })
+    emailPromises.push(
+      sendEmail({
+        to: Array.from(allEmails),
+        subject: `${orgName}: ${totalReviews} review${totalReviews === 1 ? '' : 's'} yesterday`,
+        html: buildReviewDigestEmail({
+          orgName,
+          date: dateLabel,
+          totalReviews,
+          avgRating,
+          positiveCount,
+          neutralCount,
+          negativeCount,
+          locations: locationSummaries,
+          needsAttention,
+          aiDraftsReady: aiDraftsReady || 0,
+          repliesSent: repliesSent || 0,
+        }),
+      }).catch((err) => {
+        console.error(`[cron/review-digest] Email failed for org ${orgId}:`, err)
+      })
+    )
 
     sentCount++
   }
+
+  await Promise.allSettled(emailPromises)
 
   return NextResponse.json({
     ok: true,

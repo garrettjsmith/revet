@@ -24,25 +24,44 @@ export async function sendEmail({ to, subject, html, replyTo }: SendEmailOptions
     return { success: false, error: 'RESEND_API_KEY not configured' }
   }
 
-  try {
-    const { data, error } = await getResend().emails.send({
-      from: `${FROM_NAME} <${FROM_EMAIL}>`,
-      to: Array.isArray(to) ? to : [to],
-      subject,
-      html,
-      ...(replyTo ? { replyTo } : {}),
-    })
+  const maxRetries = 3
+  for (let attempt = 0; attempt < maxRetries; attempt++) {
+    try {
+      const { data, error } = await getResend().emails.send({
+        from: `${FROM_NAME} <${FROM_EMAIL}>`,
+        to: Array.isArray(to) ? to : [to],
+        subject,
+        html,
+        ...(replyTo ? { replyTo } : {}),
+      })
 
-    if (error) {
-      console.error('[email] Resend error:', error)
-      return { success: false, error: error.message }
+      if (error) {
+        // Retry on transient network/resolution errors
+        const isTransient = !error.statusCode || error.statusCode >= 500
+        if (isTransient && attempt < maxRetries - 1) {
+          const delay = 1000 * Math.pow(2, attempt)
+          console.warn(`[email] Resend transient error (attempt ${attempt + 1}/${maxRetries}), retrying in ${delay}ms:`, error.message)
+          await new Promise((r) => setTimeout(r, delay))
+          continue
+        }
+        console.error('[email] Resend error:', error)
+        return { success: false, error: error.message }
+      }
+
+      return { success: true, id: data?.id }
+    } catch (err) {
+      if (attempt < maxRetries - 1) {
+        const delay = 1000 * Math.pow(2, attempt)
+        console.warn(`[email] Send failed (attempt ${attempt + 1}/${maxRetries}), retrying in ${delay}ms:`, err)
+        await new Promise((r) => setTimeout(r, delay))
+        continue
+      }
+      console.error('[email] Failed to send after retries:', err)
+      return { success: false, error: 'Failed to send email' }
     }
-
-    return { success: true, id: data?.id }
-  } catch (err) {
-    console.error('[email] Failed to send:', err)
-    return { success: false, error: 'Failed to send email' }
   }
+
+  return { success: false, error: 'Exhausted retries' }
 }
 
 /**
