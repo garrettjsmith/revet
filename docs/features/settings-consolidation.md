@@ -26,27 +26,32 @@ Three clear namespaces:
 
 ### Customer Self-Service (What Customers CAN Do)
 
-Customers can view everything — but can't act on it. Specifically:
+The principle: **Customers don't operate. But they approve what the agency sends them.**
+
+Customers can view everything. They can't initiate actions — but when the agency explicitly sends something for their review, they can approve or reject it.
 
 **View (read-only):**
 - All dashboards, stats, trends
-- Reviews (individual reviews, ratings, review text) — but not reply, edit replies, or approve AI drafts
-- GBP profile details — but not edit fields or approve optimizations
-- Lander content — but not edit or configure
-- Post content — but not approve, reject, or edit
+- Reviews (individual reviews, ratings, review text)
+- GBP profile details
+- Lander content
 - Form submissions
 - Review funnels
 - Team roster (who's on the team, roles)
 
-**Interact:**
+**Approve (agency-initiated, sent for client review):**
+- **Posts** — approve/reject/request edits on posts the agency sends for review. Already implemented at `/admin/[orgSlug]/posts/review`.
+- **Profile recommendations** — approve/reject profile changes (description, categories) that require client sign-off. Backend exists (`client_review` status + email), customer approval UI needs building.
+
+**Interact (self-service):**
 - **Reports** — view, change date ranges, download
 - **Notifications** — update their own notification preferences (what alerts they receive)
 - **Display name** — update their own name
 
-**Cannot:**
-- Reply to reviews, approve/reject AI drafts
-- Edit or approve GBP profile optimizations
-- Approve/reject/edit posts
+**Cannot (agency-only):**
+- Reply to reviews, write or approve AI drafts
+- Initiate profile changes or lander edits
+- Create posts or configure post topics
 - Configure autopilot, lander settings, brand config
 - Edit org settings (name, slug, logo)
 - Add/remove team members
@@ -57,7 +62,7 @@ Customers can view everything — but can't act on it. Specifically:
 | Decision | Choice | Rationale |
 |----------|--------|-----------|
 | Three namespaces | `/agency/settings/`, `/agency/[orgSlug]/`, `/admin/[orgSlug]/` | Clean separation: global config, per-org config, customer portal |
-| Customer self-service | Notifications + display name only | Customers observe data, agency operates. Minimal self-service reduces support burden. |
+| Customer self-service | Approve agency-sent items + notifications + display name | Customers don't operate — they observe data and approve what the agency sends them. |
 | Dual-mode pages | Split into separate routes | Cleaner than conditional rendering. Agency version has full config. Customer version has limited controls. |
 | Sidebar context switching | Scope selector already supports agency vs org | Existing pattern works. Agency org config uses agency scope with org sub-nav. |
 
@@ -105,11 +110,12 @@ Dashboards and data. Customers can view everything, edit only their own notifica
 | `/admin/[orgSlug]` | Keep | Org dashboard |
 | `/admin/[orgSlug]/locations` | Keep | Location list |
 | `/admin/[orgSlug]/locations/[locationId]` | Keep | Location dashboard |
-| `/admin/[orgSlug]/reviews` | Keep | View reviews, ratings, text. No reply/approve actions. |
-| `/admin/[orgSlug]/locations/[locationId]/reviews` | Keep | View location reviews. No reply/approve actions. |
-| `/admin/[orgSlug]/locations/[locationId]/gbp-profile` | Keep | View GBP profile details. No edit/approve optimizations. |
+| `/admin/[orgSlug]/reviews` | Keep | View reviews, ratings, text. No reply actions. |
+| `/admin/[orgSlug]/locations/[locationId]/reviews` | Keep | View location reviews. No reply actions. |
+| `/admin/[orgSlug]/locations/[locationId]/gbp-profile` | Keep | View GBP profile details. No direct edits. |
+| `/admin/[orgSlug]/locations/[locationId]/recommendations` | New | Client approval UI for profile recommendations sent for review. Approve/reject. |
 | `/admin/[orgSlug]/locations/[locationId]/lander` | Keep | View lander content. No edit/configure. |
-| `/admin/[orgSlug]/posts/review` | Keep | View posts. No approve/reject/edit. |
+| `/admin/[orgSlug]/posts/review` | Keep | Client approval of posts. Approve/reject/request edits. Already implemented. |
 | `/admin/[orgSlug]/forms` | Keep | View form submissions |
 | `/admin/[orgSlug]/reports` | Keep | View + change date ranges + download |
 | `/admin/[orgSlug]/locations/[locationId]/reports` | Keep | View + change date ranges + download |
@@ -286,8 +292,10 @@ Every page explicitly checks access. No more relying on "it's behind `/admin/` s
 
 ### Mutation Protection
 
-For customer-facing pages that allow limited self-service:
+For customer-facing pages that allow self-service or client approval:
 
+- **Post approval API** (`/api/posts/[postId]/approve`): Already works — `client_approve` and `client_reject` actions. Verify non-admins can only act on `client_review` posts in their org.
+- **Recommendations API** (`/api/locations/[locationId]/recommendations`): `client_approve` and `client_reject` actions already exist in backend. Verify non-admins can only act on `client_review` recs in their org's locations.
 - **Notifications API**: Add check — members can only create/delete subscriptions where `subscriber_type = 'user'` AND `subscriber_value = currentUser.id` (their own)
 - **Profile API**: Add check — members can only update their own `org_members` record
 - **All other mutations**: Require `is_agency_admin` at the API level, not just the page level
@@ -328,13 +336,15 @@ For customer-facing pages that allow limited self-service:
 18. Simplify `/admin/[orgSlug]/notifications/page.tsx` — self-service only (own preferences)
 19. Simplify `/admin/[orgSlug]/team/page.tsx` — read-only roster view
 20. Create `/admin/[orgSlug]/profile/page.tsx` — display name edit
-21. Replace `/admin/[orgSlug]/locations/[locationId]/reviews/autopilot` with redirect
-22. Replace `/admin/[orgSlug]/locations/[locationId]/lander/settings` with redirect
-23. Simplify `/admin/[orgSlug]/locations/[locationId]/notifications/page.tsx` — self-service only
-24. Update customer sidebar: remove Brand Config, remove Settings, add Profile
-25. Add `is_agency_admin` checks to mutation APIs that currently lack them
+21. Create `/admin/[orgSlug]/locations/[locationId]/recommendations/page.tsx` — client approval UI for profile recommendations (approve/reject recs in `client_review` status)
+22. Replace `/admin/[orgSlug]/locations/[locationId]/reviews/autopilot` with redirect
+23. Replace `/admin/[orgSlug]/locations/[locationId]/lander/settings` with redirect
+24. Simplify `/admin/[orgSlug]/locations/[locationId]/notifications/page.tsx` — self-service only
+25. Hide action buttons (reply, approve AI draft, edit) on review/post/profile pages for non-admin users
+26. Update customer sidebar: remove Brand Config, remove Settings, add Profile
+27. Add `is_agency_admin` checks to mutation APIs that currently lack them
 
-**Verification:** Log in as a non-admin org member. Verify no config pages are accessible. Verify notification self-service works. Verify profile edit works. Verify old config URLs redirect gracefully.
+**Verification:** Log in as a non-admin org member. Verify no config pages are accessible. Verify notification self-service works. Verify profile edit works. Verify client approval works for posts and recommendations. Verify old config URLs redirect gracefully.
 
 ### Phase 4: Polish & Cleanup
 
@@ -360,7 +370,10 @@ Old routes redirect to dashboard (not to the new agency routes) because customer
 
 - **Role-based permissions beyond agency/member** — No "org admin" role. Binary: agency admin or member.
 - **Customer self-service for org settings** — Customers can't edit org name/logo. Agency handles that.
+- **Review reply pre-approval** — No `client_review` flow for AI-drafted review replies. Agency approves directly. Could add later.
+- **Lander approval flow** — No client sign-off on lander content yet. Agency publishes directly. Could add later.
 - **Review funnel creation gating** — Currently any member can create funnels. Evaluate separately whether to restrict.
 - **Form creation gating** — Same as above.
 - **Post topic management gating** — Same as above.
 - **Billing/subscription pages** — Future `/agency/settings/billing`. Not in scope.
+- **`post_approval_mode` enforcement** — `brand_config.post_approval_mode` (`approve_first` vs `auto_post`) exists but isn't used to branch approval logic. Evaluate separately.
