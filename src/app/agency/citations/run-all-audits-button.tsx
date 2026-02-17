@@ -17,11 +17,11 @@ export function RunAllAuditsButton() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({}),
       })
+      const data = await res.json()
       if (!res.ok) {
         setStatus('error')
-        setMessage('Failed to trigger audits')
+        setMessage(data.error || `Failed (${res.status})`)
       } else {
-        const data = await res.json()
         setStatus('done')
         setMessage(`${data.triggered} audit${data.triggered === 1 ? '' : 's'} triggered`)
         router.refresh()
