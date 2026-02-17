@@ -51,7 +51,7 @@ export async function POST(request: NextRequest) {
   const body = await request.json().catch(() => ({}))
   const locationIds: string[] | undefined = body.location_ids
   const supabase = createAdminClient()
-  const stats = { created: 0, triggered: 0, errors: 0 }
+  const stats = { created: 0, triggered: 0 }
 
   // Get locations to audit
   let query = supabase
@@ -65,12 +65,19 @@ export async function POST(request: NextRequest) {
 
   const { data: locations } = await query.limit(50)
 
-  for (const loc of locations || []) {
+  if (!locations || locations.length === 0) {
+    return NextResponse.json({ error: 'No matching locations found' }, { status: 404 })
+  }
+
+  const errors: string[] = []
+
+  for (const loc of locations) {
     try {
       // If no BrightLocal report yet, create one
       if (!loc.brightlocal_report_id) {
         if (!loc.phone || !loc.address_line1 || !loc.city || !loc.state) {
-          continue // Skip locations without sufficient address data
+          errors.push(`${loc.name}: missing address/phone data`)
+          continue
         }
 
         const reportId = await createCTReport({
@@ -94,7 +101,7 @@ export async function POST(request: NextRequest) {
       }
 
       // Create audit record and trigger
-      const { data: audit } = await supabase
+      const { data: audit, error: insertError } = await supabase
         .from('citation_audits')
         .insert({
           location_id: loc.id,
@@ -104,21 +111,33 @@ export async function POST(request: NextRequest) {
         .select('id')
         .single()
 
-      if (audit) {
-        await runCTReport(loc.brightlocal_report_id)
-
-        await supabase
-          .from('citation_audits')
-          .update({ status: 'running', started_at: new Date().toISOString() })
-          .eq('id', audit.id)
-
-        stats.triggered++
+      if (insertError || !audit) {
+        errors.push(`${loc.name}: failed to create audit record — ${insertError?.message || 'unknown'}`)
+        continue
       }
+
+      await runCTReport(loc.brightlocal_report_id)
+
+      await supabase
+        .from('citation_audits')
+        .update({ status: 'running', started_at: new Date().toISOString() })
+        .eq('id', audit.id)
+
+      stats.triggered++
     } catch (err) {
+      const msg = err instanceof Error ? err.message : 'unknown error'
       console.error(`[citation-audit] Failed for location ${loc.id}:`, err)
-      stats.errors++
+      errors.push(`${loc.name}: ${msg}`)
     }
   }
 
-  return NextResponse.json({ ok: true, ...stats })
+  // If nothing was triggered, return an error response
+  if (stats.triggered === 0) {
+    return NextResponse.json(
+      { error: 'No audits triggered', errors, ...stats },
+      { status: 422 }
+    )
+  }
+
+  return NextResponse.json({ ok: true, errors, ...stats })
 }
