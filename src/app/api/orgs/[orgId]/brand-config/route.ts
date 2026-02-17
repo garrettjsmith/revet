@@ -52,7 +52,32 @@ export async function PUT(
   }
 
   const body = await request.json()
-  const { brand_voice, design_style, primary_color, secondary_color, font_style, sample_image_urls } = body
+  const { primary_color, secondary_color, voice_selections, style_selections } = body
+
+  // Compose brand_voice string from selections
+  const voiceParts: string[] = []
+  if (voice_selections?.personality) voiceParts.push(voice_selections.personality)
+  if (voice_selections?.tone?.length) voiceParts.push(...voice_selections.tone)
+  if (voice_selections?.formality) voiceParts.push(voice_selections.formality)
+  const brand_voice = voiceParts.length > 0 ? voiceParts.join(', ') : null
+
+  // Compose design_style string from selections
+  const styleParts: string[] = []
+  if (style_selections?.aesthetic) styleParts.push(style_selections.aesthetic)
+  if (style_selections?.color_mood) styleParts.push(style_selections.color_mood)
+  if (style_selections?.typography) styleParts.push(style_selections.typography)
+  const design_style = styleParts.length > 0 ? styleParts.join(', ') : null
+
+  // Determine font_style from typography selection
+  const fontStyleMap: Record<string, string> = {
+    'Classic & Serif': 'serif',
+    'Modern & Sans-Serif': 'sans-serif',
+    'Handwritten & Casual': 'handwritten',
+    'Bold & Heavy': 'bold',
+  }
+  const font_style = style_selections?.typography
+    ? fontStyleMap[style_selections.typography] || null
+    : null
 
   const adminClient = createAdminClient()
 
@@ -61,12 +86,14 @@ export async function PUT(
     .upsert(
       {
         org_id: params.orgId,
-        brand_voice: brand_voice || null,
-        design_style: design_style || null,
+        brand_voice,
+        design_style,
         primary_color: primary_color || null,
         secondary_color: secondary_color || null,
-        font_style: font_style || null,
-        sample_image_urls: sample_image_urls || [],
+        font_style,
+        voice_selections: voice_selections || {},
+        style_selections: style_selections || {},
+        updated_at: new Date().toISOString(),
       },
       { onConflict: 'org_id' }
     )

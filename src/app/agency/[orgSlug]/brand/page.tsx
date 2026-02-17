@@ -30,12 +30,10 @@ export default async function OrgBrandConfigPage({
       <BrandConfigForm
         orgId={org.id}
         config={config ? {
-          brand_voice: config.brand_voice,
-          design_style: config.design_style,
           primary_color: config.primary_color,
           secondary_color: config.secondary_color,
-          font_style: config.font_style,
-          sample_image_urls: config.sample_image_urls || [],
+          voice_selections: config.voice_selections || {},
+          style_selections: config.style_selections || {},
         } : null}
       />
     </div>
