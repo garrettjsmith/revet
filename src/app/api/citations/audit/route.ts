@@ -51,7 +51,7 @@ export async function POST(request: NextRequest) {
   const body = await request.json().catch(() => ({}))
   const locationIds: string[] | undefined = body.location_ids
   const supabase = createAdminClient()
-  const stats = { created: 0, triggered: 0, errors: 0 }
+  const stats = { created: 0, triggered: 0 }
 
   // Get locations to audit
   let query = supabase
