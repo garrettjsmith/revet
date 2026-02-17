@@ -67,7 +67,7 @@ RESEND_API_KEY=your-resend-key
 LOCALFALCON_API_KEY=your-localfalcon-api-key        # Rank tracking via LocalFalcon
 IDEOGRAM_API_KEY=your-ideogram-api-key              # GBP post image generation (text-only without)
 FALCON_AGENT_MODEL=claude-sonnet-4-5-20250929       # Claude model for Ask Rev agent
-REVIEW_SYNC_API_KEY=your-cron-bearer-token          # Cron job auth (required in production)
+CRON_SECRET=your-cron-secret                        # Cron job auth (required in production)
 ```
 
 ### 3. Run
