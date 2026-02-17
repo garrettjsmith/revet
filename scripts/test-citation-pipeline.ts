@@ -91,6 +91,56 @@ function assertEqual(actual: unknown, expected: unknown, label: string) {
   }
 }
 
+// ─── resolveRegion tests ────────────────────────────────────────
+
+// Replicate resolveRegion from brightlocal.ts
+const US_STATES: Record<string, string> = {
+  AL: 'Alabama', AK: 'Alaska', AZ: 'Arizona', AR: 'Arkansas', CA: 'California',
+  CO: 'Colorado', CT: 'Connecticut', DE: 'Delaware', FL: 'Florida', GA: 'Georgia',
+  HI: 'Hawaii', ID: 'Idaho', IL: 'Illinois', IN: 'Indiana', IA: 'Iowa',
+  KS: 'Kansas', KY: 'Kentucky', LA: 'Louisiana', ME: 'Maine', MD: 'Maryland',
+  MA: 'Massachusetts', MI: 'Michigan', MN: 'Minnesota', MS: 'Mississippi', MO: 'Missouri',
+  MT: 'Montana', NE: 'Nebraska', NV: 'Nevada', NH: 'New Hampshire', NJ: 'New Jersey',
+  NM: 'New Mexico', NY: 'New York', NC: 'North Carolina', ND: 'North Dakota', OH: 'Ohio',
+  OK: 'Oklahoma', OR: 'Oregon', PA: 'Pennsylvania', RI: 'Rhode Island', SC: 'South Carolina',
+  SD: 'South Dakota', TN: 'Tennessee', TX: 'Texas', UT: 'Utah', VT: 'Vermont',
+  VA: 'Virginia', WA: 'Washington', WV: 'West Virginia', WI: 'Wisconsin', WY: 'Wyoming',
+  DC: 'District of Columbia',
+}
+
+function resolveRegion(state: string): { region?: string; region_code?: string } {
+  const trimmed = state.trim()
+  const upper = trimmed.toUpperCase()
+  if (US_STATES[upper]) return { region: US_STATES[upper], region_code: upper }
+  const entry = Object.entries(US_STATES).find(([, name]) => name.toLowerCase() === trimmed.toLowerCase())
+  if (entry) return { region: entry[1], region_code: entry[0] }
+  return { region: trimmed }
+}
+
+function assertDeepEqual(actual: unknown, expected: unknown, label: string) {
+  const a = JSON.stringify(actual)
+  const e = JSON.stringify(expected)
+  if (a === e) {
+    passed++
+    console.log(`  PASS  ${label}`)
+  } else {
+    failed++
+    console.error(`  FAIL  ${label}`)
+    console.error(`         expected: ${e}`)
+    console.error(`         actual:   ${a}`)
+  }
+}
+
+console.log('\nresolveRegion:')
+assertDeepEqual(resolveRegion('MA'), { region: 'Massachusetts', region_code: 'MA' }, 'abbreviation "MA" → full name + code')
+assertDeepEqual(resolveRegion('ma'), { region: 'Massachusetts', region_code: 'MA' }, 'lowercase "ma" → full name + code')
+assertDeepEqual(resolveRegion('Massachusetts'), { region: 'Massachusetts', region_code: 'MA' }, 'full name → same + code')
+assertDeepEqual(resolveRegion('massachusetts'), { region: 'Massachusetts', region_code: 'MA' }, 'lowercase full name → resolved')
+assertDeepEqual(resolveRegion('NY'), { region: 'New York', region_code: 'NY' }, 'abbreviation "NY"')
+assertDeepEqual(resolveRegion('CA'), { region: 'California', region_code: 'CA' }, 'abbreviation "CA"')
+assertDeepEqual(resolveRegion('Ontario'), { region: 'Ontario' }, 'non-US state → passthrough as region only')
+assertDeepEqual(resolveRegion(' TX '), { region: 'Texas', region_code: 'TX' }, 'trimmed abbreviation')
+
 // ─── normalizePhone tests ───────────────────────────────────────
 
 console.log('\nnormalizePhone:')
