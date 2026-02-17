@@ -49,7 +49,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'No reviews to sync' }, { status: 400 })
     }
 
-    // Pre-fetch existing reviews to detect new replies
+    // Pre-fetch existing reviews to detect new reviews and new replies
     const platformReviewIds = incomingReviews
       .map((r: any) => r.platform_review_id)
       .filter(Boolean)
@@ -107,7 +107,8 @@ export async function POST(request: NextRequest) {
       })
       .eq('id', source_id)
 
-    // Filter to truly new reviews (not previously in DB)
+    // Filter to truly new reviews (not previously in DB) — prevents flooding
+    // on initial sync or when cron/pubsub re-fetches known reviews
     const newReviews = incomingReviews.filter((r: any) =>
       !existingReplyMap.has(r.platform_review_id) && !r.reply_body
     )
