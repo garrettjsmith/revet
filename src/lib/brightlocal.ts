@@ -2,7 +2,7 @@ const BASE_URL = 'https://tools.brightlocal.com/seo-tools/api'
 
 interface BrightLocalResponse<T = unknown> {
   success: boolean
-  errors?: string[]
+  errors?: unknown
   response?: T
 }
 
@@ -29,6 +29,13 @@ export interface CTCitation {
   address_match: boolean
   phone_match: boolean
   status: string // 'live' | 'not_found' etc.
+}
+
+function formatErrors(errors: unknown): string {
+  if (!errors) return 'unknown error'
+  if (Array.isArray(errors)) return errors.join(', ')
+  if (typeof errors === 'string') return errors
+  return JSON.stringify(errors)
 }
 
 function getApiKey(): string {
@@ -101,7 +108,7 @@ export async function createCTReport(params: {
   })
 
   if (!res.success || !res.response?.report_id) {
-    throw new Error(`Failed to create CT report: ${res.errors?.join(', ') || 'unknown error'}`)
+    throw new Error(`Failed to create CT report: ${formatErrors(res.errors)}`)
   }
 
   return String(res.response.report_id)
@@ -116,7 +123,7 @@ export async function runCTReport(reportId: string): Promise<void> {
   })
 
   if (!res.success) {
-    throw new Error(`Failed to run CT report ${reportId}: ${res.errors?.join(', ') || 'unknown error'}`)
+    throw new Error(`Failed to run CT report ${reportId}: ${formatErrors(res.errors)}`)
   }
 }
 
@@ -129,7 +136,7 @@ export async function getCTReport(reportId: string): Promise<CTReport> {
   })
 
   if (!res.success || !res.response) {
-    throw new Error(`Failed to get CT report ${reportId}: ${res.errors?.join(', ') || 'unknown error'}`)
+    throw new Error(`Failed to get CT report ${reportId}: ${formatErrors(res.errors)}`)
   }
 
   return res.response
@@ -144,7 +151,7 @@ export async function getCTResults(reportId: string): Promise<CTCitation[]> {
   })
 
   if (!res.success || !res.response) {
-    throw new Error(`Failed to get CT results for ${reportId}: ${res.errors?.join(', ') || 'unknown error'}`)
+    throw new Error(`Failed to get CT results for ${reportId}: ${formatErrors(res.errors)}`)
   }
 
   return res.response.citation_results || []
