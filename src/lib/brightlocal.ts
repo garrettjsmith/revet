@@ -269,7 +269,7 @@ export async function createBLLocation(params: {
   const regionFields = params.region ? resolveRegion(params.region) : {}
 
   const body: Record<string, unknown> = {
-    business_name: params.name,
+    business_name: params.name.slice(0, 90),
     location_reference: params.locationReference,
     country: params.country,
     telephone: params.phone,
@@ -436,15 +436,18 @@ export async function getCTResults(reportId: string): Promise<CTCitation[]> {
   })
 
   // Response shape: {"response":{"results":{"active":[],"pending":[],"possible":[]}}}
+  // BL sometimes returns objects instead of arrays for empty/single-item groups
   const results = res.response?.results
   if (!results) {
     throw new Error(`Failed to get CT results for ${reportId}: ${formatErrors(res.errors)} | full response: ${JSON.stringify(res)}`)
   }
 
+  const toArray = (v: unknown): CTCitation[] => Array.isArray(v) ? v : []
+
   return [
-    ...(results.active || []),
-    ...(results.pending || []),
-    ...(results.possible || []),
+    ...toArray(results.active),
+    ...toArray(results.pending),
+    ...toArray(results.possible),
   ]
 }
 

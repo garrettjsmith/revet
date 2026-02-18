@@ -163,47 +163,60 @@ export async function GET(request: NextRequest) {
     stats.errors++
   }
 
-  // ─── Phase 2: Trigger next pending audit ─────────────────
-  // BL only allows one CT scan at a time. If something is already running,
-  // skip entirely — don't waste API calls getting "already_running" errors.
+  // ─── Phase 2: Process pending audits ─────────────────────
+  // Try pulling results first (BL report may already be done).
+  // Only trigger a new scan if results aren't available yet,
+  // and only if nothing else is already scanning.
   try {
-    const { count: runningCount } = await supabase
+    const { data: pendingAudits } = await supabase
       .from('citation_audits')
-      .select('id', { count: 'exact', head: true })
-      .eq('status', 'running')
+      .select('id, brightlocal_report_id, location_id')
+      .eq('status', 'pending')
+      .order('created_at', { ascending: true })
+      .limit(10)
 
-    if (!runningCount || runningCount === 0) {
-      const { data: nextAudit } = await supabase
+    for (const audit of pendingAudits || []) {
+      // Try pulling completed results first
+      try {
+        const pulled = await pullAuditResults(supabase, audit)
+        if (pulled) {
+          stats.pulled++
+          continue
+        }
+      } catch {
+        // Not ready — fall through to trigger
+      }
+
+      // BL only allows one scan at a time — check before triggering
+      const { count: runningCount } = await supabase
         .from('citation_audits')
-        .select('id, brightlocal_report_id, location_id')
-        .eq('status', 'pending')
-        .order('created_at', { ascending: true })
-        .limit(1)
-        .single()
+        .select('id', { count: 'exact', head: true })
+        .eq('status', 'running')
 
-      if (nextAudit) {
-        try {
-          const runResult = await runCTReport(nextAudit.brightlocal_report_id)
+      if (runningCount && runningCount > 0) break
 
-          if (runResult !== 'already_running') {
-            await supabase
-              .from('citation_audits')
-              .update({ status: 'running', started_at: new Date().toISOString() })
-              .eq('id', nextAudit.id)
+      try {
+        const runResult = await runCTReport(audit.brightlocal_report_id)
 
-            stats.triggered++
-          }
-        } catch (err) {
-          console.error(`[citation-sync] Failed to trigger audit ${nextAudit.id}:`, err)
+        if (runResult !== 'already_running') {
           await supabase
             .from('citation_audits')
-            .update({
-              status: 'failed',
-              last_error: err instanceof Error ? err.message : 'Unknown error',
-            })
-            .eq('id', nextAudit.id)
-          stats.errors++
+            .update({ status: 'running', started_at: new Date().toISOString() })
+            .eq('id', audit.id)
+
+          stats.triggered++
         }
+        break // Only trigger one scan per cron run
+      } catch (err) {
+        console.error(`[citation-sync] Failed to trigger audit ${audit.id}:`, err)
+        await supabase
+          .from('citation_audits')
+          .update({
+            status: 'failed',
+            last_error: err instanceof Error ? err.message : 'Unknown error',
+          })
+          .eq('id', audit.id)
+        stats.errors++
       }
     }
   } catch (err) {
