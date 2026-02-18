@@ -125,14 +125,33 @@ export async function GET(request: NextRequest) {
             .update({ brightlocal_report_id: reportId })
             .eq('id', loc.id)
 
-          // Create initial audit record
-          await supabase.from('citation_audits').insert({
-            location_id: loc.id,
-            brightlocal_report_id: reportId,
-            status: 'pending',
-          })
+          // Create audit record — try to pull results immediately
+          // in case the BL report already completed (e.g. from a previous
+          // run that crashed before saving the report ID)
+          const { data: newAudit } = await supabase
+            .from('citation_audits')
+            .insert({
+              location_id: loc.id,
+              brightlocal_report_id: reportId,
+              status: 'pending',
+            })
+            .select('id')
+            .single()
 
           stats.mapped++
+
+          if (newAudit) {
+            try {
+              const pulled = await pullAuditResults(supabase, {
+                id: newAudit.id,
+                brightlocal_report_id: String(reportId),
+                location_id: loc.id,
+              })
+              if (pulled) stats.pulled++
+            } catch {
+              // Not ready yet — Phase 2 will trigger, Phase 3 will pull later
+            }
+          }
         } catch (err) {
           console.error(`[citation-sync] Failed to map location ${loc.id}:`, err)
           stats.errors++
