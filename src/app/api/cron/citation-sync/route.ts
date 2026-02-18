@@ -6,12 +6,10 @@ import {
   findExistingCTReport,
   createCTReport,
   runCTReport,
-  getCTReport,
-  getCTResults,
   createCBCampaign,
   searchBusinessCategory,
-  type CTCitation,
 } from '@/lib/brightlocal'
+import { pullAuditResults } from '@/lib/citation-sync'
 
 export const maxDuration = 120
 
@@ -156,7 +154,12 @@ export async function GET(request: NextRequest) {
 
     for (const audit of pendingAudits || []) {
       try {
-        await runCTReport(audit.brightlocal_report_id)
+        const runResult = await runCTReport(audit.brightlocal_report_id)
+
+        if (runResult === 'already_running') {
+          // BL only allows one scan at a time — leave as pending for next cron run
+          continue
+        }
 
         await supabase
           .from('citation_audits')
@@ -191,93 +194,8 @@ export async function GET(request: NextRequest) {
 
     for (const audit of runningAudits || []) {
       try {
-        // Check if report is done
-        const report = await getCTReport(audit.brightlocal_report_id)
-        if (report.status.toLowerCase() !== 'complete' && report.status.toLowerCase() !== 'completed') continue
-
-        // Pull results
-        const citations = await getCTResults(audit.brightlocal_report_id)
-
-        // Get location's expected NAP for comparison
-        const { data: location } = await supabase
-          .from('locations')
-          .select('name, phone, address_line1, city, state, postal_code')
-          .eq('id', audit.location_id)
-          .single()
-
-        const expectedName = location?.name || ''
-        const expectedAddress = [location?.address_line1, location?.city, location?.state, location?.postal_code]
-          .filter(Boolean)
-          .join(', ')
-        const expectedPhone = location?.phone || ''
-
-        let correct = 0
-        let incorrect = 0
-        let missing = 0
-
-        for (const cit of citations) {
-          const citStatus = cit['citation-status']
-          const isLive = citStatus === 'active'
-          const hasListing = !!cit.url
-
-          // Determine NAP correctness by comparing found values (normalized)
-          const nameMatch = !cit['business-name'] || normalizeText(cit['business-name']) === normalizeText(expectedName)
-          const phoneMatch = !cit.telephone || normalizePhone(cit.telephone) === normalizePhone(expectedPhone)
-          const addressMatch = !cit.address || normalizeText(cit.address) === normalizeText(expectedAddress)
-          const napCorrect = nameMatch && phoneMatch && addressMatch
-
-          if (!isLive && !hasListing) {
-            missing++
-          } else if (napCorrect) {
-            correct++
-          } else {
-            incorrect++
-          }
-
-          const listingStatus = determineListingStatus(cit, napCorrect)
-
-          await supabase
-            .from('citation_listings')
-            .upsert(
-              {
-                location_id: audit.location_id,
-                audit_id: audit.id,
-                directory_name: cit.source,
-                directory_url: null,
-                listing_url: cit.url,
-                expected_name: expectedName,
-                expected_address: expectedAddress,
-                expected_phone: expectedPhone,
-                found_name: cit['business-name'],
-                found_address: cit.address,
-                found_phone: cit.telephone,
-                nap_correct: napCorrect,
-                name_match: nameMatch,
-                address_match: addressMatch,
-                phone_match: phoneMatch,
-                status: listingStatus,
-                ai_recommendation: buildRecommendation(cit, isLive || hasListing, expectedName, expectedPhone),
-                last_checked_at: new Date().toISOString(),
-                updated_at: new Date().toISOString(),
-              },
-              { onConflict: 'location_id,directory_name' }
-            )
-        }
-
-        // Update audit summary
-        await supabase
-          .from('citation_audits')
-          .update({
-            status: 'completed',
-            total_found: citations.length,
-            total_correct: correct,
-            total_incorrect: incorrect,
-            total_missing: missing,
-            completed_at: new Date().toISOString(),
-          })
-          .eq('id', audit.id)
-
-        stats.pulled++
+        const pulled = await pullAuditResults(supabase, audit)
+        if (pulled) stats.pulled++
       } catch (err) {
         console.error(`[citation-sync] Failed to pull audit ${audit.id}:`, err)
         await supabase
@@ -346,46 +264,4 @@ export async function GET(request: NextRequest) {
   return NextResponse.json({ ok: true, ...stats })
 }
 
-// ─── Helpers ─────────────────────────────────────────────────
 
-/** Strip non-digits for phone comparison: "(555) 123-4567" → "5551234567" */
-function normalizePhone(phone: string | null | undefined): string {
-  if (!phone) return ''
-  const digits = phone.replace(/\D/g, '')
-  // Strip leading country code "1" if 11 digits
-  if (digits.length === 11 && digits.startsWith('1')) return digits.slice(1)
-  return digits
-}
-
-/** Lowercase, collapse whitespace, strip punctuation for name/address comparison */
-function normalizeText(text: string | null | undefined): string {
-  if (!text) return ''
-  return text.toLowerCase().replace(/[^\w\s]/g, '').replace(/\s+/g, ' ').trim()
-}
-
-function determineListingStatus(cit: CTCitation, napCorrect: boolean): string {
-  const citStatus = cit['citation-status']
-  const hasListing = !!cit.url
-  if (citStatus !== 'active' && !hasListing) return 'not_listed'
-  if (!napCorrect) return 'action_needed'
-  return 'found'
-}
-
-function buildRecommendation(
-  cit: CTCitation,
-  isLive: boolean,
-  expectedName: string,
-  expectedPhone: string,
-): string | null {
-  if (!isLive) {
-    return `Not listed on ${cit.source}. Submit business listing to improve citation coverage.`
-  }
-
-  const issues: string[] = []
-  if (cit['business-name'] && normalizeText(cit['business-name']) !== normalizeText(expectedName)) issues.push('business name')
-  if (cit.telephone && normalizePhone(cit.telephone) !== normalizePhone(expectedPhone)) issues.push('phone number')
-
-  if (issues.length === 0) return null
-
-  return `Incorrect ${issues.join(', ')} on ${cit.source}. Update the listing to match current business information.`
-}
