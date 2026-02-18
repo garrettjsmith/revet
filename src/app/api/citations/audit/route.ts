@@ -20,8 +20,9 @@ export async function POST(request: NextRequest) {
   const authHeader = request.headers.get('authorization')
   const cronSecret = process.env.CRON_SECRET
 
+  let isCron = false
   if (cronSecret && authHeader === `Bearer ${cronSecret}`) {
-    // Cron auth — proceed
+    isCron = true
   } else {
     const { createServerSupabase } = await import('@/lib/supabase/server')
     const supabase = createServerSupabase()
@@ -51,6 +52,11 @@ export async function POST(request: NextRequest) {
 
   const body = await request.json().catch(() => ({}))
   const locationIds: string[] | undefined = body.location_ids
+
+  // Non-cron requests must specify location_ids to prevent accidentally running all
+  if (!isCron && (!locationIds || locationIds.length === 0)) {
+    return NextResponse.json({ error: 'location_ids required' }, { status: 400 })
+  }
   const supabase = createAdminClient()
   const stats = { created: 0, triggered: 0, pulled: 0 }
 

@@ -75,7 +75,7 @@ export default async function AgencyCitationsPage() {
             {mappedLocations} of {totalLocations} locations mapped to BrightLocal
           </p>
         </div>
-        <RunAllAuditsButton />
+        <RunAllAuditsButton locationIds={(locations || []).map((l) => l.id)} />
       </div>
 
       {/* Summary cards */}

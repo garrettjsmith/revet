@@ -3,7 +3,7 @@
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 
-export function RunAllAuditsButton() {
+export function RunAllAuditsButton({ locationIds }: { locationIds: string[] }) {
   const router = useRouter()
   const [status, setStatus] = useState<'idle' | 'running' | 'done' | 'error'>('idle')
   const [message, setMessage] = useState('')
@@ -15,7 +15,7 @@ export function RunAllAuditsButton() {
       const res = await fetch('/api/citations/audit', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({}),
+        body: JSON.stringify({ location_ids: locationIds }),
       })
       const data = await res.json()
       if (!res.ok) {
@@ -43,7 +43,7 @@ export function RunAllAuditsButton() {
       )}
       <button
         onClick={handleRun}
-        disabled={status === 'running'}
+        disabled={status === 'running' || locationIds.length === 0}
         className="px-5 py-2.5 bg-ink hover:bg-ink/90 text-cream text-xs font-medium rounded-full transition-colors disabled:opacity-50"
       >
         {status === 'running' ? 'Triggering...' : 'Run All Audits'}
