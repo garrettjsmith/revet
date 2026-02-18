@@ -345,6 +345,23 @@ export async function findCBCampaigns(locationId: string): Promise<CBCampaign[]>
 // ─── Legacy API: Citation Tracker ───────────────────────────
 
 /**
+ * Find existing CT reports for a BrightLocal location.
+ * Returns the first report ID if any exist, null otherwise.
+ */
+export async function findExistingCTReport(locationId: string): Promise<string | null> {
+  const res = await legacyFetch<Array<{ report_id: string | number; location_id: string | number }>>('/v2/ct/get-all', 'GET', {
+    'location-id': locationId,
+  })
+
+  if (!res.success || !res.response) return null
+
+  const reports = Array.isArray(res.response) ? res.response : []
+  if (reports.length === 0) return null
+
+  return String(reports[0].report_id)
+}
+
+/**
  * Create a Citation Tracker report for a BrightLocal location.
  * Returns the BrightLocal report ID.
  */

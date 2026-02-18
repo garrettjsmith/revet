@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
-import { findBLLocation, createBLLocation, createCTReport, runCTReport, searchBusinessCategory } from '@/lib/brightlocal'
+import { findBLLocation, createBLLocation, findExistingCTReport, createCTReport, runCTReport, searchBusinessCategory } from '@/lib/brightlocal'
 
 export const maxDuration = 120
 
@@ -126,20 +126,25 @@ export async function POST(request: NextRequest) {
 
       // Step 2: Ensure CT report exists
       if (!loc.brightlocal_report_id) {
-        const gbp = gbpByLocation.get(loc.id)
-        const businessType = gbp?.primary_category_name || 'Business'
-        const primaryLocation = loc.postal_code || loc.city || ''
+        // Check if a CT report already exists for this BL location
+        let reportId = await findExistingCTReport(loc.brightlocal_location_id)
 
-        if (!primaryLocation) {
-          errors.push(`${loc.name}: missing postal code or city for competitor lookup`)
-          continue
+        if (!reportId) {
+          const gbp = gbpByLocation.get(loc.id)
+          const businessType = gbp?.primary_category_name || 'Business'
+          const primaryLocation = loc.postal_code || loc.city || ''
+
+          if (!primaryLocation) {
+            errors.push(`${loc.name}: missing postal code or city for competitor lookup`)
+            continue
+          }
+
+          reportId = await createCTReport({
+            locationId: loc.brightlocal_location_id,
+            businessType,
+            primaryLocation,
+          })
         }
-
-        const reportId = await createCTReport({
-          locationId: loc.brightlocal_location_id,
-          businessType,
-          primaryLocation,
-        })
 
         await supabase
           .from('locations')
