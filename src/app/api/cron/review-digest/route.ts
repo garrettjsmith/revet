@@ -30,12 +30,13 @@ export async function GET(request: NextRequest) {
     year: 'numeric',
   })
 
-  // Get all reviews created in the last 24h
+  // Get reviews published in the last 24h (use published_at, not created_at,
+  // to avoid including old reviews from historical backfill)
   const { data: recentReviews } = await supabase
     .from('reviews')
     .select('id, location_id, platform, reviewer_name, rating, body, reply_body, published_at, sentiment, created_at')
-    .gte('created_at', since)
-    .order('created_at', { ascending: false })
+    .gte('published_at', since)
+    .order('published_at', { ascending: false })
 
   if (!recentReviews || recentReviews.length === 0) {
     return NextResponse.json({ ok: true, message: 'No reviews to digest', sent: 0 })
