@@ -13,12 +13,12 @@ const LEGACY_BASE = 'https://tools.brightlocal.com/seo-tools/api'
 
 // ─── Shared types ───────────────────────────────────────────
 
-interface LegacyResponse<T = unknown> {
-  success: boolean
-  errors?: unknown
-  response?: T
-  report?: T // /v2/ct/get returns report at top level
-}
+// BL legacy API has inconsistent response shapes across endpoints.
+// Some return {success, report}, some return {response: {results}},
+// ct/add returns flat {status, report-id}. We type as any and
+// handle each shape in the calling function.
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type LegacyResponse = Record<string, any>
 
 interface CTReportStatus {
   report_id: string
@@ -132,11 +132,11 @@ async function manageFetch<T>(
 
 // ─── Legacy CT API fetch (form-encoded, api-key param) ──────
 
-async function legacyFetch<T>(
+async function legacyFetch(
   path: string,
   method: 'GET' | 'POST',
   params: Record<string, string> = {},
-): Promise<LegacyResponse<T>> {
+): Promise<LegacyResponse> {
   const apiKey = getApiKey()
   const allParams = { 'api-key': apiKey, ...params }
 
@@ -349,16 +349,15 @@ export async function findCBCampaigns(locationId: string): Promise<CBCampaign[]>
  * Returns the first report ID if any exist, null otherwise.
  */
 export async function findExistingCTReport(locationId: string): Promise<string | null> {
-  const res = await legacyFetch<Array<{ report_id: string | number; location_id: string | number }>>('/v2/ct/get-all', 'GET', {
+  const res = await legacyFetch('/v2/ct/get-all', 'GET', {
     'location-id': locationId,
   })
 
-  if (!res.success || !res.response) return null
+  // Response shape: {"response":{"results":[{report_id, location_id, ...}]}}
+  const results = res.response?.results
+  if (!Array.isArray(results) || results.length === 0) return null
 
-  const reports = Array.isArray(res.response) ? res.response : []
-  if (reports.length === 0) return null
-
-  return String(reports[0].report_id)
+  return String(results[0].report_id)
 }
 
 /**
@@ -370,17 +369,20 @@ export async function createCTReport(params: {
   businessType: string
   primaryLocation: string
 }): Promise<string> {
-  const res = await legacyFetch<{ 'report-id': number }>('/v2/ct/add', 'POST', {
+  const res = await legacyFetch('/v2/ct/add', 'POST', {
     'location-id': params.locationId,
     'business-type': params.businessType,
     'primary-location': params.primaryLocation,
   })
 
-  if (!res.success || !res.response?.['report-id']) {
+  // Response shape varies: {"response":{"status":"added","report-id":N}}
+  // or flat {"status":"added","report-id":N}
+  const reportId = res.response?.['report-id'] ?? res['report-id']
+  if (!reportId) {
     throw new Error(`Failed to create CT report: ${formatErrors(res.errors)} | full response: ${JSON.stringify(res)}`)
   }
 
-  return String(res.response['report-id'])
+  return String(reportId)
 }
 
 /**
@@ -391,7 +393,9 @@ export async function runCTReport(reportId: string): Promise<void> {
     'report-id': reportId,
   })
 
-  if (!res.success) {
+  // Response shape: {"response":{"status":"running"}}
+  const status = res.response?.status ?? res.status
+  if (status !== 'running' && !res.success) {
     throw new Error(`Failed to run CT report ${reportId}: ${formatErrors(res.errors)} | full response: ${JSON.stringify(res)}`)
   }
 }
@@ -400,31 +404,33 @@ export async function runCTReport(reportId: string): Promise<void> {
  * Get a Citation Tracker report status.
  */
 export async function getCTReport(reportId: string): Promise<CTReportStatus> {
-  const res = await legacyFetch<CTReportStatus>('/v2/ct/get', 'GET', {
+  const res = await legacyFetch('/v2/ct/get', 'GET', {
     'report-id': reportId,
   })
 
+  // Response shape: {"success":true,"report":{...}}
   const report = res.report || res.response
-  if (!res.success || !report) {
+  if (!report) {
     throw new Error(`Failed to get CT report ${reportId}: ${formatErrors(res.errors)} | full response: ${JSON.stringify(res)}`)
   }
 
-  return report
+  return report as CTReportStatus
 }
 
 /**
  * Get Citation Tracker results (the actual citation listings).
  */
 export async function getCTResults(reportId: string): Promise<CTCitation[]> {
-  const res = await legacyFetch<CTResultsResponse>('/v2/ct/get-results', 'GET', {
+  const res = await legacyFetch('/v2/ct/get-results', 'GET', {
     'report-id': reportId,
   })
 
-  if (!res.success || !res.response) {
+  // Response shape: {"response":{"results":{"active":[],"pending":[],"possible":[]}}}
+  const results = res.response?.results
+  if (!results) {
     throw new Error(`Failed to get CT results for ${reportId}: ${formatErrors(res.errors)} | full response: ${JSON.stringify(res)}`)
   }
 
-  const { results } = res.response
   return [
     ...(results.active || []),
     ...(results.pending || []),
