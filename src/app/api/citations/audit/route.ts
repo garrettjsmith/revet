@@ -1,18 +1,19 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { findBLLocation, createBLLocation, findExistingCTReport, createCTReport, runCTReport, searchBusinessCategory } from '@/lib/brightlocal'
+import { pullAuditResults } from '@/lib/citation-sync'
 
 export const maxDuration = 120
 
 /**
  * POST /api/citations/audit
  *
- * Manually trigger a citation audit for specific locations.
- * Supports both CRON_SECRET auth and authenticated agency admin.
+ * Trigger a citation audit for specific locations, or pull results for
+ * audits that are already running/completed in BrightLocal.
  *
  * Body: { location_ids?: string[] }
  *   - If location_ids provided, audit only those locations
- *   - If omitted, create new audits for all mapped locations that don't have a running audit
+ *   - If omitted, process all active locations
  */
 export async function POST(request: NextRequest) {
   // Auth: CRON_SECRET or agency admin
@@ -51,7 +52,7 @@ export async function POST(request: NextRequest) {
   const body = await request.json().catch(() => ({}))
   const locationIds: string[] | undefined = body.location_ids
   const supabase = createAdminClient()
-  const stats = { created: 0, triggered: 0 }
+  const stats = { created: 0, triggered: 0, pulled: 0 }
 
   // Get locations to audit
   let query = supabase
@@ -80,10 +81,38 @@ export async function POST(request: NextRequest) {
     (gbpProfiles || []).map((p) => [p.location_id, p])
   )
 
+  // Pre-fetch existing running audits so we can pull results instead of creating duplicates
+  const { data: existingAudits } = await supabase
+    .from('citation_audits')
+    .select('id, location_id, brightlocal_report_id, status')
+    .in('location_id', locIds)
+    .in('status', ['running', 'pending'])
+
+  const runningAuditByLocation = new Map(
+    (existingAudits || []).map((a) => [a.location_id, a])
+  )
+
   const errors: string[] = []
 
   for (const loc of locations) {
     try {
+      // If there's already a running audit, try to pull results
+      const existingAudit = runningAuditByLocation.get(loc.id)
+      if (existingAudit && existingAudit.status === 'running') {
+        try {
+          const pulled = await pullAuditResults(supabase, existingAudit)
+          if (pulled) {
+            stats.pulled++
+          } else {
+            errors.push(`${loc.name}: BL report still running, check back later`)
+          }
+        } catch (err) {
+          const msg = err instanceof Error ? err.message : 'unknown error'
+          errors.push(`${loc.name}: failed to pull results — ${msg}`)
+        }
+        continue
+      }
+
       // Step 1: Ensure BrightLocal Location exists
       if (!loc.brightlocal_location_id) {
         const gbp = gbpByLocation.get(loc.id)
@@ -155,7 +184,25 @@ export async function POST(request: NextRequest) {
         stats.created++
       }
 
-      // Step 3: Create audit record and trigger
+      // Step 3: Create audit record and trigger scan
+      // Skip if there's already a pending audit for this location
+      if (existingAudit && existingAudit.status === 'pending') {
+        // Try to run the pending audit
+        const runResult = await runCTReport(existingAudit.brightlocal_report_id)
+
+        if (runResult === 'already_running') {
+          errors.push(`${loc.name}: another CT scan is already running, audit queued`)
+        } else {
+          await supabase
+            .from('citation_audits')
+            .update({ status: 'running', started_at: new Date().toISOString() })
+            .eq('id', existingAudit.id)
+        }
+
+        stats.triggered++
+        continue
+      }
+
       const { data: audit, error: insertError } = await supabase
         .from('citation_audits')
         .insert({
@@ -174,8 +221,6 @@ export async function POST(request: NextRequest) {
       const runResult = await runCTReport(loc.brightlocal_report_id)
 
       if (runResult === 'already_running') {
-        // BL only allows one CT scan at a time — leave audit as pending
-        // so the sync cron can pick it up once the current scan finishes
         errors.push(`${loc.name}: another CT scan is already running, audit queued`)
         stats.triggered++
       } else {
@@ -193,10 +238,9 @@ export async function POST(request: NextRequest) {
     }
   }
 
-  // If nothing was triggered, return an error response
-  if (stats.triggered === 0) {
+  if (stats.triggered === 0 && stats.pulled === 0) {
     return NextResponse.json(
-      { error: 'No audits triggered', errors, ...stats },
+      { error: 'No audits triggered or pulled', errors, ...stats },
       { status: 422 }
     )
   }
