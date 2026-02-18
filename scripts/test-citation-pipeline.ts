@@ -3,12 +3,15 @@
  *
  * Run with: npx tsx scripts/test-citation-pipeline.ts
  *
- * Tests the core helper functions that were fixed:
+ * Tests the core helper functions:
+ *
  *   - normalizePhone() — strips formatting, country code
  *   - normalizeText() — lowercase, strips punctuation, collapses whitespace
  *   - determineListingStatus() — returns correct status based on NAP + citation state
  *   - buildRecommendation() — generates actionable text for mismatches
  */
+
+export {} // isolate module scope
 
 // ─── Replicate helpers from citation-sync/route.ts ─────────────
 
