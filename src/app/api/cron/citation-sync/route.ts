@@ -26,7 +26,7 @@ export const maxDuration = 120
  * Phase 4 — Build: For locations with completed audits but no Citation Builder
  *           campaign, create a CB campaign so missing citations can be submitted.
  *
- * Runs daily at 6 AM via Vercel cron.
+ * Runs every 15 minutes via Vercel cron.
  */
 export async function GET(request: NextRequest) {
   const authHeader = request.headers.get('authorization')
@@ -144,39 +144,47 @@ export async function GET(request: NextRequest) {
     stats.errors++
   }
 
-  // ─── Phase 2: Trigger pending audits ───────────────────────
+  // ─── Phase 2: Trigger next pending audit ─────────────────
+  // BL only allows one CT scan at a time. If something is already running,
+  // skip entirely — don't waste API calls getting "already_running" errors.
   try {
-    const { data: pendingAudits } = await supabase
+    const { count: runningCount } = await supabase
       .from('citation_audits')
-      .select('id, brightlocal_report_id, location_id')
-      .eq('status', 'pending')
-      .limit(10)
+      .select('id', { count: 'exact', head: true })
+      .eq('status', 'running')
 
-    for (const audit of pendingAudits || []) {
-      try {
-        const runResult = await runCTReport(audit.brightlocal_report_id)
+    if (!runningCount || runningCount === 0) {
+      const { data: nextAudit } = await supabase
+        .from('citation_audits')
+        .select('id, brightlocal_report_id, location_id')
+        .eq('status', 'pending')
+        .order('created_at', { ascending: true })
+        .limit(1)
+        .single()
 
-        if (runResult === 'already_running') {
-          // BL only allows one scan at a time — leave as pending for next cron run
-          continue
+      if (nextAudit) {
+        try {
+          const runResult = await runCTReport(nextAudit.brightlocal_report_id)
+
+          if (runResult !== 'already_running') {
+            await supabase
+              .from('citation_audits')
+              .update({ status: 'running', started_at: new Date().toISOString() })
+              .eq('id', nextAudit.id)
+
+            stats.triggered++
+          }
+        } catch (err) {
+          console.error(`[citation-sync] Failed to trigger audit ${nextAudit.id}:`, err)
+          await supabase
+            .from('citation_audits')
+            .update({
+              status: 'failed',
+              last_error: err instanceof Error ? err.message : 'Unknown error',
+            })
+            .eq('id', nextAudit.id)
+          stats.errors++
         }
-
-        await supabase
-          .from('citation_audits')
-          .update({ status: 'running', started_at: new Date().toISOString() })
-          .eq('id', audit.id)
-
-        stats.triggered++
-      } catch (err) {
-        console.error(`[citation-sync] Failed to trigger audit ${audit.id}:`, err)
-        await supabase
-          .from('citation_audits')
-          .update({
-            status: 'failed',
-            last_error: err instanceof Error ? err.message : 'Unknown error',
-          })
-          .eq('id', audit.id)
-        stats.errors++
       }
     }
   } catch (err) {
