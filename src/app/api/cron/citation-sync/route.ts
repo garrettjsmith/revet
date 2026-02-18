@@ -3,6 +3,7 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import {
   findBLLocation,
   createBLLocation,
+  findExistingCTReport,
   createCTReport,
   runCTReport,
   getCTReport,
@@ -105,17 +106,21 @@ export async function GET(request: NextRequest) {
               .eq('id', loc.id)
           }
 
-          // Step 2: Create CT report
-          const gbp = gbpByLocation.get(loc.id)
-          const businessType = gbp?.primary_category_name || 'Business'
-          const primaryLocation = loc.postal_code || loc.city || ''
-          if (!primaryLocation) continue
+          // Step 2: Find or create CT report
+          let reportId = await findExistingCTReport(blLocId)
 
-          const reportId = await createCTReport({
-            locationId: blLocId,
-            businessType,
-            primaryLocation,
-          })
+          if (!reportId) {
+            const gbp = gbpByLocation.get(loc.id)
+            const businessType = gbp?.primary_category_name || 'Business'
+            const primaryLocation = loc.postal_code || loc.city || ''
+            if (!primaryLocation) continue
+
+            reportId = await createCTReport({
+              locationId: blLocId,
+              businessType,
+              primaryLocation,
+            })
+          }
 
           await supabase
             .from('locations')
