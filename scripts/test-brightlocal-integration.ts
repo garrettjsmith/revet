@@ -128,22 +128,25 @@ function testCtGetParsing() {
 function testCtRunParsing() {
   console.log('\nct/run response parsing:')
 
+  // Simulates the logic in runCTReport()
+
   // Doc response shape: {"response":{"status":"running"}}
   const docResponse: R = { response: { status: 'running' } }
-
-  // Our code: res.response?.status ?? res.status
+  const errorMsg1 = typeof docResponse.errors === 'object' ? docResponse.errors?.ERROR : undefined
+  assert(errorMsg1 !== 'Report is currently running', 'success: not a "currently running" error')
   const status1 = docResponse.response?.status ?? docResponse.status
-  assert(status1 === 'running', 'wrapped: status is "running"')
+  assert(status1 === 'running', 'success: status is "running"')
 
   // What if flat?
   const flatResponse: R = { status: 'running' }
   const status2 = flatResponse.response?.status ?? flatResponse.status
   assert(status2 === 'running', 'flat: status is "running"')
 
-  // Error: report already running
-  const errorResponse: R = { response: { status: 'already_running' } }
-  const status3 = errorResponse.response?.status ?? errorResponse.status
-  assert(status3 !== 'running', 'already_running != "running" triggers error path')
+  // REAL production error: another scan already running
+  // {"errors":{"ERROR":"Report is currently running"}}
+  const alreadyRunning: R = { errors: { ERROR: 'Report is currently running' } }
+  const errorMsg2 = typeof alreadyRunning.errors === 'object' ? alreadyRunning.errors?.ERROR : undefined
+  assert(errorMsg2 === 'Report is currently running', 'already_running: detected via errors.ERROR')
 }
 
 // ─── Test: ct/get-results response parsing ─────────────────

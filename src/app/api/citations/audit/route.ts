@@ -171,14 +171,21 @@ export async function POST(request: NextRequest) {
         continue
       }
 
-      await runCTReport(loc.brightlocal_report_id)
+      const runResult = await runCTReport(loc.brightlocal_report_id)
 
-      await supabase
-        .from('citation_audits')
-        .update({ status: 'running', started_at: new Date().toISOString() })
-        .eq('id', audit.id)
+      if (runResult === 'already_running') {
+        // BL only allows one CT scan at a time — leave audit as pending
+        // so the sync cron can pick it up once the current scan finishes
+        errors.push(`${loc.name}: another CT scan is already running, audit queued`)
+        stats.triggered++
+      } else {
+        await supabase
+          .from('citation_audits')
+          .update({ status: 'running', started_at: new Date().toISOString() })
+          .eq('id', audit.id)
 
-      stats.triggered++
+        stats.triggered++
+      }
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'unknown error'
       console.error(`[citation-audit] Failed for location ${loc.id}:`, err)

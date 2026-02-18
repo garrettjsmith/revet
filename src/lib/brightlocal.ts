@@ -388,16 +388,26 @@ export async function createCTReport(params: {
 /**
  * Trigger/run a Citation Tracker report scan.
  */
-export async function runCTReport(reportId: string): Promise<void> {
+export async function runCTReport(reportId: string): Promise<'running' | 'already_running'> {
   const res = await legacyFetch('/v2/ct/run', 'POST', {
     'report-id': reportId,
   })
+
+  // BL only allows one CT scan at a time across the account.
+  // If any report is already running, the API returns:
+  //   {"errors":{"ERROR":"Report is currently running"}}
+  const errorMsg = typeof res.errors === 'object' ? res.errors?.ERROR : undefined
+  if (errorMsg === 'Report is currently running') {
+    return 'already_running'
+  }
 
   // Response shape: {"response":{"status":"running"}}
   const status = res.response?.status ?? res.status
   if (status !== 'running' && !res.success) {
     throw new Error(`Failed to run CT report ${reportId}: ${formatErrors(res.errors)} | full response: ${JSON.stringify(res)}`)
   }
+
+  return 'running'
 }
 
 /**
