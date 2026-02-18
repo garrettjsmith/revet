@@ -108,9 +108,13 @@ export async function POST(request: NextRequest) {
       .eq('id', source_id)
 
     // Filter to truly new reviews (not previously in DB) — prevents flooding
-    // on initial sync or when cron/pubsub re-fetches known reviews
+    // on initial sync or when cron/pubsub re-fetches known reviews.
+    // Also skip reviews older than 7 days to avoid alerting on historical backfill.
+    const alertCutoff = Date.now() - 7 * 24 * 60 * 60 * 1000
     const newReviews = incomingReviews.filter((r: any) =>
-      !existingReplyMap.has(r.platform_review_id) && !r.reply_body
+      !existingReplyMap.has(r.platform_review_id)
+      && !r.reply_body
+      && r.published_at && new Date(r.published_at).getTime() > alertCutoff
     )
 
     // Process alert rules — only for new reviews, non-blocking
