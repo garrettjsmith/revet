@@ -184,40 +184,44 @@ export async function POST(request: NextRequest) {
         stats.created++
       }
 
-      // Step 3: Create audit record and trigger scan
-      // Skip if there's already a pending audit for this location
+      // Step 3: Create or reuse audit record, pull results if BL already done
+      let auditId: string
       if (existingAudit && existingAudit.status === 'pending') {
-        // Try to run the pending audit
-        const runResult = await runCTReport(existingAudit.brightlocal_report_id)
+        auditId = existingAudit.id
+      } else {
+        const { data: newAudit, error: insertError } = await supabase
+          .from('citation_audits')
+          .insert({
+            location_id: loc.id,
+            brightlocal_report_id: loc.brightlocal_report_id,
+            status: 'pending',
+          })
+          .select('id')
+          .single()
 
-        if (runResult === 'already_running') {
-          errors.push(`${loc.name}: another CT scan is already running, audit queued`)
-        } else {
-          await supabase
-            .from('citation_audits')
-            .update({ status: 'running', started_at: new Date().toISOString() })
-            .eq('id', existingAudit.id)
+        if (insertError || !newAudit) {
+          errors.push(`${loc.name}: failed to create audit record — ${insertError?.message || 'unknown'}`)
+          continue
         }
-
-        stats.triggered++
-        continue
+        auditId = newAudit.id
       }
 
-      const { data: audit, error: insertError } = await supabase
-        .from('citation_audits')
-        .insert({
-          location_id: loc.id,
+      // Try pulling existing results first — don't re-scan if BL already done
+      try {
+        const pulled = await pullAuditResults(supabase, {
+          id: auditId,
           brightlocal_report_id: loc.brightlocal_report_id,
-          status: 'pending',
+          location_id: loc.id,
         })
-        .select('id')
-        .single()
-
-      if (insertError || !audit) {
-        errors.push(`${loc.name}: failed to create audit record — ${insertError?.message || 'unknown'}`)
-        continue
+        if (pulled) {
+          stats.pulled++
+          continue
+        }
+      } catch {
+        // Report not ready — fall through to trigger a scan
       }
 
+      // BL report not complete — trigger a scan
       const runResult = await runCTReport(loc.brightlocal_report_id)
 
       if (runResult === 'already_running') {
@@ -227,7 +231,7 @@ export async function POST(request: NextRequest) {
         await supabase
           .from('citation_audits')
           .update({ status: 'running', started_at: new Date().toISOString() })
-          .eq('id', audit.id)
+          .eq('id', auditId)
 
         stats.triggered++
       }

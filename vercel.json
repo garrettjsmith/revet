@@ -51,7 +51,7 @@
     },
     {
       "path": "/api/cron/citation-sync",
-      "schedule": "0 6 * * *"
+      "schedule": "*/15 * * * *"
     }
   ]
 }
