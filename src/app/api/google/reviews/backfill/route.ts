@@ -3,6 +3,7 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { createServerSupabase } from '@/lib/supabase/server'
 import { fetchGoogleReviews, normalizeGoogleReview } from '@/lib/google/reviews'
 import { getValidAccessToken, GoogleAuthError } from '@/lib/google/auth'
+import { processAutopilot } from '@/lib/autopilot'
 
 export const maxDuration = 300
 
@@ -191,6 +192,31 @@ export async function POST(request: NextRequest) {
           metadata: { ...source.metadata, backfill_completed_at: new Date().toISOString() },
         })
         .eq('id', source.id)
+
+      // Generate AI drafts for unreplied reviews so the agency can respond.
+      // Use a higher limit than incremental sync since backfill is a one-time operation.
+      try {
+        const { data: unrepliedReviews } = await supabase
+          .from('reviews')
+          .select('platform_review_id, rating, body, reviewer_name')
+          .eq('source_id', source.id)
+          .is('reply_body', null)
+          .is('ai_draft', null)
+          .order('published_at', { ascending: false })
+
+        if (unrepliedReviews && unrepliedReviews.length > 0) {
+          await processAutopilot(
+            supabase,
+            source.id,
+            source.location_id,
+            (source.locations as any).name,
+            unrepliedReviews,
+            { limit: 50 }
+          )
+        }
+      } catch (autopilotErr) {
+        console.error(`[google/reviews/backfill] Autopilot failed for source ${source.id} (reviews still synced):`, autopilotErr)
+      }
 
       results.push({ source_id: source.id, reviews_synced: totalSynced, total_pages: totalPages })
     } catch (err) {

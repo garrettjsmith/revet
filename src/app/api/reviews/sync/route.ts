@@ -1,6 +1,6 @@
 import { createAdminClient } from '@/lib/supabase/admin'
 import { sendEmail, buildReviewAlertEmail, buildReviewResponseEmail } from '@/lib/email'
-import { generateReviewReply } from '@/lib/ai/generate-reply'
+import { processAutopilot } from '@/lib/autopilot'
 import { NextRequest, NextResponse } from 'next/server'
 
 /**
@@ -108,17 +108,31 @@ export async function POST(request: NextRequest) {
       .eq('id', source_id)
 
     // Filter to truly new reviews (not previously in DB) — prevents flooding
-    // on initial sync or when cron/pubsub re-fetches known reviews.
-    // Also skip reviews older than 7 days to avoid alerting on historical backfill.
-    const alertCutoff = Date.now() - 7 * 24 * 60 * 60 * 1000
+    // on initial sync or when cron/pubsub re-fetches known reviews
     const newReviews = incomingReviews.filter((r: any) =>
-      !existingReplyMap.has(r.platform_review_id)
-      && !r.reply_body
-      && r.published_at && new Date(r.published_at).getTime() > alertCutoff
+      !existingReplyMap.has(r.platform_review_id) && !r.reply_body
     )
 
-    // Process alert rules — only for new reviews, non-blocking
-    if (newReviews.length > 0) {
+    // Determine which new reviews should trigger email notifications.
+    // On initial sync (source never synced before), ALL reviews are "new" to the DB
+    // but most are old reviews (potentially years old). Suppress notifications for
+    // these to avoid flooding users with alerts for pre-existing reviews.
+    const isInitialSync = !source.last_synced_at
+    const NOTIFICATION_RECENCY_DAYS = 7
+    const notificationCutoff = new Date()
+    notificationCutoff.setDate(notificationCutoff.getDate() - NOTIFICATION_RECENCY_DAYS)
+
+    const notifiableReviews = isInitialSync
+      ? [] // Never notify on first sync — all reviews are historical
+      : newReviews.filter((r: any) => {
+          // Safety net: even on subsequent syncs, only notify for recent reviews.
+          // Prevents alerts if a sync gap causes old reviews to appear as "new".
+          if (!r.published_at) return false
+          return new Date(r.published_at) >= notificationCutoff
+        })
+
+    // Process alert rules — only for notifiable reviews, non-blocking
+    if (notifiableReviews.length > 0) {
       try {
         await processAlertRules(
           supabase,
@@ -126,7 +140,7 @@ export async function POST(request: NextRequest) {
           source.location_id,
           (source.locations as any).name,
           source.platform,
-          newReviews
+          notifiableReviews
         )
       } catch (alertErr) {
         console.error('[reviews/sync] Alert processing failed (reviews still synced):', alertErr)
@@ -141,7 +155,7 @@ export async function POST(request: NextRequest) {
       return !existingReplyMap.get(review.platform_review_id)
     })
 
-    if (reviewsWithNewReplies.length > 0) {
+    if (!isInitialSync && reviewsWithNewReplies.length > 0) {
       await processResponseAlerts(
         supabase,
         (source.locations as any).org_id,
@@ -152,7 +166,9 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // Process autopilot for truly new reviews
+    // Process autopilot for all truly new reviews — AI drafts should be
+    // generated regardless of review age so the agency can respond to everything.
+    // (Notifications are gated separately by recency above.)
     if (newReviews.length > 0) {
       await processAutopilot(
         supabase,
@@ -346,91 +362,3 @@ async function processResponseAlerts(
   }
 }
 
-async function processAutopilot(
-  supabase: ReturnType<typeof createAdminClient>,
-  sourceId: string,
-  locationId: string,
-  locationName: string,
-  reviews: any[]
-) {
-  if (!process.env.ANTHROPIC_API_KEY) return
-
-  // Check if autopilot is enabled for this location
-  const { data: config } = await supabase
-    .from('review_autopilot_config')
-    .select('*')
-    .eq('location_id', locationId)
-    .eq('enabled', true)
-    .single()
-
-  if (!config) return
-
-  const autoRatings: number[] = (config as any).auto_reply_ratings || [4, 5]
-
-  // Limit to 10 reviews per sync run to stay within timeout
-  const eligible = reviews
-    .filter((r: any) => r.rating !== null && autoRatings.includes(r.rating))
-    .slice(0, 10)
-
-  if (eligible.length === 0) return
-
-  for (const review of eligible) {
-    // Look up the DB review record
-    const { data: dbReview } = await supabase
-      .from('reviews')
-      .select('id, ai_draft')
-      .eq('source_id', sourceId)
-      .eq('platform_review_id', review.platform_review_id)
-      .single()
-
-    if (!dbReview || dbReview.ai_draft) continue
-
-    // Check no existing queue entry
-    const { data: existingQueue } = await supabase
-      .from('review_reply_queue')
-      .select('id')
-      .eq('review_id', dbReview.id)
-      .limit(1)
-
-    if (existingQueue && existingQueue.length > 0) continue
-
-    try {
-      const draft = await generateReviewReply({
-        businessName: locationName,
-        businessContext: (config as any).business_context,
-        reviewerName: review.reviewer_name,
-        rating: review.rating,
-        reviewBody: review.body,
-        tone: (config as any).tone,
-      })
-
-      // Save draft on the review
-      await supabase
-        .from('reviews')
-        .update({
-          ai_draft: draft,
-          ai_draft_generated_at: new Date().toISOString(),
-        })
-        .eq('id', dbReview.id)
-
-      // If not requiring approval, queue for auto-posting with random delay
-      if (!(config as any).require_approval) {
-        const minDelay = ((config as any).delay_min_minutes || 30) * 60 * 1000
-        const maxDelay = ((config as any).delay_max_minutes || 180) * 60 * 1000
-        const delay = minDelay + Math.random() * (maxDelay - minDelay)
-        const scheduledFor = new Date(Date.now() + delay).toISOString()
-
-        await supabase.from('review_reply_queue').insert({
-          review_id: dbReview.id,
-          reply_body: draft,
-          queued_by: '00000000-0000-0000-0000-000000000000',
-          status: 'pending',
-          source: 'ai_autopilot',
-          scheduled_for: scheduledFor,
-        })
-      }
-    } catch (err) {
-      console.error(`[reviews/sync] Autopilot generation failed for review ${dbReview.id}:`, err)
-    }
-  }
-}
