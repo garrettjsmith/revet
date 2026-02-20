@@ -30,11 +30,16 @@ export async function GET(request: NextRequest) {
     year: 'numeric',
   })
 
-  // Get all reviews created in the last 24h
+  // Get reviews created in the last 24h that were also published recently.
+  // The published_at filter prevents old reviews (e.g. from initial sync or
+  // backfill) from appearing in the digest — they were published long ago
+  // even though they were just imported into the DB.
+  const publishedSince = new Date(Date.now() - 14 * 24 * 60 * 60 * 1000).toISOString()
   const { data: recentReviews } = await supabase
     .from('reviews')
     .select('id, location_id, platform, reviewer_name, rating, body, reply_body, published_at, sentiment, created_at')
     .gte('created_at', since)
+    .gte('published_at', publishedSince)
     .order('created_at', { ascending: false })
 
   if (!recentReviews || recentReviews.length === 0) {
