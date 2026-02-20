@@ -113,8 +113,26 @@ export async function POST(request: NextRequest) {
       !existingReplyMap.has(r.platform_review_id) && !r.reply_body
     )
 
-    // Process alert rules — only for new reviews, non-blocking
-    if (newReviews.length > 0) {
+    // Determine which new reviews should trigger email notifications.
+    // On initial sync (source never synced before), ALL reviews are "new" to the DB
+    // but most are old reviews (potentially years old). Suppress notifications for
+    // these to avoid flooding users with alerts for pre-existing reviews.
+    const isInitialSync = !source.last_synced_at
+    const NOTIFICATION_RECENCY_DAYS = 7
+    const notificationCutoff = new Date()
+    notificationCutoff.setDate(notificationCutoff.getDate() - NOTIFICATION_RECENCY_DAYS)
+
+    const notifiableReviews = isInitialSync
+      ? [] // Never notify on first sync — all reviews are historical
+      : newReviews.filter((r: any) => {
+          // Safety net: even on subsequent syncs, only notify for recent reviews.
+          // Prevents alerts if a sync gap causes old reviews to appear as "new".
+          if (!r.published_at) return false
+          return new Date(r.published_at) >= notificationCutoff
+        })
+
+    // Process alert rules — only for notifiable reviews, non-blocking
+    if (notifiableReviews.length > 0) {
       try {
         await processAlertRules(
           supabase,
@@ -122,7 +140,7 @@ export async function POST(request: NextRequest) {
           source.location_id,
           (source.locations as any).name,
           source.platform,
-          newReviews
+          notifiableReviews
         )
       } catch (alertErr) {
         console.error('[reviews/sync] Alert processing failed (reviews still synced):', alertErr)
@@ -137,7 +155,7 @@ export async function POST(request: NextRequest) {
       return !existingReplyMap.get(review.platform_review_id)
     })
 
-    if (reviewsWithNewReplies.length > 0) {
+    if (!isInitialSync && reviewsWithNewReplies.length > 0) {
       await processResponseAlerts(
         supabase,
         (source.locations as any).org_id,
@@ -148,14 +166,15 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // Process autopilot for truly new reviews
-    if (newReviews.length > 0) {
+    // Process autopilot for truly new, recent reviews only.
+    // Skip on initial sync to avoid auto-replying to years-old reviews.
+    if (notifiableReviews.length > 0) {
       await processAutopilot(
         supabase,
         source_id,
         source.location_id,
         (source.locations as any).name,
-        newReviews
+        notifiableReviews
       )
     }
 
