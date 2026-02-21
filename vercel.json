@@ -39,7 +39,7 @@
     },
     {
       "path": "/api/cron/post-generate",
-      "schedule": "0 10 * * 1"
+      "schedule": "0 10 1 * *"
     },
     {
       "path": "/api/cron/queue-digest",
