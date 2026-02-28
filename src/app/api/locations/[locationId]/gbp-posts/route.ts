@@ -2,9 +2,8 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { createServerSupabase } from '@/lib/supabase/server'
 import { checkAgencyAdmin } from '@/lib/locations'
-import { createPost, deletePost } from '@/lib/google/profiles'
+import { deletePost } from '@/lib/google/profiles'
 import { getValidAccessToken, GoogleAuthError } from '@/lib/google/auth'
-import type { GBPLocalPost } from '@/lib/google/profiles'
 
 /**
  * GET /api/locations/[locationId]/gbp-posts
@@ -33,7 +32,7 @@ export async function GET(
     .from('gbp_post_queue')
     .select('*')
     .eq('location_id', params.locationId)
-    .in('status', ['pending', 'sending'])
+    .in('status', ['draft', 'client_review', 'pending', 'sending'])
     .order('created_at', { ascending: false })
 
   return NextResponse.json({
@@ -45,7 +44,8 @@ export async function GET(
 /**
  * POST /api/locations/[locationId]/gbp-posts
  *
- * Create or schedule a post. Agency admin only.
+ * Create a post draft. Agency admin only.
+ * All posts enter the approval queue (draft → client_review → pending → sent).
  *
  * Body: {
  *   topic_type: 'STANDARD' | 'EVENT' | 'OFFER' | 'ALERT'
@@ -58,7 +58,7 @@ export async function GET(
  *   event_end?: string (ISO)
  *   offer_coupon_code?: string
  *   offer_terms?: string
- *   scheduled_for?: string (ISO) — if in the future, queue instead of posting immediately
+ *   scheduled_for?: string (ISO)
  * }
  */
 export async function POST(
@@ -84,126 +84,33 @@ export async function POST(
 
   const adminClient = createAdminClient()
 
-  // If scheduled for the future, queue it
-  if (scheduled_for && new Date(scheduled_for) > new Date()) {
-    const { data: entry, error: insertError } = await adminClient
-      .from('gbp_post_queue')
-      .insert({
-        location_id: params.locationId,
-        topic_type: topic_type || 'STANDARD',
-        summary,
-        action_type: action_type || null,
-        action_url: action_url || null,
-        media_url: media_url || null,
-        event_title: event_title || null,
-        event_start: event_start || null,
-        event_end: event_end || null,
-        offer_coupon_code: offer_coupon_code || null,
-        offer_terms: offer_terms || null,
-        scheduled_for,
-        queued_by: user!.id,
-        status: 'pending',
-      })
-      .select()
-      .single()
-
-    if (insertError) {
-      return NextResponse.json({ error: insertError.message }, { status: 500 })
-    }
-
-    return NextResponse.json({ ok: true, scheduled: true, entry })
-  }
-
-  // Post immediately
-  try {
-    await getValidAccessToken()
-  } catch (err) {
-    if (err instanceof GoogleAuthError) {
-      return NextResponse.json({ error: 'Google connection required' }, { status: 401 })
-    }
-    return NextResponse.json({ error: 'Google auth error' }, { status: 500 })
-  }
-
-  const { data: profile } = await adminClient
-    .from('gbp_profiles')
-    .select('gbp_location_name, gbp_account_name')
-    .eq('location_id', params.locationId)
+  const { data: entry, error: insertError } = await adminClient
+    .from('gbp_post_queue')
+    .insert({
+      location_id: params.locationId,
+      topic_type: topic_type || 'STANDARD',
+      summary,
+      action_type: action_type || null,
+      action_url: action_url || null,
+      media_url: media_url || null,
+      event_title: event_title || null,
+      event_start: event_start || null,
+      event_end: event_end || null,
+      offer_coupon_code: offer_coupon_code || null,
+      offer_terms: offer_terms || null,
+      scheduled_for: scheduled_for || null,
+      queued_by: user!.id,
+      status: 'draft',
+      source: 'manual',
+    })
+    .select()
     .single()
 
-  if (!profile) {
-    return NextResponse.json({ error: 'No GBP profile found' }, { status: 404 })
+  if (insertError) {
+    return NextResponse.json({ error: insertError.message }, { status: 500 })
   }
 
-  const accountLocationName = profile.gbp_account_name
-    ? `${profile.gbp_account_name}/${profile.gbp_location_name}`
-    : profile.gbp_location_name
-
-  // Build the post object
-  const postPayload: GBPLocalPost = {
-    topicType: topic_type || 'STANDARD',
-    summary,
-    languageCode: 'en',
-  }
-
-  if (action_type && action_url) {
-    postPayload.callToAction = { actionType: action_type, url: action_url }
-  }
-
-  if (media_url) {
-    postPayload.media = [{ mediaFormat: 'PHOTO', sourceUrl: media_url }]
-  }
-
-  if (topic_type === 'EVENT' && event_title) {
-    const start = event_start ? new Date(event_start) : new Date()
-    const end = event_end ? new Date(event_end) : new Date(start.getTime() + 24 * 60 * 60 * 1000)
-    postPayload.event = {
-      title: event_title,
-      schedule: {
-        startDate: { year: start.getFullYear(), month: start.getMonth() + 1, day: start.getDate() },
-        startTime: { hours: start.getHours(), minutes: start.getMinutes() },
-        endDate: { year: end.getFullYear(), month: end.getMonth() + 1, day: end.getDate() },
-        endTime: { hours: end.getHours(), minutes: end.getMinutes() },
-      },
-    }
-  }
-
-  if (topic_type === 'OFFER') {
-    postPayload.offer = {}
-    if (offer_coupon_code) postPayload.offer.couponCode = offer_coupon_code
-    if (offer_terms) postPayload.offer.termsConditions = offer_terms
-  }
-
-  try {
-    const created = await createPost(accountLocationName, postPayload)
-
-    // Insert into gbp_posts
-    await adminClient
-      .from('gbp_posts')
-      .insert({
-        location_id: params.locationId,
-        gbp_post_name: created.name || '',
-        topic_type: created.topicType || topic_type || 'STANDARD',
-        summary: created.summary || summary,
-        action_type: created.callToAction?.actionType || action_type || null,
-        action_url: created.callToAction?.url || action_url || null,
-        media_url: media_url || null,
-        event_title: event_title || null,
-        event_start: event_start || null,
-        event_end: event_end || null,
-        offer_coupon_code: offer_coupon_code || null,
-        offer_terms: offer_terms || null,
-        state: created.state || 'LIVE',
-        search_url: created.searchUrl || null,
-        create_time: created.createTime || new Date().toISOString(),
-        update_time: created.updateTime || null,
-      })
-
-    return NextResponse.json({ ok: true, post: created })
-  } catch (err) {
-    const message = err instanceof Error ? err.message : 'Unknown error'
-    console.error('[gbp-posts] Create failed:', message)
-    return NextResponse.json({ error: message }, { status: 500 })
-  }
+  return NextResponse.json({ ok: true, entry })
 }
 
 /**

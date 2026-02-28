@@ -279,7 +279,7 @@ export function GBPPostsSection({ posts, queuedPosts, locationId, isAdmin }: Pro
                 onChange={(e) => setScheduledFor(e.target.value)}
                 className="w-full px-3 py-2 text-sm border border-warm-border rounded-lg bg-white focus:outline-none focus:ring-1 focus:ring-ink/20"
               />
-              <div className="text-[10px] text-warm-gray mt-1">Leave empty to post immediately</div>
+              <div className="text-[10px] text-warm-gray mt-1">Optional — post will be sent after approval</div>
             </div>
 
             <button
@@ -287,7 +287,7 @@ export function GBPPostsSection({ posts, queuedPosts, locationId, isAdmin }: Pro
               disabled={creating || !summary.trim()}
               className="px-4 py-2 text-xs font-medium text-cream bg-ink rounded-full hover:bg-ink/90 transition-colors disabled:opacity-50"
             >
-              {creating ? 'Posting...' : scheduledFor ? 'Schedule Post' : 'Post Now'}
+              {creating ? 'Creating...' : 'Create Post'}
             </button>
           </div>
         )}
@@ -295,20 +295,31 @@ export function GBPPostsSection({ posts, queuedPosts, locationId, isAdmin }: Pro
         {/* Queued posts */}
         {queuedPosts.length > 0 && (
           <div className="space-y-2">
-            <div className="text-[10px] text-warm-gray uppercase tracking-wider font-medium">Scheduled</div>
-            {queuedPosts.map((q) => (
-              <div key={q.id} className="flex items-start gap-3 px-3 py-2.5 rounded-lg bg-amber-50/50 border border-amber-200/50">
-                <span className="px-2 py-0.5 text-[10px] font-medium rounded-full bg-amber-100 text-amber-700">
-                  {q.scheduled_for
-                    ? new Date(q.scheduled_for).toLocaleDateString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })
-                    : 'Pending'}
-                </span>
-                <p className="text-xs text-ink flex-1 line-clamp-2">{q.summary}</p>
-                {q.status === 'sending' && (
-                  <span className="text-[10px] text-amber-600">Sending...</span>
-                )}
-              </div>
-            ))}
+            <div className="text-[10px] text-warm-gray uppercase tracking-wider font-medium">Queued</div>
+            {queuedPosts.map((q) => {
+              const statusConfig: Record<string, { label: string; bg: string; text: string }> = {
+                draft: { label: 'Draft', bg: 'bg-warm-light', text: 'text-warm-gray' },
+                client_review: { label: 'Client Review', bg: 'bg-blue-50', text: 'text-blue-600' },
+                pending: { label: 'Approved', bg: 'bg-emerald-50', text: 'text-emerald-600' },
+                sending: { label: 'Sending...', bg: 'bg-amber-100', text: 'text-amber-700' },
+              }
+              const s = statusConfig[q.status] || statusConfig.draft
+              return (
+                <div key={q.id} className="flex items-start gap-3 px-3 py-2.5 rounded-lg bg-amber-50/50 border border-amber-200/50">
+                  <div className="flex flex-col gap-1 shrink-0">
+                    <span className={`px-2 py-0.5 text-[10px] font-medium rounded-full ${s.bg} ${s.text}`}>
+                      {s.label}
+                    </span>
+                    {q.scheduled_for && (
+                      <span className="text-[10px] text-warm-gray">
+                        {new Date(q.scheduled_for).toLocaleDateString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}
+                      </span>
+                    )}
+                  </div>
+                  <p className="text-xs text-ink flex-1 line-clamp-2">{q.summary}</p>
+                </div>
+              )
+            })}
           </div>
         )}
 
