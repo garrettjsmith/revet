@@ -3,26 +3,32 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { generateGBPPost } from '@/lib/ai/generate-post'
 import { generateTopicPool } from '@/lib/ai/generate-topics'
 import { generatePostImage } from '@/lib/ideogram'
-import { tiersWithFeature } from '@/lib/tiers'
 
 export const maxDuration = 300
 
 const SYSTEM_USER_ID = '00000000-0000-0000-0000-000000000000'
 const MIN_TOPIC_POOL_SIZE = 10
 const DEFAULT_TOPIC_POOL_SIZE = 50
+const BATCH_LIMIT = 2
 
 /**
  * GET /api/cron/post-generate
  *
- * Monthly cron that auto-generates Google Business Profile post batches.
+ * Hourly cron that auto-generates Google Business Profile post batches
+ * on a rolling 30-day per-location cycle.
  *
- * For each location with posts_per_month > 0 and an active GBP profile:
+ * Each run picks up to BATCH_LIMIT locations that are due:
+ * - Locations whose last generation was 30+ days ago (ongoing cycle)
+ * - Newly optimized locations that haven't had posts generated yet (first batch)
+ *
+ * For each due location:
  * 1. Checks/replenishes the topic pool (generates ~50 if low)
  * 2. Picks N unused topics from the pool
  * 3. Generates copy (Haiku) + image (Ideogram) for each
  * 4. Inserts into gbp_post_queue as 'draft' with staggered scheduled_for dates
+ * 5. Stamps posts_last_generated_at to reset the 30-day timer
  *
- * Schedule: 1st of each month at 10:00 UTC
+ * Schedule: Hourly
  */
 export async function GET(request: NextRequest) {
   const authHeader = request.headers.get('authorization')
@@ -34,16 +40,23 @@ export async function GET(request: NextRequest) {
 
   const supabase = createAdminClient()
 
-  // Get locations with posts_per_month > 0 and active GBP profiles
+  // Find locations due for post generation (rolling 30-day cycle).
+  // Two cases:
+  // 1. Ongoing: posts_last_generated_at is 30+ days ago
+  // 2. First batch: never generated + profile optimization complete
+  const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString()
+
   const { data: locations } = await supabase
     .from('locations')
-    .select('id, name, city, state, org_id, posts_per_month, brand_voice, design_style, primary_color, secondary_color, service_tier')
+    .select('id, name, city, state, org_id, posts_per_month, brand_voice, design_style, primary_color, secondary_color')
     .gt('posts_per_month', 0)
     .eq('active', true)
-    .in('service_tier', tiersWithFeature('post_generation'))
+    .or(`posts_last_generated_at.lt.${thirtyDaysAgo},and(posts_last_generated_at.is.null,setup_status.eq.optimized)`)
+    .order('posts_last_generated_at', { ascending: true, nullsFirst: true })
+    .limit(BATCH_LIMIT)
 
   if (!locations || locations.length === 0) {
-    return NextResponse.json({ ok: true, generated: 0, message: 'No locations with posts configured' })
+    return NextResponse.json({ ok: true, generated: 0, message: 'No locations due for post generation' })
   }
 
   if (!process.env.ANTHROPIC_API_KEY) {
@@ -265,6 +278,12 @@ export async function GET(request: NextRequest) {
         console.error(`[post-generate] Failed for location ${location.id}, topic "${topicRow.topic}":`, err)
       }
     }
+
+    // Stamp the location so the 30-day timer resets
+    await supabase
+      .from('locations')
+      .update({ posts_last_generated_at: new Date().toISOString() })
+      .eq('id', location.id)
   }
 
   return NextResponse.json({

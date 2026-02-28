@@ -12,6 +12,7 @@ export const dynamic = 'force-dynamic'
  * Updates a location's service tier. Agency admin only.
  * Body: { service_tier: 'starter' | 'standard' | 'premium' }
  *
+ * On upgrade to premium, sets posts_per_month to 4 if currently 0.
  * On downgrade, disables features not included in the new tier:
  * - Starter: disables autopilot, sets posts_per_month to 0
  * - Standard: disables auto-send (sets require_approval to true), sets posts_per_month to 0
@@ -55,6 +56,17 @@ export async function PATCH(
   // If post generation not included in new tier, zero out posts_per_month
   if (!tierIncludes(newTier, 'post_generation')) {
     locationUpdate.posts_per_month = 0
+  } else {
+    // Upgrading to a tier with post generation — set a default if currently 0
+    const { data: current } = await adminClient
+      .from('locations')
+      .select('posts_per_month')
+      .eq('id', locationId)
+      .single()
+
+    if (current && (current.posts_per_month ?? 0) === 0) {
+      locationUpdate.posts_per_month = 4
+    }
   }
 
   const { error } = await adminClient
