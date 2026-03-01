@@ -257,7 +257,7 @@ export async function POST(request: NextRequest) {
       .map((r) => r.location_id)
     const baseUrl = process.env.NEXT_PUBLIC_APP_URL
     const apiKey = process.env.CRON_SECRET
-    const authHeaders = apiKey ? { Authorization: `Bearer ${apiKey}` } : {}
+    const authHeaders: Record<string, string> = apiKey ? { Authorization: `Bearer ${apiKey}` } : {}
 
     // Review backfill
     if (mappedLocationIds.length > 0) {
