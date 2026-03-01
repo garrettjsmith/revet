@@ -282,7 +282,8 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // Audit + recommendations generation for each mapped location
+    // Audit + recommendations generation — stagger 200ms apart to avoid
+    // hammering the AI API when importing large batches
     for (const locationId of mappedLocationIds) {
       fetch(`${baseUrl}/api/locations/${locationId}/recommendations/generate`, {
         method: 'POST',
@@ -290,6 +291,7 @@ export async function POST(request: NextRequest) {
       }).catch((err) => {
         console.error(`[google/map] Failed to trigger audit for ${locationId}:`, err)
       })
+      await new Promise((r) => setTimeout(r, 200))
     }
   }
 
