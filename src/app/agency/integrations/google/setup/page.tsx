@@ -51,6 +51,13 @@ export default function GoogleSetupPage() {
   const [errorMsg, setErrorMsg] = useState('')
   const [saveResults, setSaveResults] = useState<{ mapped: number; errors: number } | null>(null)
   const [savingProgress, setSavingProgress] = useState({ current: 0, total: 0 })
+  const [showNewOrgModal, setShowNewOrgModal] = useState(false)
+  const [newOrgName, setNewOrgName] = useState('')
+  const [newOrgSaving, setNewOrgSaving] = useState(false)
+  const [newOrgError, setNewOrgError] = useState('')
+  const [newOrgContext, setNewOrgContext] = useState<
+    { type: 'row'; locationName: string } | { type: 'bulk' } | { type: 'auto-suggest' } | null
+  >(null)
 
   // Load data on mount
   useEffect(() => {
@@ -280,6 +287,47 @@ export default function GoogleSetupPage() {
     setLastAssignedOrgId(bulkOrgId)
   }
 
+  // New org creation
+  function openNewOrgModal(context: typeof newOrgContext) {
+    setNewOrgContext(context)
+    setNewOrgName('')
+    setNewOrgError('')
+    setShowNewOrgModal(true)
+  }
+
+  async function createOrg() {
+    if (!newOrgName.trim()) return
+    setNewOrgSaving(true)
+    setNewOrgError('')
+    try {
+      const res = await fetch('/api/agency/organizations', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: newOrgName.trim() }),
+      })
+      if (!res.ok) {
+        const data = await res.json()
+        setNewOrgError(data.error || 'Failed to create organization')
+        return
+      }
+      const newOrg: RvetOrg = await res.json()
+      setRvetOrgs((prev) => [...prev, newOrg].sort((a, b) => a.name.localeCompare(b.name)))
+
+      // Apply the new org based on context
+      if (newOrgContext?.type === 'row') {
+        assignOrg(newOrgContext.locationName, newOrg.id)
+      } else {
+        setBulkOrgId(newOrg.id)
+      }
+      setLastAssignedOrgId(newOrg.id)
+      setShowNewOrgModal(false)
+    } catch {
+      setNewOrgError('Failed to create organization')
+    } finally {
+      setNewOrgSaving(false)
+    }
+  }
+
   // Save — import only rows with org assigned
   async function importLocations() {
     const toImport = unmappedLocations.filter((l) => orgAssignments.has(l.name))
@@ -492,12 +540,21 @@ export default function GoogleSetupPage() {
               <div className="flex items-center gap-2">
                 <select
                   value={bulkOrgId}
-                  onChange={(e) => setBulkOrgId(e.target.value)}
+                  onChange={(e) => {
+                    if (e.target.value === '__new__') {
+                      e.target.value = bulkOrgId
+                      openNewOrgModal({ type: 'auto-suggest' })
+                    } else {
+                      setBulkOrgId(e.target.value)
+                    }
+                  }}
                   className="text-xs border border-amber-300 rounded-lg px-2.5 py-1.5 bg-white text-amber-900"
                 >
                   {rvetOrgs.map((org) => (
                     <option key={org.id} value={org.id}>{org.name}</option>
                   ))}
+                  <option disabled>──────────</option>
+                  <option value="__new__">+ Create new...</option>
                 </select>
                 <button
                   onClick={autoAssignAll}
@@ -620,7 +677,14 @@ export default function GoogleSetupPage() {
                           <td className="px-3 py-2.5">
                             <select
                               value={assignedOrgId || ''}
-                              onChange={(e) => assignOrg(gbp.name, e.target.value)}
+                              onChange={(e) => {
+                                if (e.target.value === '__new__') {
+                                  e.target.value = assignedOrgId || ''
+                                  openNewOrgModal({ type: 'row', locationName: gbp.name })
+                                } else {
+                                  assignOrg(gbp.name, e.target.value)
+                                }
+                              }}
                               className={`text-xs border rounded-lg px-2.5 py-1.5 bg-white transition-colors ${
                                 assignedOrgId
                                   ? 'border-ink text-ink font-medium'
@@ -631,6 +695,8 @@ export default function GoogleSetupPage() {
                               {rvetOrgs.map((org) => (
                                 <option key={org.id} value={org.id}>{org.name}</option>
                               ))}
+                              <option disabled>──────────</option>
+                              <option value="__new__">+ Create new...</option>
                             </select>
                           </td>
                         )}
@@ -641,12 +707,21 @@ export default function GoogleSetupPage() {
                             <td className="px-3 py-2.5">
                               <select
                                 value={mapping.org_id}
-                                onChange={(e) => moveLocation(mapping.location_id, e.target.value)}
+                                onChange={(e) => {
+                                  if (e.target.value === '__new__') {
+                                    e.target.value = mapping.org_id
+                                    openNewOrgModal({ type: 'bulk' })
+                                  } else {
+                                    moveLocation(mapping.location_id, e.target.value)
+                                  }
+                                }}
                                 className="text-xs border border-warm-border rounded-lg px-2.5 py-1.5 bg-white text-ink"
                               >
                                 {rvetOrgs.map((org) => (
                                   <option key={org.id} value={org.id}>{org.name}</option>
                                 ))}
+                                <option disabled>──────────</option>
+                                <option value="__new__">+ Create new...</option>
                               </select>
                             </td>
                             <td className="px-3 py-2.5">
@@ -705,12 +780,21 @@ export default function GoogleSetupPage() {
                 <span className="text-xs">Assign to:</span>
                 <select
                   value={bulkOrgId}
-                  onChange={(e) => setBulkOrgId(e.target.value)}
+                  onChange={(e) => {
+                    if (e.target.value === '__new__') {
+                      e.target.value = bulkOrgId
+                      openNewOrgModal({ type: 'bulk' })
+                    } else {
+                      setBulkOrgId(e.target.value)
+                    }
+                  }}
                   className="text-xs border border-cream/30 rounded-lg px-2.5 py-1 bg-ink text-cream"
                 >
                   {rvetOrgs.map((org) => (
                     <option key={org.id} value={org.id}>{org.name}</option>
                   ))}
+                  <option disabled>──────────</option>
+                  <option value="__new__">+ Create new...</option>
                 </select>
                 <button
                   onClick={bulkAssign}
@@ -784,6 +868,50 @@ export default function GoogleSetupPage() {
           <button onClick={() => window.location.href = '/agency/integrations'} className="px-6 py-2 bg-ink text-cream text-xs font-medium rounded-full hover:bg-ink/90 transition-colors">
             View Integrations
           </button>
+        </div>
+      )}
+      {/* New org modal */}
+      {showNewOrgModal && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center">
+          <div className="absolute inset-0 bg-black/30" onClick={() => setShowNewOrgModal(false)} />
+          <div className="relative bg-white rounded-xl border border-warm-border shadow-xl p-6 w-full max-w-sm">
+            <h3 className="text-sm font-serif text-ink mb-4">New Organization</h3>
+            <div className="mb-3">
+              <label className="block text-[11px] text-warm-gray uppercase tracking-wider mb-1">Name</label>
+              <input
+                type="text"
+                value={newOrgName}
+                onChange={(e) => setNewOrgName(e.target.value)}
+                onKeyDown={(e) => { if (e.key === 'Enter' && newOrgName.trim()) createOrg() }}
+                placeholder="Acme Dental Group"
+                autoFocus
+                className="w-full text-sm border border-warm-border rounded-lg px-3 py-2 bg-white text-ink placeholder:text-warm-gray/50 focus:outline-none focus:ring-1 focus:ring-ink"
+              />
+            </div>
+            {newOrgName.trim() && (
+              <p className="text-[10px] text-warm-gray mb-4">
+                Slug: {newOrgName.trim().toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '')}
+              </p>
+            )}
+            {newOrgError && (
+              <p className="text-xs text-red-600 mb-3">{newOrgError}</p>
+            )}
+            <div className="flex items-center justify-end gap-2">
+              <button
+                onClick={() => setShowNewOrgModal(false)}
+                className="px-4 py-1.5 text-xs text-warm-gray hover:text-ink transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={createOrg}
+                disabled={!newOrgName.trim() || newOrgSaving}
+                className="px-4 py-1.5 bg-ink text-cream text-xs font-medium rounded-full hover:bg-ink/90 transition-colors disabled:opacity-50"
+              >
+                {newOrgSaving ? 'Creating...' : 'Create'}
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>
