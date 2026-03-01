@@ -12,15 +12,22 @@ export const maxDuration = 60
  * POST /api/locations/[locationId]/recommendations/generate
  *
  * Runs audit → generates AI recommendations → inserts as batch.
- * Agency admin only.
+ * Auth: agency admin session OR CRON_SECRET bearer token (for server-side triggers).
  */
 export async function POST(
-  _request: NextRequest,
+  request: NextRequest,
   { params }: { params: { locationId: string } }
 ) {
-  const isAdmin = await checkAgencyAdmin()
-  if (!isAdmin) {
-    return NextResponse.json({ error: 'Agency admin required' }, { status: 403 })
+  // Accept either agency admin session or CRON_SECRET for server-side triggers
+  const authHeader = request.headers.get('authorization')
+  const apiKey = process.env.CRON_SECRET
+  const isCronAuth = apiKey && authHeader === `Bearer ${apiKey}`
+
+  if (!isCronAuth) {
+    const isAdmin = await checkAgencyAdmin()
+    if (!isAdmin) {
+      return NextResponse.json({ error: 'Agency admin required' }, { status: 403 })
+    }
   }
 
   const adminClient = createAdminClient()
