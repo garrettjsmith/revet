@@ -16,7 +16,7 @@ const FULL_READ_MASK = [
   'name', 'title', 'storeCode', 'languageCode', 'phoneNumbers',
   'categories', 'storefrontAddress', 'websiteUri', 'regularHours',
   'specialHours', 'serviceArea', 'labels', 'latlng', 'openInfo',
-  'metadata', 'profile', 'moreHours', 'serviceItems', 'menuUri',
+  'metadata', 'profile', 'moreHours', 'serviceItems',
 ].join(',')
 
 // ─── Profile Fetch ──────────────────────────────────────────
