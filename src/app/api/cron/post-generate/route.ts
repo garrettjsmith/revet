@@ -19,7 +19,7 @@ const BATCH_LIMIT = 2
  *
  * Each run picks up to BATCH_LIMIT locations that are due:
  * - Locations whose last generation was 30+ days ago (ongoing cycle)
- * - Newly optimized locations that haven't had posts generated yet (first batch)
+ * - Locations that haven't had posts generated yet (first batch)
  *
  * For each due location:
  * 1. Checks/replenishes the topic pool (generates ~50 if low)
@@ -43,7 +43,7 @@ export async function GET(request: NextRequest) {
   // Find locations due for post generation (rolling 30-day cycle).
   // Two cases:
   // 1. Ongoing: posts_last_generated_at is 30+ days ago
-  // 2. First batch: never generated + profile optimization complete
+  // 2. First batch: never generated (posts_last_generated_at IS NULL)
   const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString()
 
   const { data: locations } = await supabase
@@ -51,7 +51,7 @@ export async function GET(request: NextRequest) {
     .select('id, name, city, state, org_id, posts_per_month, brand_voice, design_style, primary_color, secondary_color')
     .gt('posts_per_month', 0)
     .eq('active', true)
-    .or(`posts_last_generated_at.lt.${thirtyDaysAgo},and(posts_last_generated_at.is.null,setup_status.eq.optimized)`)
+    .or(`posts_last_generated_at.lt.${thirtyDaysAgo},posts_last_generated_at.is.null`)
     .order('posts_last_generated_at', { ascending: true, nullsFirst: true })
     .limit(BATCH_LIMIT)
 
