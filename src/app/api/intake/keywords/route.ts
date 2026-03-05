@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import Anthropic from '@anthropic-ai/sdk'
+import { createServerSupabase } from '@/lib/supabase/server'
 
 let _client: Anthropic | null = null
 function getClient() {
@@ -13,9 +14,15 @@ function getClient() {
  * GET /api/intake/keywords?category=Dentist&city=Austin&state=TX
  *
  * Returns pre-seeded keyword suggestions for a business category + location.
- * Public endpoint (used by intake form).
+ * Authenticated endpoint — requires user session.
  */
 export async function GET(request: NextRequest) {
+  const supabase = createServerSupabase()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  }
+
   const { searchParams } = new URL(request.url)
   const category = searchParams.get('category')
   const city = searchParams.get('city') || ''

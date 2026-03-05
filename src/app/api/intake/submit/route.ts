@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
+import { createServerSupabase } from '@/lib/supabase/server'
+import { completePhase, advancePipeline } from '@/lib/pipeline'
 
 export const maxDuration = 60
 
@@ -9,10 +11,16 @@ export const maxDuration = 60
  * Submits the intake form. Populates brand_config, location data,
  * and triggers the optimization pipeline.
  *
- * Public endpoint (no auth — customers fill this out).
- * Requires org_id and location_id in body to scope the submission.
+ * Authenticated endpoint — verifies user has org membership.
  */
 export async function POST(request: NextRequest) {
+  // Verify authenticated user has access to this org
+  const supabase = createServerSupabase()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  }
+
   const body = await request.json()
   const {
     org_id,
@@ -59,6 +67,18 @@ export async function POST(request: NextRequest) {
 
   if (!org_id || !location_id) {
     return NextResponse.json({ error: 'org_id and location_id required' }, { status: 400 })
+  }
+
+  // Verify user is a member of this org
+  const { data: membership } = await supabase
+    .from('org_members')
+    .select('id')
+    .eq('user_id', user.id)
+    .eq('org_id', org_id)
+    .single()
+
+  if (!membership) {
+    return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
   }
 
   const adminClient = createAdminClient()
@@ -180,6 +200,14 @@ export async function POST(request: NextRequest) {
     })
   } catch {
     // Non-blocking
+  }
+
+  // Update pipeline phases
+  try {
+    await completePhase(location_id, 'intake')
+    await advancePipeline(location_id)
+  } catch (err) {
+    console.error(`[intake/submit] Pipeline update failed:`, err)
   }
 
   return NextResponse.json({

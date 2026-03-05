@@ -94,6 +94,7 @@ export function Sidebar({ currentOrg, memberships, userEmail, isAgencyAdmin, loc
         { href: '/agency/queue', label: 'Work Queue', icon: QueueIcon },
         { href: '/agency/organizations', label: 'Organizations', icon: OrganizationsIcon },
         { href: '/agency/locations', label: 'All Locations', icon: LocationIcon },
+        { href: '/agency/pipeline', label: 'Setup Pipeline', icon: QueueIcon },
         { href: '/agency/landers', label: 'Landers', icon: LanderIcon },
         { href: '/agency/citations', label: 'Citations', icon: CitationIcon },
         { href: '/agency/integrations', label: 'Integrations', icon: IntegrationsIcon },
@@ -106,6 +107,7 @@ export function Sidebar({ currentOrg, memberships, userEmail, isAgencyAdmin, loc
 
   // Nav items for org scope — with optional location scoping
   const locationSecondaryItems = currentLocation && locationBasePath ? [
+    { href: `${locationBasePath}/intake`, label: 'Intake', icon: FormIcon },
     { href: `${locationBasePath}/review-funnels`, label: 'Review Funnels', icon: FunnelIcon },
     { href: `${locationBasePath}/forms`, label: 'Forms', icon: FormIcon },
     { href: `${locationBasePath}/lander`, label: 'Lander', icon: LanderIcon },

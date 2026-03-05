@@ -4,6 +4,7 @@ import { getOrgLocations, checkAgencyAdmin } from '@/lib/locations'
 import Link from 'next/link'
 import { LocationTable } from '@/components/location-table'
 import { ActionItems } from '@/components/action-items'
+import { calculateProgress, type PhaseRecord } from '@/lib/pipeline'
 
 export const dynamic = 'force-dynamic'
 
@@ -32,6 +33,7 @@ export default async function OrgDashboard({ params }: { params: { orgSlug: stri
     { data: gbpProfiles },
     { count: totalReviews },
     { count: unreadReviews },
+    { data: pipelinePhases },
   ] = locationIds.length > 0
     ? await Promise.all([
         adminClient
@@ -52,11 +54,23 @@ export default async function OrgDashboard({ params }: { params: { orgSlug: stri
           .select('*', { count: 'exact', head: true })
           .in('location_id', locationIds)
           .eq('status', 'new'),
+        adminClient
+          .from('location_setup_phases')
+          .select('location_id, phase, status')
+          .in('location_id', locationIds),
       ])
-    : [{ data: [] }, { data: [] }, { count: 0 }, { count: 0 }]
+    : [{ data: [] }, { data: [] }, { count: 0 }, { count: 0 }, { data: [] }]
 
   const sources = reviewSources || []
   const profiles = gbpProfiles || []
+
+  // Group pipeline phases by location and calculate progress
+  const phasesByLocation = new Map<string, PhaseRecord[]>()
+  for (const phase of (pipelinePhases || []) as PhaseRecord[]) {
+    const existing = phasesByLocation.get(phase.location_id) || []
+    existing.push(phase)
+    phasesByLocation.set(phase.location_id, existing)
+  }
 
   // Compute avg rating across all locations
   const ratingsWithData = sources.filter((s) => s.average_rating != null)
@@ -78,6 +92,7 @@ export default async function OrgDashboard({ params }: { params: { orgSlug: stri
   const locationRows = locations.map((loc) => {
     const source = sourceByLocation.get(loc.id)
     const profile = profileByLocation.get(loc.id)
+    const locPhases = phasesByLocation.get(loc.id)
     return {
       location: loc,
       reviews: source?.total_review_count || 0,
@@ -87,6 +102,7 @@ export default async function OrgDashboard({ params }: { params: { orgSlug: stri
       hasSource: !!source,
       category: profile?.primary_category_name || null,
       gbpStatus: profile?.open_status || null,
+      pipelineProgress: locPhases ? calculateProgress(locPhases) : null,
     }
   })
 

@@ -22,6 +22,7 @@ interface LocationTableProps {
     hasSource: boolean
     category: string | null
     gbpStatus: string | null
+    pipelineProgress?: number | null
   }>
   orgSlug: string
   compact?: boolean
@@ -35,6 +36,7 @@ type SyncFilter = 'all' | 'synced' | 'pending' | 'error' | 'not_connected'
 
 export function LocationTable({ locations, orgSlug, compact = false, isAgencyAdmin = false, allOrgs = [] }: LocationTableProps) {
   const router = useRouter()
+  const hasPipelineData = locations.some((l) => l.pipelineProgress != null)
   const [searchQuery, setSearchQuery] = useState('')
   const [syncFilter, setSyncFilter] = useState<SyncFilter>('all')
   const [cityFilter, setCityFilter] = useState<string>('all')
@@ -338,6 +340,25 @@ export function LocationTable({ locations, orgSlug, compact = false, isAgencyAdm
         <td className="px-5 py-3.5 font-mono text-sm text-ink">{loc.reviews}</td>
         <td className="px-5 py-3.5 font-mono text-sm text-ink">{loc.avgRating}</td>
         <td className="px-5 py-3.5">{renderSyncStatus(loc)}</td>
+        {hasPipelineData && (
+          <td className="px-5 py-3.5 w-28">
+            {loc.pipelineProgress != null ? (
+              <div className="flex items-center gap-2">
+                <div className="flex-1 h-1.5 bg-warm-border rounded-full overflow-hidden">
+                  <div
+                    className={`h-full rounded-full transition-all duration-300 ${
+                      loc.pipelineProgress === 100 ? 'bg-emerald-500' : 'bg-ink'
+                    }`}
+                    style={{ width: `${loc.pipelineProgress}%` }}
+                  />
+                </div>
+                <span className="text-[10px] text-warm-gray w-7 text-right">{loc.pipelineProgress}%</span>
+              </div>
+            ) : (
+              <span className="text-xs text-warm-gray">—</span>
+            )}
+          </td>
+        )}
         <td className="px-5 py-3.5 relative">
           <div className="flex items-center gap-2 justify-end">
             <button
@@ -416,7 +437,7 @@ export function LocationTable({ locations, orgSlug, compact = false, isAgencyAdm
     const pageLocationIds = locs.map((loc) => loc.location.id)
     const allSelectedOnPage = pageLocationIds.length > 0 && pageLocationIds.every((id) => selected.has(id))
     const someSelectedOnPage = pageLocationIds.some((id) => selected.has(id))
-    const colSpan = isAgencyAdmin && allOrgs.length > 0 ? 7 : 6
+    const colSpan = (isAgencyAdmin && allOrgs.length > 0 ? 7 : 6) + (hasPipelineData ? 1 : 0)
 
     return (
       <table className="w-full">
@@ -459,6 +480,9 @@ export function LocationTable({ locations, orgSlug, compact = false, isAgencyAdm
             <th className="text-left px-5 py-3 text-[11px] text-warm-gray uppercase tracking-wider font-medium">
               {showType ? 'GBP' : 'Status'}
             </th>
+            {hasPipelineData && (
+              <th className="text-left px-5 py-3 text-[11px] text-warm-gray uppercase tracking-wider font-medium">Setup</th>
+            )}
             <th className="text-left px-5 py-3 text-[11px] text-warm-gray uppercase tracking-wider font-medium"></th>
           </tr>
         </thead>

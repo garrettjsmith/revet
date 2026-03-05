@@ -8,6 +8,7 @@ import {
   normalizeGBPProfile,
 } from '@/lib/google/profiles'
 import { getValidAccessToken, GoogleAuthError } from '@/lib/google/auth'
+import { completePhase, advancePipeline } from '@/lib/pipeline'
 import type { GBPProfileRaw } from '@/lib/google/profiles'
 import { sendEmail, buildProfileRecommendationEmail } from '@/lib/email'
 
@@ -395,6 +396,14 @@ async function applyRecommendation(
         .from('locations')
         .update({ setup_status: 'optimized' })
         .eq('id', locationId)
+
+      // Mark optimization phase complete and advance pipeline
+      try {
+        await completePhase(locationId, 'optimization')
+        await advancePipeline(locationId)
+      } catch (err) {
+        console.error(`[recommendations] Pipeline update failed:`, err)
+      }
     } else {
       await adminClient
         .from('locations')

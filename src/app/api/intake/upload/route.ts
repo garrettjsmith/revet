@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
+import { createServerSupabase } from '@/lib/supabase/server'
 import { randomUUID } from 'crypto'
 
 const MAX_FILE_SIZE = 10 * 1024 * 1024 // 10MB
@@ -9,10 +10,16 @@ const ALLOWED_TYPES = ['image/jpeg', 'image/png', 'image/webp', 'image/gif', 'vi
  * POST /api/intake/upload
  *
  * Upload a file (logo, photo, video) to Supabase Storage.
- * Public endpoint (used by intake form).
+ * Authenticated endpoint — requires user session.
  * Returns the public URL.
  */
 export async function POST(request: NextRequest) {
+  const supabase = createServerSupabase()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  }
+
   const formData = await request.formData()
   const file = formData.get('file') as File | null
   const folder = (formData.get('folder') as string) || 'intake'
