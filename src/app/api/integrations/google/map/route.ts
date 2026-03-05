@@ -250,12 +250,16 @@ export async function POST(request: NextRequest) {
     }
   }
 
-  // Trigger review backfill for newly mapped sources (fire-and-forget)
+  // Fire-and-forget: review backfill + audit/recommendations for mapped locations
   if (mappedCount > 0) {
     const mappedLocationIds = results
       .filter((r) => r.status === 'mapped' && r.location_id)
       .map((r) => r.location_id)
+    const baseUrl = process.env.NEXT_PUBLIC_APP_URL
+    const apiKey = process.env.CRON_SECRET
+    const authHeaders: Record<string, string> = apiKey ? { Authorization: `Bearer ${apiKey}` } : {}
 
+    // Review backfill
     if (mappedLocationIds.length > 0) {
       const { data: newSources } = await adminClient
         .from('review_sources')
@@ -265,15 +269,9 @@ export async function POST(request: NextRequest) {
         .eq('sync_status', 'pending')
 
       if (newSources && newSources.length > 0) {
-        const backfillUrl = `${process.env.NEXT_PUBLIC_APP_URL}/api/google/reviews/backfill`
-        const apiKey = process.env.CRON_SECRET
-
-        fetch(backfillUrl, {
+        fetch(`${baseUrl}/api/google/reviews/backfill`, {
           method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            ...(apiKey ? { Authorization: `Bearer ${apiKey}` } : {}),
-          },
+          headers: { 'Content-Type': 'application/json', ...authHeaders },
           body: JSON.stringify({
             source_ids: newSources.map((s) => s.id),
             limit: newSources.length,
@@ -282,6 +280,18 @@ export async function POST(request: NextRequest) {
           console.error('[google/map] Failed to trigger review backfill:', err)
         })
       }
+    }
+
+    // Audit + recommendations generation — stagger 200ms apart to avoid
+    // hammering the AI API when importing large batches
+    for (const locationId of mappedLocationIds) {
+      fetch(`${baseUrl}/api/locations/${locationId}/recommendations/generate`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...authHeaders },
+      }).catch((err) => {
+        console.error(`[google/map] Failed to trigger audit for ${locationId}:`, err)
+      })
+      await new Promise((r) => setTimeout(r, 200))
     }
   }
 
