@@ -1,4 +1,7 @@
 import { createAdminClient } from '@/lib/supabase/admin'
+import { getValidAccessToken } from '@/lib/google/auth'
+import { listGBPLocations, type GBPLocation } from '@/lib/google/accounts'
+import { fetchGBPProfile, normalizeGBPProfile } from '@/lib/google/profiles'
 
 export type SetupPhase =
   | 'gbp_connect'
@@ -368,11 +371,17 @@ export function getReadyPhases(phases: PhaseRecord[]): SetupPhase[] {
   return ready
 }
 
+export interface AdvanceResult {
+  triggered: SetupPhase[]
+  /** When nothing was triggered, explains what's blocking */
+  blocking?: { phase: SetupPhase; reason: string } | null
+}
+
 /**
  * Advance the pipeline: detect ready phases and trigger them.
- * Returns the phases that were triggered.
+ * Returns triggered phases and blocking info.
  */
-export async function advancePipeline(locationId: string): Promise<SetupPhase[]> {
+export async function advancePipeline(locationId: string): Promise<AdvanceResult> {
   const phases = await getLocationPhases(locationId)
   if (phases.length === 0) {
     // Pipeline not initialized — backfill first
@@ -383,7 +392,7 @@ export async function advancePipeline(locationId: string): Promise<SetupPhase[]>
   return advancePipelineFromPhases(locationId, phases)
 }
 
-async function advancePipelineFromPhases(locationId: string, phases: PhaseRecord[]): Promise<SetupPhase[]> {
+async function advancePipelineFromPhases(locationId: string, phases: PhaseRecord[]): Promise<AdvanceResult> {
   const triggered: SetupPhase[] = []
 
   // First: detect any manually-completed work and mark those phases done
@@ -409,13 +418,19 @@ async function advancePipelineFromPhases(locationId: string, phases: PhaseRecord
 
   for (const phase of ready) {
     switch (phase) {
-      case 'gbp_connect':
-        // Cannot auto-trigger — requires manual GBP mapping
+      case 'gbp_connect': {
+        // Try to auto-discover and map GBP for this location
+        const autoConnected = await tryAutoConnectGBP(locationId)
+        if (autoConnected) {
+          triggered.push('gbp_connect')
+          triggered.push('initial_sync')
+          triggered.push('review_setup')
+        }
         break
+      }
 
       case 'initial_sync':
-        // Already happens inline during GBP mapping
-        // Check if sync is actually done
+        // Already happens inline during GBP mapping / auto-connect
         break
 
       case 'benchmark': {
@@ -502,7 +517,149 @@ async function advancePipelineFromPhases(locationId: string, phases: PhaseRecord
     }
   }
 
-  return triggered
+  // If nothing triggered, figure out what's blocking
+  if (triggered.length === 0) {
+    const nextPending = getReadyPhases(currentPhases)[0] || phases.find((p) => p.status === 'pending')?.phase
+    if (nextPending) {
+      const blocking = getBlockingReason(nextPending)
+      return { triggered, blocking: { phase: nextPending, reason: blocking } }
+    }
+  }
+
+  return { triggered }
+}
+
+function getBlockingReason(phase: SetupPhase): string {
+  switch (phase) {
+    case 'gbp_connect':
+      return 'No matching GBP profile found. Map this location via Integrations.'
+    case 'intake':
+      return 'Intake form needs to be completed.'
+    case 'optimization':
+      return 'Recommendations need to be reviewed and approved.'
+    case 'recommendations':
+      return 'Waiting for audit and intake to finish.'
+    default:
+      return 'This step requires manual action.'
+  }
+}
+
+/**
+ * Try to auto-discover and connect a GBP profile for a location.
+ * Matches by place_id. Returns true if successful.
+ */
+async function tryAutoConnectGBP(locationId: string): Promise<boolean> {
+  const adminClient = createAdminClient()
+
+  // Check if already connected
+  const { data: existing } = await adminClient
+    .from('gbp_profiles')
+    .select('id')
+    .eq('location_id', locationId)
+    .single()
+  if (existing) {
+    await completePhase(locationId, 'gbp_connect')
+    await completePhase(locationId, 'initial_sync')
+    return true
+  }
+
+  // Need the location's place_id to match
+  const { data: location } = await adminClient
+    .from('locations')
+    .select('place_id, org_id, name')
+    .eq('id', locationId)
+    .single()
+  if (!location?.place_id) return false
+
+  // Need a Google integration
+  const { data: integration } = await adminClient
+    .from('agency_integrations')
+    .select('id')
+    .eq('provider', 'google')
+    .single()
+  if (!integration) return false
+
+  // Verify Google token is available (googleFetch uses it internally)
+  try {
+    await getValidAccessToken()
+  } catch {
+    return false
+  }
+
+  // Discover all GBP locations via wildcard and match by place_id
+  let gbpLocations: GBPLocation[]
+  try {
+    gbpLocations = await listGBPLocations('accounts/-')
+  } catch {
+    return false
+  }
+
+  const match = gbpLocations.find((l) => l.metadata?.placeId === location.place_id)
+  if (!match) return false
+
+  // Found a match — create the mapping + profile
+  const gbpLocationName = match.name.startsWith('locations/')
+    ? match.name
+    : match.name.split('/').slice(-2).join('/')
+
+  await adminClient
+    .from('agency_integration_mappings')
+    .upsert(
+      {
+        integration_id: integration.id,
+        external_resource_id: gbpLocationName,
+        external_resource_name: match.title,
+        resource_type: 'gbp_location',
+        location_id: locationId,
+        org_id: location.org_id,
+        metadata: { place_id: location.place_id },
+      },
+      { onConflict: 'integration_id,external_resource_id' }
+    )
+
+  // Fetch full profile and store it
+  try {
+    const raw = await fetchGBPProfile(gbpLocationName)
+    const normalized = normalizeGBPProfile(raw)
+
+    await adminClient
+      .from('gbp_profiles')
+      .upsert(
+        {
+          location_id: locationId,
+          gbp_location_name: gbpLocationName,
+          ...normalized,
+          sync_status: 'active',
+          last_synced_at: new Date().toISOString(),
+          sync_error: null,
+        },
+        { onConflict: 'location_id' }
+      )
+  } catch {
+    // Profile fetch failed but mapping exists — still mark connected
+  }
+
+  // Create Google review source
+  await adminClient
+    .from('review_sources')
+    .upsert(
+      {
+        location_id: locationId,
+        platform: 'google',
+        platform_listing_id: location.place_id,
+        platform_listing_name: match.title,
+        sync_status: 'pending',
+        metadata: { gbp_location_name: gbpLocationName },
+      },
+      { onConflict: 'location_id,platform,platform_listing_id' }
+    )
+
+  // Complete pipeline phases
+  await completePhase(locationId, 'gbp_connect')
+  await completePhase(locationId, 'initial_sync')
+  await completePhase(locationId, 'review_setup')
+
+  return true
 }
 
 async function checkAndCompleteReviewSetup(locationId: string): Promise<void> {

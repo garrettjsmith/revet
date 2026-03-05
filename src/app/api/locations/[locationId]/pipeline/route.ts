@@ -72,18 +72,18 @@ export async function POST(
 
   switch (action) {
     case 'advance': {
-      const triggered = await advancePipeline(locationId)
+      const result = await advancePipeline(locationId)
       const phases = await getLocationPhases(locationId)
-      return NextResponse.json({ triggered, phases })
+      return NextResponse.json({ triggered: result.triggered, blocking: result.blocking, phases })
     }
 
     case 'complete': {
       if (!phase) return NextResponse.json({ error: 'phase required' }, { status: 400 })
       await completePhase(locationId, phase, body.metadata)
       // Auto-advance after completing a phase
-      const triggered = await advancePipeline(locationId)
+      const advResult = await advancePipeline(locationId)
       const phases = await getLocationPhases(locationId)
-      return NextResponse.json({ triggered, phases })
+      return NextResponse.json({ triggered: advResult.triggered, phases })
     }
 
     case 'skip': {
@@ -100,9 +100,9 @@ export async function POST(
           },
           { onConflict: 'location_id,phase' }
         )
-      const triggered = await advancePipeline(locationId)
+      const advResult = await advancePipeline(locationId)
       const phases = await getLocationPhases(locationId)
-      return NextResponse.json({ triggered, phases })
+      return NextResponse.json({ triggered: advResult.triggered, phases })
     }
 
     case 'retry': {
@@ -115,9 +115,9 @@ export async function POST(
         .update({ status: 'pending', error: null, started_at: null })
         .eq('location_id', locationId)
         .eq('phase', phase)
-      const triggered = await advancePipeline(locationId)
+      const advResult = await advancePipeline(locationId)
       const phases = await getLocationPhases(locationId)
-      return NextResponse.json({ triggered, phases })
+      return NextResponse.json({ triggered: advResult.triggered, phases })
     }
 
     default:

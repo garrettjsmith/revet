@@ -78,9 +78,9 @@ export function SetupPipeline({ locationId, orgSlug, phases: initialPhases, isAg
       if (res.ok) {
         const data = await res.json()
         setPhases(data.phases)
-        // Show feedback when advance triggered nothing (manual step required)
+        // Show feedback when advance triggered nothing
         if (action === 'advance' && data.triggered?.length === 0) {
-          setInfo('Nothing to auto-advance — the next step requires manual action')
+          setInfo(data.blocking?.reason || 'All pending steps require manual action.')
         }
       } else {
         const data = await res.json().catch(() => ({}))
