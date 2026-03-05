@@ -333,8 +333,36 @@ export async function detectCompletedPhases(locationId: string): Promise<SetupPh
 export async function initializeAndBackfill(locationId: string): Promise<PhaseRecord[]> {
   const adminClient = createAdminClient()
 
-  // Initialize all phases as pending
-  await adminClient.rpc('initialize_setup_phases', { p_location_id: locationId })
+  // Initialize all phases as pending — try RPC first, fall back to direct insert
+  const { error: rpcError } = await adminClient.rpc('initialize_setup_phases', { p_location_id: locationId })
+  if (rpcError) {
+    // RPC may not exist if migration hasn't been applied — insert directly
+    await adminClient
+      .from('location_setup_phases')
+      .upsert(
+        PHASE_ORDER.map((phase) => ({
+          location_id: locationId,
+          phase,
+          status: 'pending' as const,
+        })),
+        { onConflict: 'location_id,phase', ignoreDuplicates: true }
+      )
+  }
+
+  // Verify rows exist
+  let phases = await getLocationPhases(locationId)
+  if (phases.length === 0) {
+    // Last resort: individual inserts
+    for (const phase of PHASE_ORDER) {
+      await adminClient
+        .from('location_setup_phases')
+        .upsert(
+          { location_id: locationId, phase, status: 'pending' },
+          { onConflict: 'location_id,phase', ignoreDuplicates: true }
+        )
+    }
+    phases = await getLocationPhases(locationId)
+  }
 
   // Detect what's already done
   const completed = await detectCompletedPhases(locationId)
