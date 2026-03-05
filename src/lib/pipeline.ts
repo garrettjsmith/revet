@@ -93,6 +93,80 @@ export const PHASE_DESCRIPTIONS: Record<SetupPhase, string> = {
 }
 
 /**
+ * Stage groupings for visual hierarchy.
+ * Each stage groups related phases together.
+ */
+export type PipelineStage = 'connect' | 'audit' | 'optimize' | 'activate'
+
+export interface StageDefinition {
+  id: PipelineStage
+  label: string
+  phases: SetupPhase[]
+}
+
+export const PIPELINE_STAGES: StageDefinition[] = [
+  {
+    id: 'connect',
+    label: 'Connect',
+    phases: ['gbp_connect', 'initial_sync', 'benchmark'],
+  },
+  {
+    id: 'audit',
+    label: 'Audit',
+    phases: ['audit', 'intake'],
+  },
+  {
+    id: 'optimize',
+    label: 'Optimize',
+    phases: ['recommendations', 'optimization'],
+  },
+  {
+    id: 'activate',
+    label: 'Activate',
+    phases: ['review_setup', 'citations', 'lander', 'notifications'],
+  },
+]
+
+/**
+ * Get stage status based on its phases.
+ */
+export function getStageStatus(
+  stage: StageDefinition,
+  statusMap: Map<SetupPhase, PhaseStatus>
+): 'completed' | 'active' | 'failed' | 'pending' {
+  const statuses = stage.phases.map((p) => statusMap.get(p) || 'pending')
+
+  if (statuses.every((s) => s === 'completed' || s === 'skipped')) return 'completed'
+  if (statuses.some((s) => s === 'failed')) return 'failed'
+  if (statuses.some((s) => s === 'running' || s === 'completed' || s === 'skipped')) return 'active'
+  return 'pending'
+}
+
+/**
+ * Find the next actionable phase — the first phase that needs attention.
+ * Priority: failed > running > first pending with met prerequisites.
+ */
+export function getNextActionPhase(phases: PhaseRecord[]): SetupPhase | null {
+  const statusMap = new Map(phases.map((p) => [p.phase, p]))
+
+  // First: any failed phase (needs retry)
+  for (const phase of PHASE_ORDER) {
+    if (phase === 'complete') continue
+    if (statusMap.get(phase)?.status === 'failed') return phase
+  }
+
+  // Second: any running phase
+  for (const phase of PHASE_ORDER) {
+    if (phase === 'complete') continue
+    if (statusMap.get(phase)?.status === 'running') return phase
+  }
+
+  // Third: first pending phase whose prerequisites are met (manual action needed)
+  const ready = getReadyPhases(phases)
+  return ready.find((p) => p !== 'complete') || null
+}
+
+/**
  * Get all setup phases for a location.
  */
 export async function getLocationPhases(locationId: string): Promise<PhaseRecord[]> {

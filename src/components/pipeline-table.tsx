@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useMemo } from 'react'
+import React, { useState, useMemo, useCallback } from 'react'
 import Link from 'next/link'
 import { PHASE_LABELS, type SetupPhase } from '@/lib/pipeline'
 
@@ -26,6 +26,9 @@ export function PipelineTable({ rows }: { rows: PipelineRow[] }) {
   const [filter, setFilter] = useState<FilterStatus>('all')
   const [sortBy, setSortBy] = useState<'name' | 'progress' | 'org'>('progress')
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc')
+  const [selected, setSelected] = useState<Set<string>>(new Set())
+  const [batchLoading, setBatchLoading] = useState(false)
+  const [batchResult, setBatchResult] = useState<{ ok: number; errors: number } | null>(null)
 
   const filtered = useMemo(() => {
     let result = rows
@@ -84,6 +87,56 @@ export function PipelineTable({ rows }: { rows: PipelineRow[] }) {
     complete: rows.filter((r) => r.progress === 100).length,
   }), [rows])
 
+  const toggleSelect = useCallback((id: string) => {
+    setSelected((prev: Set<string>) => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+  }, [])
+
+  const toggleSelectAll = useCallback(() => {
+    if (selected.size === filtered.length) {
+      setSelected(new Set())
+    } else {
+      setSelected(new Set(filtered.map((r: PipelineRow) => r.id)))
+    }
+  }, [filtered, selected.size])
+
+  const handleBatchAction = useCallback(async (action: string, phase?: SetupPhase) => {
+    if (selected.size === 0) return
+    setBatchLoading(true)
+    setBatchResult(null)
+
+    try {
+      const res = await fetch('/api/pipeline/batch', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action,
+          location_ids: Array.from(selected),
+          ...(phase ? { phase } : {}),
+        }),
+      })
+      if (res.ok) {
+        const data = await res.json()
+        setBatchResult({ ok: data.summary.ok, errors: data.summary.errors })
+        // Clear selection after successful batch
+        setTimeout(() => {
+          setSelected(new Set())
+          setBatchResult(null)
+          // Reload to reflect changes
+          window.location.reload()
+        }, 2000)
+      }
+    } catch { /* ignore */ }
+    setBatchLoading(false)
+  }, [selected])
+
+  const allSelected = filtered.length > 0 && selected.size === filtered.length
+  const someSelected = selected.size > 0
+
   return (
     <div>
       {/* Search + Filters */}
@@ -91,7 +144,7 @@ export function PipelineTable({ rows }: { rows: PipelineRow[] }) {
         <input
           type="text"
           value={search}
-          onChange={(e) => setSearch(e.target.value)}
+          onChange={(e: React.ChangeEvent<HTMLInputElement>) => setSearch(e.target.value)}
           placeholder="Search locations or orgs..."
           className="flex-1 max-w-xs px-3 py-2 text-sm border border-warm-border rounded-lg focus:outline-none focus:border-ink bg-transparent"
         />
@@ -113,11 +166,55 @@ export function PipelineTable({ rows }: { rows: PipelineRow[] }) {
         </div>
       </div>
 
+      {/* Batch action bar */}
+      {someSelected && (
+        <div className="mb-4 px-4 py-3 bg-ink rounded-xl flex items-center justify-between">
+          <span className="text-xs text-cream">
+            {selected.size} location{selected.size !== 1 ? 's' : ''} selected
+          </span>
+          <div className="flex items-center gap-2">
+            {batchResult ? (
+              <span className="text-xs text-cream">
+                {batchResult.ok} updated{batchResult.errors > 0 ? `, ${batchResult.errors} failed` : ''}
+              </span>
+            ) : (
+              <>
+                <button
+                  onClick={() => handleBatchAction('advance')}
+                  disabled={batchLoading}
+                  className="text-xs px-3 py-1.5 bg-cream text-ink rounded-full hover:bg-cream/90 transition-colors disabled:opacity-50"
+                >
+                  {batchLoading ? 'Processing...' : 'Advance All'}
+                </button>
+                <BatchSkipDropdown
+                  onSkip={(phase) => handleBatchAction('skip', phase)}
+                  disabled={batchLoading}
+                />
+                <button
+                  onClick={() => setSelected(new Set())}
+                  className="text-xs text-warm-gray hover:text-cream transition-colors ml-2"
+                >
+                  Clear
+                </button>
+              </>
+            )}
+          </div>
+        </div>
+      )}
+
       {/* Table */}
       <div className="border border-warm-border rounded-xl overflow-hidden">
         <table className="w-full">
           <thead>
             <tr className="border-b border-warm-border">
+              <th className="w-10 px-3 py-3">
+                <input
+                  type="checkbox"
+                  checked={allSelected}
+                  onChange={toggleSelectAll}
+                  className="w-3.5 h-3.5 rounded border-warm-border accent-ink"
+                />
+              </th>
               <th
                 className="text-left px-5 py-3 text-[11px] text-warm-gray uppercase tracking-wider font-medium cursor-pointer hover:text-ink"
                 onClick={() => handleSort('name')}
@@ -145,13 +242,23 @@ export function PipelineTable({ rows }: { rows: PipelineRow[] }) {
           <tbody>
             {filtered.length === 0 ? (
               <tr>
-                <td colSpan={5} className="p-8 text-center text-warm-gray text-sm">
+                <td colSpan={6} className="p-8 text-center text-warm-gray text-sm">
                   No locations match your filters.
                 </td>
               </tr>
             ) : (
               filtered.map((row) => (
-                <tr key={row.id} className="border-b border-warm-border/50 hover:bg-warm-light/50">
+                <tr key={row.id} className={`border-b border-warm-border/50 hover:bg-warm-light/50 ${
+                  selected.has(row.id) ? 'bg-warm-light/30' : ''
+                }`}>
+                  <td className="w-10 px-3 py-3.5">
+                    <input
+                      type="checkbox"
+                      checked={selected.has(row.id)}
+                      onChange={() => toggleSelect(row.id)}
+                      className="w-3.5 h-3.5 rounded border-warm-border accent-ink"
+                    />
+                  </td>
                   <td className="px-5 py-3.5">
                     <Link
                       href={`/admin/${row.orgSlug}/locations/${row.id}`}
@@ -216,6 +323,47 @@ export function PipelineTable({ rows }: { rows: PipelineRow[] }) {
       <div className="mt-2 text-xs text-warm-gray">
         Showing {filtered.length} of {rows.length} locations
       </div>
+    </div>
+  )
+}
+
+/**
+ * Dropdown to skip a specific phase across all selected locations.
+ */
+function BatchSkipDropdown({ onSkip, disabled }: { onSkip: (phase: SetupPhase) => void; disabled: boolean }) {
+  const [open, setOpen] = useState(false)
+
+  // Only show skippable phases (exclude complete and auto-triggered ones)
+  const skippablePhases: SetupPhase[] = ['citations', 'lander', 'notifications', 'intake', 'benchmark']
+
+  return (
+    <div className="relative">
+      <button
+        onClick={() => setOpen(!open)}
+        disabled={disabled}
+        className="text-xs px-3 py-1.5 border border-warm-gray/30 text-cream rounded-full hover:border-cream/50 transition-colors disabled:opacity-50"
+      >
+        Skip Phase...
+      </button>
+      {open && (
+        <>
+          <div className="fixed inset-0 z-10" onClick={() => setOpen(false)} />
+          <div className="absolute right-0 top-full mt-1 z-20 bg-white border border-warm-border rounded-lg shadow-lg py-1 min-w-[180px]">
+            {skippablePhases.map((phase) => (
+              <button
+                key={phase}
+                onClick={() => {
+                  onSkip(phase)
+                  setOpen(false)
+                }}
+                className="w-full text-left px-3 py-2 text-xs text-ink hover:bg-warm-light/50 transition-colors"
+              >
+                {PHASE_LABELS[phase]}
+              </button>
+            ))}
+          </div>
+        </>
+      )}
     </div>
   )
 }
