@@ -9,7 +9,7 @@ import AuditTrail from '@/components/audit-trail'
 import { PerformanceMini } from '@/components/performance-mini'
 import { RecentLocationTracker } from '@/components/recent-location-tracker'
 import { SetupPipeline } from '@/components/setup-pipeline'
-import { getLocationPhases, initializeAndBackfill, type PhaseRecord } from '@/lib/pipeline'
+import { getLocationPhases, initializeAndBackfill, detectCompletedPhases, completePhase, type PhaseRecord } from '@/lib/pipeline'
 
 export const dynamic = 'force-dynamic'
 
@@ -90,10 +90,24 @@ export default async function LocationDetailPage({
       .eq('location_id', location.id),
   ])
 
-  // Load pipeline phases (initialize if needed)
+  // Load pipeline phases (initialize if needed, sync completed phases on every load)
   let pipelinePhases = await getLocationPhases(location.id)
   if (pipelinePhases.length === 0) {
     pipelinePhases = await initializeAndBackfill(location.id)
+  } else {
+    // Sync: detect any phases completed outside the pipeline (e.g. GBP connected via integrations)
+    const detected = await detectCompletedPhases(location.id)
+    const statusMap = new Map(pipelinePhases.map((p) => [p.phase, p.status]))
+    let synced = false
+    for (const phase of detected) {
+      if (statusMap.get(phase) === 'pending' || statusMap.get(phase) === 'running') {
+        await completePhase(location.id, phase)
+        synced = true
+      }
+    }
+    if (synced) {
+      pipelinePhases = await getLocationPhases(location.id)
+    }
   }
 
   const formList = (forms || []) as FormTemplate[]
