@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useCallback, useMemo } from 'react'
+import { useState, useCallback, useMemo, useEffect } from 'react'
 import Link from 'next/link'
 import {
   PHASE_ORDER,
@@ -26,7 +26,6 @@ interface SetupPipelineProps {
 export function SetupPipeline({ locationId, orgSlug, phases: initialPhases, isAgencyAdmin }: SetupPipelineProps) {
   const [phases, setPhases] = useState<PhaseRecord[]>(initialPhases)
   const [loading, setLoading] = useState<SetupPhase | null>(null)
-  const [expandedStage, setExpandedStage] = useState<string | null>(null)
 
   const progress = calculateProgress(phases)
   const statusMap = useMemo(
@@ -38,6 +37,22 @@ export function SetupPipeline({ locationId, orgSlug, phases: initialPhases, isAg
     [phases]
   )
 
+  // Auto-expand the active stage (first non-completed stage)
+  const activeStageId = useMemo(() => {
+    for (const stage of PIPELINE_STAGES) {
+      const status = getStageStatus(stage, phaseStatusMap)
+      if (status !== 'completed') return stage.id
+    }
+    return null
+  }, [phaseStatusMap])
+
+  const [expandedStage, setExpandedStage] = useState<string | null>(activeStageId)
+
+  // Keep expanded stage in sync when pipeline advances to a new stage
+  useEffect(() => {
+    if (activeStageId) setExpandedStage(activeStageId)
+  }, [activeStageId])
+
   const nextAction = useMemo(() => getNextActionPhase(phases), [phases])
   const completedCount = useMemo(
     () => phases.filter((p) => p.phase !== 'complete' && (p.status === 'completed' || p.status === 'skipped')).length,
@@ -45,8 +60,15 @@ export function SetupPipeline({ locationId, orgSlug, phases: initialPhases, isAg
   )
   const totalActionPhases = phases.filter((p) => p.phase !== 'complete').length
 
+  const [error, setError] = useState<string | null>(null)
+  const [info, setInfo] = useState<string | null>(null)
+  const [advancing, setAdvancing] = useState(false)
+
   const handleAction = useCallback(async (action: string, phase?: SetupPhase) => {
-    setLoading(phase || null)
+    if (phase) setLoading(phase)
+    else setAdvancing(true)
+    setError(null)
+    setInfo(null)
     try {
       const res = await fetch(`/api/locations/${locationId}/pipeline`, {
         method: 'POST',
@@ -56,9 +78,19 @@ export function SetupPipeline({ locationId, orgSlug, phases: initialPhases, isAg
       if (res.ok) {
         const data = await res.json()
         setPhases(data.phases)
+        // Show feedback when advance triggered nothing (manual step required)
+        if (action === 'advance' && data.triggered?.length === 0) {
+          setInfo('Nothing to auto-advance — the next step requires manual action')
+        }
+      } else {
+        const data = await res.json().catch(() => ({}))
+        setError(data.error || `Action failed (${res.status})`)
       }
-    } catch { /* ignore */ }
+    } catch {
+      setError('Network error — check your connection')
+    }
     setLoading(null)
+    setAdvancing(false)
   }, [locationId])
 
   const locationPath = `/admin/${orgSlug}/locations/${locationId}`
@@ -101,13 +133,21 @@ export function SetupPipeline({ locationId, orgSlug, phases: initialPhases, isAg
             {isAgencyAdmin && (
               <button
                 onClick={() => handleAction('advance')}
-                className="text-xs px-3 py-1.5 bg-ink text-cream rounded-full hover:bg-ink/90 transition-colors"
+                disabled={advancing}
+                className="text-xs px-3 py-1.5 bg-ink text-cream rounded-full hover:bg-ink/90 transition-colors disabled:opacity-50"
               >
-                Advance
+                {advancing ? 'Advancing...' : 'Advance'}
               </button>
             )}
           </div>
         </div>
+
+        {error && (
+          <div className="text-xs text-red-500 mt-2 px-1">{error}</div>
+        )}
+        {info && !error && (
+          <div className="text-xs text-warm-gray mt-2 px-1">{info}</div>
+        )}
 
         {/* Stage progress bar — 4 segments */}
         <div className="flex gap-1">
