@@ -384,8 +384,24 @@ export async function advancePipeline(locationId: string): Promise<SetupPhase[]>
 }
 
 async function advancePipelineFromPhases(locationId: string, phases: PhaseRecord[]): Promise<SetupPhase[]> {
-  const ready = getReadyPhases(phases)
   const triggered: SetupPhase[] = []
+
+  // First: detect any manually-completed work and mark those phases done
+  const detectedComplete = await detectCompletedPhases(locationId)
+  const statusMap = new Map(phases.map((p) => [p.phase, p.status]))
+  for (const phase of detectedComplete) {
+    if (statusMap.get(phase) === 'pending' || statusMap.get(phase) === 'running') {
+      await completePhase(locationId, phase)
+      triggered.push(phase)
+    }
+  }
+
+  // Re-fetch phases after backfill so getReadyPhases sees updated state
+  const currentPhases = triggered.length > 0
+    ? await getLocationPhases(locationId)
+    : phases
+
+  const ready = getReadyPhases(currentPhases)
 
   const baseUrl = process.env.NEXT_PUBLIC_APP_URL
   const apiKey = process.env.CRON_SECRET

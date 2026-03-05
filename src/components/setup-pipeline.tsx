@@ -61,12 +61,14 @@ export function SetupPipeline({ locationId, orgSlug, phases: initialPhases, isAg
   const totalActionPhases = phases.filter((p) => p.phase !== 'complete').length
 
   const [error, setError] = useState<string | null>(null)
+  const [info, setInfo] = useState<string | null>(null)
   const [advancing, setAdvancing] = useState(false)
 
   const handleAction = useCallback(async (action: string, phase?: SetupPhase) => {
     if (phase) setLoading(phase)
     else setAdvancing(true)
     setError(null)
+    setInfo(null)
     try {
       const res = await fetch(`/api/locations/${locationId}/pipeline`, {
         method: 'POST',
@@ -76,6 +78,10 @@ export function SetupPipeline({ locationId, orgSlug, phases: initialPhases, isAg
       if (res.ok) {
         const data = await res.json()
         setPhases(data.phases)
+        // Show feedback when advance triggered nothing (manual step required)
+        if (action === 'advance' && data.triggered?.length === 0) {
+          setInfo('Nothing to auto-advance — the next step requires manual action')
+        }
       } else {
         const data = await res.json().catch(() => ({}))
         setError(data.error || `Action failed (${res.status})`)
@@ -138,6 +144,9 @@ export function SetupPipeline({ locationId, orgSlug, phases: initialPhases, isAg
 
         {error && (
           <div className="text-xs text-red-500 mt-2 px-1">{error}</div>
+        )}
+        {info && !error && (
+          <div className="text-xs text-warm-gray mt-2 px-1">{info}</div>
         )}
 
         {/* Stage progress bar — 4 segments */}
