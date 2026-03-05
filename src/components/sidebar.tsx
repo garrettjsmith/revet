@@ -106,6 +106,7 @@ export function Sidebar({ currentOrg, memberships, userEmail, isAgencyAdmin, loc
 
   // Nav items for org scope — with optional location scoping
   const locationSecondaryItems = currentLocation && locationBasePath ? [
+    { href: `${locationBasePath}/intake`, label: 'Intake', icon: FormIcon },
     { href: `${locationBasePath}/review-funnels`, label: 'Review Funnels', icon: FunnelIcon },
     { href: `${locationBasePath}/forms`, label: 'Forms', icon: FormIcon },
     { href: `${locationBasePath}/lander`, label: 'Lander', icon: LanderIcon },

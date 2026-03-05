@@ -62,6 +62,22 @@ interface LocationOption {
   place_id: string | null
 }
 
+interface IntakeData {
+  keywords?: string[]
+  services?: { name: string; description: string }[]
+  target_cities?: string[]
+  highlights?: string[]
+  founding_year?: string
+  founding_city?: string
+  service_radius?: string
+  hours_of_operation?: string
+  holiday_closures?: string
+  business_description?: string
+  additional_notes?: string
+  cloud_folder_url?: string
+  client_contact_phone?: string
+}
+
 interface IntakeFormProps {
   orgId: string
   orgName: string
@@ -69,6 +85,7 @@ interface IntakeFormProps {
   locations: LocationOption[]
   preselectedLocationId: string | null
   existingBrand: { primaryColor: string | null; logoUrl: string | null } | null
+  existingIntakeData?: IntakeData | null
   googlePlacesApiKey: string
 }
 
@@ -86,8 +103,11 @@ export function IntakeForm({
   locations,
   preselectedLocationId,
   existingBrand,
+  existingIntakeData,
   googlePlacesApiKey,
 }: IntakeFormProps) {
+  const existing = existingIntakeData || null
+
   const [step, setStep] = useState(0)
   const [submitting, setSubmitting] = useState(false)
   const [submitted, setSubmitted] = useState(false)
@@ -104,21 +124,23 @@ export function IntakeForm({
   const [phone, setPhone] = useState('')
   const [website, setWebsite] = useState('')
   const [category, setCategory] = useState('')
-  const [hoursOfOperation, setHoursOfOperation] = useState('')
-  const [holidayClosures, setHolidayClosures] = useState('')
+  const [hoursOfOperation, setHoursOfOperation] = useState(existing?.hours_of_operation || '')
+  const [holidayClosures, setHolidayClosures] = useState(existing?.holiday_closures || '')
 
   // Step 2: About & Services
-  const [businessDescription, setBusinessDescription] = useState('')
-  const [highlights, setHighlights] = useState<string[]>([])
+  const [businessDescription, setBusinessDescription] = useState(existing?.business_description || '')
+  const [highlights, setHighlights] = useState<string[]>(existing?.highlights || [])
   const [highlightInput, setHighlightInput] = useState('')
-  const [services, setServices] = useState<ServiceRow[]>([{ name: '', description: '' }])
-  const [serviceRadius, setServiceRadius] = useState('')
-  const [targetCities, setTargetCities] = useState('')
-  const [foundingYear, setFoundingYear] = useState('')
-  const [foundingCity, setFoundingCity] = useState('')
+  const [services, setServices] = useState<ServiceRow[]>(
+    existing?.services?.length ? existing.services : [{ name: '', description: '' }]
+  )
+  const [serviceRadius, setServiceRadius] = useState(existing?.service_radius || '')
+  const [targetCities, setTargetCities] = useState(existing?.target_cities?.join('\n') || '')
+  const [foundingYear, setFoundingYear] = useState(existing?.founding_year || '')
+  const [foundingCity, setFoundingCity] = useState(existing?.founding_city || '')
 
   // Step 3: Keywords
-  const [keywords, setKeywords] = useState<string[]>([])
+  const [keywords, setKeywords] = useState<string[]>(existing?.keywords || [])
   const [suggestedKeywords, setSuggestedKeywords] = useState<string[]>([])
   const [keywordInput, setKeywordInput] = useState('')
   const [loadingKeywords, setLoadingKeywords] = useState(false)
@@ -140,10 +162,10 @@ export function IntakeForm({
   // Step 6: Assets & Preferences
   const [logoUrl, setLogoUrl] = useState(existingBrand?.logoUrl || '')
   const [photoUrls, setPhotoUrls] = useState<string[]>([])
-  const [cloudFolderUrl, setCloudFolderUrl] = useState('')
+  const [cloudFolderUrl, setCloudFolderUrl] = useState(existing?.cloud_folder_url || '')
   const [postApprovalMode, setPostApprovalMode] = useState<'approve_first' | 'auto_post'>('approve_first')
-  const [clientContactPhone, setClientContactPhone] = useState('')
-  const [additionalNotes, setAdditionalNotes] = useState('')
+  const [clientContactPhone, setClientContactPhone] = useState(existing?.client_contact_phone || '')
+  const [additionalNotes, setAdditionalNotes] = useState(existing?.additional_notes || '')
 
   const [uploadingLogo, setUploadingLogo] = useState(false)
   const [uploadingPhotos, setUploadingPhotos] = useState(false)
@@ -363,13 +385,13 @@ export function IntakeForm({
 
   if (submitted) {
     return (
-      <div className="min-h-screen flex items-center justify-center px-4">
+      <div className="flex items-center justify-center py-16">
         <div className="text-center max-w-md">
           <div className="w-16 h-16 rounded-full bg-emerald-100 flex items-center justify-center mx-auto mb-4">
             <svg className="w-8 h-8 text-emerald-600" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="20 6 9 17 4 12" /></svg>
           </div>
-          <h1 className="text-2xl font-semibold text-gray-900 mb-2">Thank you!</h1>
-          <p className="text-gray-500">Your intake form has been submitted. Our team will begin setting up your profile optimization right away.</p>
+          <h1 className="text-2xl font-serif text-ink mb-2">Thank you!</h1>
+          <p className="text-warm-gray">Your intake form has been submitted. Our team will begin setting up your profile optimization right away.</p>
         </div>
       </div>
     )
@@ -380,46 +402,24 @@ export function IntakeForm({
   const effectiveStep = locations.length > 1 ? step : step + 1
 
   return (
-    <div className="min-h-screen flex flex-col">
-      {/* Header */}
-      <div className="border-b border-gray-100 px-6 py-4">
-        <div className="max-w-2xl mx-auto flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            {orgLogo ? (
-              <img src={orgLogo} alt="" className="w-8 h-8 rounded-full object-cover" />
-            ) : (
-              <div className="w-8 h-8 rounded-full bg-gray-100 flex items-center justify-center text-xs font-semibold text-gray-500">
-                {orgName.charAt(0)}
-              </div>
-            )}
-            <span className="text-sm font-medium text-gray-900">{orgName}</span>
-          </div>
-          <span className="text-xs text-gray-400">
-            Step {step + 1} of {totalSteps}
-          </span>
-        </div>
-      </div>
-
+    <div className="flex flex-col">
       {/* Progress */}
-      <div className="px-6 py-2">
-        <div className="max-w-2xl mx-auto">
-          <div className="h-1 bg-gray-100 rounded-full overflow-hidden">
-            <div
-              className="h-full bg-gray-900 rounded-full transition-all duration-300"
-              style={{ width: `${((step + 1) / totalSteps) * 100}%` }}
-            />
-          </div>
-          <div className="flex justify-between mt-1">
-            {steps.map((s, i) => (
-              <span key={i} className={`text-[10px] ${i <= step ? 'text-gray-900' : 'text-gray-300'}`}>{s}</span>
-            ))}
-          </div>
+      <div className="mb-6">
+        <div className="h-1 bg-warm-border rounded-full overflow-hidden">
+          <div
+            className="h-full bg-ink rounded-full transition-all duration-300"
+            style={{ width: `${((step + 1) / totalSteps) * 100}%` }}
+          />
+        </div>
+        <div className="flex justify-between mt-1">
+          {steps.map((s, i) => (
+            <span key={i} className={`text-[10px] ${i <= step ? 'text-ink' : 'text-warm-gray'}`}>{s}</span>
+          ))}
         </div>
       </div>
 
       {/* Content */}
-      <div className="flex-1 px-6 py-8">
-        <div className="max-w-2xl mx-auto">
+      <div>
 
           {/* Step 0: Location Selection (if multi-location) */}
           {effectiveStep === 0 && (
@@ -831,43 +831,35 @@ export function IntakeForm({
               </div>
             </StepContainer>
           )}
-        </div>
       </div>
 
       {/* Navigation */}
-      <div className="border-t border-gray-100 px-6 py-4">
-        <div className="max-w-2xl mx-auto flex items-center justify-between">
+      <div className="border-t border-warm-border mt-8 pt-4 flex items-center justify-between">
+        <button
+          onClick={() => setStep(Math.max(0, step - 1))}
+          disabled={step === 0}
+          className="px-4 py-2.5 text-sm text-warm-gray hover:text-ink disabled:opacity-0 transition-colors"
+        >
+          Back
+        </button>
+
+        {step < totalSteps - 1 ? (
           <button
-            onClick={() => setStep(Math.max(0, step - 1))}
-            disabled={step === 0}
-            className="px-4 py-2.5 text-sm text-gray-500 hover:text-gray-900 disabled:opacity-0 transition-colors"
+            onClick={() => setStep(step + 1)}
+            disabled={!canProceed()}
+            className="px-6 py-2.5 text-sm bg-ink text-cream rounded-full hover:bg-ink/90 disabled:opacity-50 transition-colors"
           >
-            Back
+            Continue
           </button>
-
-          {step < totalSteps - 1 ? (
-            <button
-              onClick={() => setStep(step + 1)}
-              disabled={!canProceed()}
-              className="px-6 py-2.5 text-sm bg-gray-900 text-white rounded-full hover:bg-gray-800 disabled:opacity-50 transition-colors"
-            >
-              Continue
-            </button>
-          ) : (
-            <button
-              onClick={handleSubmit}
-              disabled={submitting}
-              className="px-6 py-2.5 text-sm bg-gray-900 text-white rounded-full hover:bg-gray-800 disabled:opacity-50 transition-colors"
-            >
-              {submitting ? 'Submitting...' : 'Submit'}
-            </button>
-          )}
-        </div>
-      </div>
-
-      {/* Powered by footer */}
-      <div className="text-center py-3">
-        <span className="text-[10px] text-gray-300">Powered by revet.app</span>
+        ) : (
+          <button
+            onClick={handleSubmit}
+            disabled={submitting}
+            className="px-6 py-2.5 text-sm bg-ink text-cream rounded-full hover:bg-ink/90 disabled:opacity-50 transition-colors"
+          >
+            {submitting ? 'Submitting...' : 'Submit'}
+          </button>
+        )}
       </div>
     </div>
   )
