@@ -8,6 +8,8 @@ import type { ProfileStats, FormTemplate, Review, GBPProfile } from '@/lib/types
 import AuditTrail from '@/components/audit-trail'
 import { PerformanceMini } from '@/components/performance-mini'
 import { RecentLocationTracker } from '@/components/recent-location-tracker'
+import { SetupPipeline } from '@/components/setup-pipeline'
+import { getLocationPhases, initializeAndBackfill, type PhaseRecord } from '@/lib/pipeline'
 
 export const dynamic = 'force-dynamic'
 
@@ -87,6 +89,12 @@ export default async function LocationDetailPage({
       .select('rating, published_at, reply_body')
       .eq('location_id', location.id),
   ])
+
+  // Load pipeline phases (initialize if needed)
+  let pipelinePhases = await getLocationPhases(location.id)
+  if (pipelinePhases.length === 0) {
+    pipelinePhases = await initializeAndBackfill(location.id)
+  }
 
   const formList = (forms || []) as FormTemplate[]
   const reviewList = (recentReviews || []) as Review[]
@@ -266,6 +274,16 @@ export default async function LocationDetailPage({
             </div>
           </div>
         </div>
+      </div>
+
+      {/* Setup Pipeline */}
+      <div className="mb-8">
+        <SetupPipeline
+          locationId={location.id}
+          orgSlug={params.orgSlug}
+          phases={pipelinePhases}
+          isAgencyAdmin={isAgencyAdmin}
+        />
       </div>
 
       {/* Google Business Profile */}

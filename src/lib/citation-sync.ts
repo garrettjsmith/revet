@@ -1,5 +1,6 @@
 import { SupabaseClient } from '@supabase/supabase-js'
 import { getCTReport, getCTResults, type CTCitation } from '@/lib/brightlocal'
+import { completePhase, advancePipeline } from '@/lib/pipeline'
 
 /**
  * Check if a running BrightLocal CT report has completed, and if so,
@@ -93,6 +94,19 @@ export async function pullAuditResults(
       completed_at: new Date().toISOString(),
     })
     .eq('id', audit.id)
+
+  // Update pipeline phase
+  try {
+    await completePhase(audit.location_id, 'citations', {
+      total_found: citations.length,
+      total_correct: correct,
+      total_incorrect: incorrect,
+      total_missing: missing,
+    })
+    await advancePipeline(audit.location_id)
+  } catch (err) {
+    console.error(`[citation-sync] Pipeline update failed for ${audit.location_id}:`, err)
+  }
 
   return true
 }

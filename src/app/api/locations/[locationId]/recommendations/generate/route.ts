@@ -5,6 +5,7 @@ import { auditGBPProfile, type AuditResult } from '@/lib/ai/profile-audit'
 import { generateProfileDescription, suggestCategories } from '@/lib/ai/profile-optimize'
 import type { GBPProfile } from '@/lib/types'
 import { randomUUID } from 'crypto'
+import { completePhase, advancePipeline } from '@/lib/pipeline'
 
 export const maxDuration = 60
 
@@ -255,6 +256,17 @@ export async function POST(
       .from('locations')
       .update({ setup_status: 'audited' })
       .eq('id', locationId)
+  }
+
+  // Update pipeline phases
+  try {
+    await completePhase(locationId, 'audit', { score: audit.score })
+    if (recommendations.length > 0) {
+      await completePhase(locationId, 'recommendations', { count: recommendations.length, batch_id: batchId })
+    }
+    await advancePipeline(locationId)
+  } catch (err) {
+    console.error(`[recommendations/generate] Pipeline update failed:`, err)
   }
 
   return NextResponse.json({

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { createServerSupabase } from '@/lib/supabase/server'
+import { completePhase, advancePipeline } from '@/lib/pipeline'
 
 export const maxDuration = 60
 
@@ -199,6 +200,14 @@ export async function POST(request: NextRequest) {
     })
   } catch {
     // Non-blocking
+  }
+
+  // Update pipeline phases
+  try {
+    await completePhase(location_id, 'intake')
+    await advancePipeline(location_id)
+  } catch (err) {
+    console.error(`[intake/submit] Pipeline update failed:`, err)
   }
 
   return NextResponse.json({

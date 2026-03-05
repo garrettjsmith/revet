@@ -3,6 +3,7 @@ import { createServerSupabase } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { fetchGBPProfile, normalizeGBPProfile } from '@/lib/google/profiles'
 import { getValidAccessToken } from '@/lib/google/auth'
+import { completePhase, advancePipeline } from '@/lib/pipeline'
 
 export const maxDuration = 120
 
@@ -246,6 +247,22 @@ export async function POST(request: NextRequest) {
         } catch (err) {
           console.error(`[google/map] Profile sync failed for ${result.location_id}:`, err instanceof Error ? err.message : err)
         }
+      }
+    }
+  }
+
+  // Update pipeline phases for mapped locations
+  if (mappedCount > 0) {
+    const mappedIds = results.filter((r) => r.status === 'mapped' && r.location_id).map((r) => r.location_id)
+    for (const locId of mappedIds) {
+      try {
+        await completePhase(locId, 'gbp_connect')
+        await completePhase(locId, 'initial_sync')
+        await completePhase(locId, 'review_setup')
+        // Advance pipeline to trigger next phases (benchmark, audit, etc.)
+        await advancePipeline(locId)
+      } catch (err) {
+        console.error(`[google/map] Pipeline update failed for ${locId}:`, err)
       }
     }
   }
