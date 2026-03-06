@@ -70,6 +70,8 @@ export function AgentConfigPanel({
   isAdmin,
   orgSlug,
   brandVoice,
+  pendingCount = 0,
+  recsHref = '#',
 }: {
   locationId: string
   config: AgentConfig | null
@@ -77,6 +79,8 @@ export function AgentConfigPanel({
   isAdmin: boolean
   orgSlug?: string
   brandVoice?: { personality?: string; tone?: string[]; formality?: string } | null
+  pendingCount?: number
+  recsHref?: string
 }) {
   const merged = { ...DEFAULTS, ...initialConfig, location_id: locationId }
   const [config, setConfig] = useState<AgentConfig>(merged)
@@ -183,6 +187,30 @@ export function AgentConfigPanel({
                       ))}
                     </div>
                   </div>
+                ))}
+              </div>
+            </div>
+
+            {/* Profile update scope */}
+            <div>
+              <h3 className="text-xs font-medium text-ink uppercase tracking-wider mb-3">Profile Updates Scope</h3>
+              <p className="text-xs text-warm-gray mb-2">What the agent manages under Profile Updates:</p>
+              <div className="flex flex-wrap gap-1.5">
+                {[
+                  'Description',
+                  'Categories',
+                  'Attributes',
+                  'Hours',
+                  'Media',
+                  'Services',
+                  'Website UTM',
+                ].map((s) => (
+                  <span
+                    key={s}
+                    className="text-[10px] px-2.5 py-1 rounded-full border border-warm-border text-warm-gray bg-warm-light/50"
+                  >
+                    {s}
+                  </span>
                 ))}
               </div>
             </div>
@@ -299,6 +327,21 @@ export function AgentConfigPanel({
                 <span className="text-xs text-warm-gray">{runResult}</span>
               )}
             </div>
+
+            {/* Link to recommendation queue */}
+            {pendingCount > 0 && (
+              <div className="bg-amber-50/50 border border-amber-200 rounded-lg px-4 py-3 flex items-center justify-between">
+                <span className="text-xs text-amber-700">
+                  {pendingCount} recommendation{pendingCount !== 1 ? 's' : ''} awaiting review
+                </span>
+                <a
+                  href={recsHref}
+                  className="text-xs text-amber-700 font-medium hover:underline no-underline"
+                >
+                  View Queue
+                </a>
+              </div>
+            )}
           </div>
         </div>
       ) : (

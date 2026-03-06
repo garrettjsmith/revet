@@ -14,6 +14,10 @@ const FIELD_LABELS: Record<string, string> = {
   categories: 'Categories',
   attributes: 'Attributes',
   hours: 'Business Hours',
+  media: 'Photos & Media',
+  services: 'Services',
+  website: 'Website & Tracking',
+  menu: 'Menu',
 }
 
 const STATUS_CONFIG: Record<string, { label: string; classes: string }> = {
