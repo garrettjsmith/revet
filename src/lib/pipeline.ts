@@ -262,21 +262,25 @@ export async function detectCompletedPhases(locationId: string): Promise<SetupPh
     { count: citationCount },
     { data: lander },
     { count: notifCount },
+    { data: gbpMapping },
   ] = await Promise.all([
     adminClient.from('gbp_profiles').select('id, sync_status, last_synced_at').eq('location_id', locationId).single(),
     adminClient.from('locations').select('intake_completed_at, setup_status').eq('id', locationId).single(),
     adminClient.from('gbp_performance_metrics').select('id', { count: 'exact', head: true }).eq('location_id', locationId),
     adminClient.from('audit_history').select('id', { count: 'exact', head: true }).eq('location_id', locationId),
     adminClient.from('profile_recommendations').select('id', { count: 'exact', head: true }).eq('location_id', locationId),
-    adminClient.from('review_sources').select('id', { count: 'exact', head: true }).eq('location_id', locationId).eq('sync_status', 'active'),
+    adminClient.from('review_sources').select('id', { count: 'exact', head: true }).eq('location_id', locationId).in('sync_status', ['active', 'pending']),
     adminClient.from('citation_audits').select('id', { count: 'exact', head: true }).eq('location_id', locationId).eq('status', 'completed'),
     adminClient.from('local_landers').select('id').eq('location_id', locationId).single(),
     adminClient.from('notification_subscriptions').select('id', { count: 'exact', head: true }).eq('location_id', locationId),
+    adminClient.from('agency_integration_mappings').select('id').eq('location_id', locationId).eq('resource_type', 'gbp_location').single(),
   ])
 
-  if (gbpProfile) {
+  // GBP is connected if either a profile row or a mapping exists
+  if (gbpProfile || gbpMapping) {
     completed.push('gbp_connect')
-    if (gbpProfile.last_synced_at) {
+    // Sync is done if profile has been fetched (last_synced_at), or mapping exists (sync happened during map)
+    if (gbpProfile?.last_synced_at || gbpMapping) {
       completed.push('initial_sync')
     }
   }
