@@ -19,6 +19,14 @@ export default async function OrgConfigOverview({
 
   if (!org) redirect('/agency/organizations')
 
+  // Fetch location IDs first for agent config lookup
+  const { data: orgLocations } = await supabase
+    .from('locations')
+    .select('id')
+    .eq('org_id', org.id)
+
+  const locationIds = orgLocations?.map((l) => l.id) || []
+
   // Fetch counts in parallel
   const [
     { count: locationCount },
@@ -26,12 +34,16 @@ export default async function OrgConfigOverview({
     { count: profileCount },
     { data: brandConfig },
     { count: subscriptionCount },
+    { count: agentEnabledCount },
   ] = await Promise.all([
     supabase.from('locations').select('*', { count: 'exact', head: true }).eq('org_id', org.id),
     supabase.from('org_members').select('*', { count: 'exact', head: true }).eq('org_id', org.id),
     supabase.from('review_profiles').select('*', { count: 'exact', head: true }).eq('org_id', org.id).eq('active', true),
     supabase.from('brand_config').select('id, brand_voice, primary_color').eq('org_id', org.id).single(),
     supabase.from('notification_subscriptions').select('*', { count: 'exact', head: true }).eq('org_id', org.id),
+    locationIds.length > 0
+      ? supabase.from('location_agent_config').select('*', { count: 'exact', head: true }).eq('enabled', true).in('location_id', locationIds)
+      : Promise.resolve({ count: 0 }),
   ])
 
   const hasBrandConfig = !!brandConfig?.brand_voice || !!brandConfig?.primary_color
@@ -92,6 +104,20 @@ export default async function OrgConfigOverview({
           <h2 className="text-sm font-semibold text-ink">Configuration</h2>
         </div>
         <div className="divide-y divide-warm-border/50">
+          <Link
+            href={`/agency/${params.orgSlug}/agent`}
+            className="flex items-center justify-between px-5 py-4 hover:bg-warm-light/50 transition-colors no-underline group"
+          >
+            <div>
+              <div className="text-sm font-medium text-ink">Agent</div>
+              <div className="text-xs text-warm-gray mt-0.5">
+                AI agent trust levels, automation, and activity across all locations
+              </div>
+            </div>
+            <span className="text-xs text-warm-gray group-hover:text-ink transition-colors">
+              {(agentEnabledCount || 0) > 0 ? `${agentEnabledCount} active` : 'Configure'}
+            </span>
+          </Link>
           <Link
             href={`/agency/${params.orgSlug}/brand`}
             className="flex items-center justify-between px-5 py-4 hover:bg-warm-light/50 transition-colors no-underline group"
