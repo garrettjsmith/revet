@@ -1,8 +1,12 @@
 import { createAdminClient } from '@/lib/supabase/admin'
 import { getValidAccessToken } from '@/lib/google/auth'
 import { auditGBPProfile, type AuditResult } from '@/lib/ai/profile-audit'
-import { generateProfileDescription } from '@/lib/ai/profile-optimize'
-import { updateGBPProfile, fetchGBPProfile, normalizeGBPProfile, type GBPProfileRaw } from '@/lib/google/profiles'
+import { generateProfileDescription, suggestCategories } from '@/lib/ai/profile-optimize'
+import {
+  updateGBPProfile, fetchGBPProfile, normalizeGBPProfile, type GBPProfileRaw,
+  searchCategories,
+  fetchAvailableAttributes, fetchLocationAttributes, updateLocationAttributes,
+} from '@/lib/google/profiles'
 import type { GBPProfile, ServiceTier } from '@/lib/types'
 import { tierIncludes } from '@/lib/tiers'
 
@@ -33,6 +37,8 @@ interface AgentAction {
   summary: string
   details?: Record<string, unknown>
 }
+
+type AdminClient = ReturnType<typeof createAdminClient>
 
 /**
  * Run the autonomous agent loop for a single location.
@@ -66,13 +72,16 @@ export async function runAgentForLocation(
 
   // ─── OBSERVE: Run profile audit ───────────────────────────
   let audit: AuditResult | null = null
+  let profile: GBPProfile | null = null
 
   if (tierIncludes(tier, 'profile_optimization')) {
-    const { data: profile } = await adminClient
+    const { data: profileData } = await adminClient
       .from('gbp_profiles')
       .select('*')
       .eq('location_id', locationId)
       .single()
+
+    profile = profileData as GBPProfile | null
 
     if (profile) {
       const { count: mediaCount } = await adminClient
@@ -95,7 +104,6 @@ export async function runAgentForLocation(
         .select('id', { count: 'exact', head: true })
         .eq('location_id', locationId)
 
-      // Compute average rating
       const { data: ratingRows } = await adminClient
         .from('reviews')
         .select('rating')
@@ -106,7 +114,7 @@ export async function runAgentForLocation(
         : null
 
       audit = auditGBPProfile({
-        profile: profile as GBPProfile,
+        profile,
         mediaCount: mediaCount || 0,
         reviewCount: reviewCount || 0,
         avgRating,
@@ -118,7 +126,6 @@ export async function runAgentForLocation(
 
       result.audit_score = audit.score
 
-      // Save audit to history
       await adminClient.from('audit_history').insert({
         location_id: locationId,
         score: audit.score,
@@ -135,17 +142,45 @@ export async function runAgentForLocation(
   }
 
   // ─── DECIDE + ACT: Profile updates ────────────────────────
-  if (config.profile_updates !== 'off' && audit && tierIncludes(tier, 'profile_optimization')) {
-    const actionableSections = audit.sections.filter((s) => s.status !== 'good' && s.suggestion)
+  if (config.profile_updates !== 'off' && audit && profile && tierIncludes(tier, 'profile_optimization')) {
+    // Fetch intake data for richer context
+    const { data: intakeRow } = await adminClient
+      .from('locations')
+      .select('intake_data')
+      .eq('id', locationId)
+      .single()
+    const intake = (intakeRow as any)?.intake_data || {}
 
-    for (const section of actionableSections) {
-      if (section.key === 'description') {
-        await handleDescriptionOptimization(
-          adminClient, locationId, location, config, actions
-        )
-      }
-      // Other section types (categories, photos, etc.) get queued as recommendations
+    const sectionHandlers: Record<string, () => Promise<void>> = {
+      description: () => handleDescription(adminClient, locationId, location, profile!, config, actions),
+      categories: () => handleCategories(adminClient, locationId, profile!, config, actions, intake),
+      attributes: () => handleAttributes(adminClient, locationId, profile!, config, actions),
+      photos: () => handleMedia(adminClient, locationId, config, actions, intake),
+      hours: () => handleHours(adminClient, locationId, profile!, config, actions, intake),
+      activity: () => Promise.resolve(), // Handled by post_publishing trust level below
     }
+
+    for (const section of audit.sections) {
+      if (section.status === 'good') continue
+      const handler = sectionHandlers[section.key]
+      if (handler) {
+        try {
+          await handler()
+        } catch (err) {
+          actions.push({
+            type: 'profile_update',
+            status: 'failed',
+            summary: `${section.key}: ${err instanceof Error ? err.message : 'Unknown error'}`,
+          })
+        }
+      }
+    }
+
+    // Services — always check if intake has services not yet on the profile
+    await handleServices(adminClient, locationId, profile, config, actions, intake)
+
+    // Website — check for UTM tracking
+    await handleWebsiteTracking(adminClient, locationId, profile, config, actions)
   }
 
   // ─── DECIDE + ACT: Auto-apply pending recommendations ─────
@@ -174,127 +209,528 @@ export async function runAgentForLocation(
   return result
 }
 
+// ════════════════════════════════════════════════════════════
+// Section handlers
+// ════════════════════════════════════════════════════════════
+
 /**
- * Handle description optimization: generate + auto-apply or queue.
+ * Check if a recommendation already exists for this field.
  */
-async function handleDescriptionOptimization(
-  adminClient: ReturnType<typeof createAdminClient>,
-  locationId: string,
-  location: { name: string; city: string | null; state: string | null },
-  config: AgentConfig,
-  actions: AgentAction[]
-) {
-  // Check if there's already a pending description recommendation
-  const { data: existingRec } = await adminClient
+async function hasExistingRec(adminClient: AdminClient, locationId: string, field: string): Promise<boolean> {
+  const { data } = await adminClient
     .from('profile_recommendations')
     .select('id')
     .eq('location_id', locationId)
-    .eq('field', 'description')
+    .eq('field', field)
     .in('status', ['pending', 'approved', 'client_review'])
     .single()
+  return !!data
+}
 
-  if (existingRec) return // Already has a pending rec
+/**
+ * Queue a recommendation (or auto-apply will pick it up next run).
+ */
+async function queueRecommendation(
+  adminClient: AdminClient,
+  locationId: string,
+  field: string,
+  currentValue: unknown,
+  proposedValue: unknown,
+  rationale: string,
+  actions: AgentAction[]
+) {
+  await adminClient.from('profile_recommendations').insert({
+    location_id: locationId,
+    field,
+    current_value: currentValue,
+    proposed_value: proposedValue,
+    ai_rationale: rationale,
+    status: 'pending',
+    requires_client_approval: false,
+  })
 
-  const { data: profile } = await adminClient
-    .from('gbp_profiles')
-    .select('business_name, primary_category_name, description, service_items, gbp_location_name')
-    .eq('location_id', locationId)
-    .single()
+  actions.push({
+    type: 'recommendation_queued',
+    status: 'queued',
+    summary: `${field}: recommendation queued for approval`,
+    details: { field },
+  })
+}
 
-  if (!profile) return
+// ─── Description ────────────────────────────────────────────
 
-  const services = ((profile as any).service_items || [])
+async function handleDescription(
+  adminClient: AdminClient,
+  locationId: string,
+  location: { name: string; city: string | null; state: string | null },
+  profile: GBPProfile,
+  config: AgentConfig,
+  actions: AgentAction[]
+) {
+  if (await hasExistingRec(adminClient, locationId, 'description')) return
+
+  const services = (profile.service_items || [])
     .map((s: any) => s.structuredServiceItem?.description || s.freeFormServiceItem?.label?.displayName || '')
     .filter(Boolean)
 
-  try {
-    const newDescription = await generateProfileDescription({
-      businessName: profile.business_name || location.name,
-      category: (profile as any).primary_category_name,
-      city: location.city,
-      state: location.state,
-      services,
-      currentDescription: (profile as any).description,
-    })
+  // Fetch brand voice from org
+  const { data: brandConfig } = await adminClient
+    .from('brand_config')
+    .select('voice_selections')
+    .eq('org_id', (await adminClient.from('locations').select('org_id').eq('id', locationId).single()).data?.org_id)
+    .single()
 
-    if (config.profile_updates === 'auto') {
-      // Auto-apply: write to Google directly
-      try {
-        await getValidAccessToken()
-        await updateGBPProfile(
-          (profile as any).gbp_location_name,
-          { profile: { description: newDescription } } as Partial<GBPProfileRaw>,
-          'profile.description'
-        )
+  const voiceNotes = brandConfig?.voice_selections
+    ? [
+        brandConfig.voice_selections.personality,
+        ...(brandConfig.voice_selections.tone || []),
+        brandConfig.voice_selections.formality,
+        brandConfig.voice_selections.notes,
+      ].filter(Boolean).join('. ')
+    : null
 
-        // Re-fetch and update local DB
-        const raw = await fetchGBPProfile((profile as any).gbp_location_name)
-        const normalized = normalizeGBPProfile(raw)
-        await adminClient
-          .from('gbp_profiles')
-          .update({
-            ...normalized,
-            last_pushed_at: new Date().toISOString(),
-            last_synced_at: new Date().toISOString(),
-          })
-          .eq('location_id', locationId)
+  const newDescription = await generateProfileDescription({
+    businessName: profile.business_name || location.name,
+    category: profile.primary_category_name,
+    city: location.city,
+    state: location.state,
+    services,
+    currentDescription: profile.description,
+    brandVoice: voiceNotes,
+  })
 
-        // Save as applied recommendation for audit trail
-        await adminClient.from('profile_recommendations').insert({
-          location_id: locationId,
-          field: 'description',
-          current_value: (profile as any).description,
-          proposed_value: newDescription,
-          status: 'applied',
-          applied_at: new Date().toISOString(),
-          requires_client_approval: false,
-        })
+  if (config.profile_updates === 'auto') {
+    try {
+      await getValidAccessToken()
+      await updateGBPProfile(
+        profile.gbp_location_name,
+        { profile: { description: newDescription } } as Partial<GBPProfileRaw>,
+        'profile.description'
+      )
 
-        actions.push({
-          type: 'recommendation_applied',
-          status: 'completed',
-          summary: `Auto-updated profile description`,
-          details: { field: 'description', old_length: ((profile as any).description || '').length, new_length: newDescription.length },
-        })
-      } catch (err) {
-        actions.push({
-          type: 'profile_update',
-          status: 'failed',
-          summary: `Failed to auto-update description: ${err instanceof Error ? err.message : 'Unknown error'}`,
-        })
-      }
-    } else {
-      // Queue: create recommendation for human approval
+      const raw = await fetchGBPProfile(profile.gbp_location_name)
+      const normalized = normalizeGBPProfile(raw)
+      await adminClient
+        .from('gbp_profiles')
+        .update({ ...normalized, last_pushed_at: new Date().toISOString(), last_synced_at: new Date().toISOString() })
+        .eq('location_id', locationId)
+
       await adminClient.from('profile_recommendations').insert({
         location_id: locationId,
         field: 'description',
-        current_value: (profile as any).description,
+        current_value: profile.description,
         proposed_value: newDescription,
-        status: 'pending',
+        status: 'applied',
+        applied_at: new Date().toISOString(),
         requires_client_approval: false,
       })
 
       actions.push({
-        type: 'recommendation_queued',
-        status: 'queued',
-        summary: `Generated description recommendation (queued for approval)`,
-        details: { field: 'description' },
+        type: 'description_optimization',
+        status: 'completed',
+        summary: `Auto-updated profile description`,
+        details: { old_length: (profile.description || '').length, new_length: newDescription.length },
+      })
+    } catch (err) {
+      actions.push({
+        type: 'description_optimization',
+        status: 'failed',
+        summary: `Failed to auto-update description: ${err instanceof Error ? err.message : 'Unknown error'}`,
       })
     }
+  } else {
+    await queueRecommendation(
+      adminClient, locationId, 'description',
+      profile.description, newDescription,
+      'Description is too short or missing. Generated an SEO-optimized version.',
+      actions
+    )
+  }
+}
+
+// ─── Categories ─────────────────────────────────────────────
+
+async function handleCategories(
+  adminClient: AdminClient,
+  locationId: string,
+  profile: GBPProfile,
+  config: AgentConfig,
+  actions: AgentAction[],
+  intake: Record<string, any>
+) {
+  if (await hasExistingRec(adminClient, locationId, 'categories')) return
+
+  const currentCategories = [
+    profile.primary_category_name,
+    ...(profile.additional_categories || []).map((c) => c.displayName),
+  ].filter(Boolean) as string[]
+
+  // Use AI to suggest categories based on business info
+  const services = intake.services?.map((s: any) => s.name || s) || []
+  const suggestions = await suggestCategories({
+    businessName: profile.business_name || '',
+    currentCategories,
+    services,
+  })
+
+  if (suggestions.length === 0) return
+
+  // Validate suggestions against Google's category API
+  const validCategories: Array<{ name: string; displayName: string }> = []
+  for (const suggestion of suggestions.slice(0, 5)) {
+    try {
+      const results = await searchCategories(suggestion)
+      // Find best match
+      const match = results.find((r) =>
+        r.displayName.toLowerCase() === suggestion.toLowerCase()
+      ) || results[0]
+      if (match && !currentCategories.includes(match.displayName)) {
+        validCategories.push({ name: match.name, displayName: match.displayName })
+      }
+    } catch {
+      // Category search failed — skip
+    }
+  }
+
+  if (validCategories.length === 0) return
+
+  if (config.profile_updates === 'auto') {
+    try {
+      await getValidAccessToken()
+      const newAdditional = [
+        ...(profile.additional_categories || []),
+        ...validCategories,
+      ]
+      await updateGBPProfile(
+        profile.gbp_location_name,
+        { categories: { additionalCategories: newAdditional.map((c) => ({ name: c.name })) } } as any,
+        'categories.additionalCategories'
+      )
+
+      const raw = await fetchGBPProfile(profile.gbp_location_name)
+      const normalized = normalizeGBPProfile(raw)
+      await adminClient
+        .from('gbp_profiles')
+        .update({ ...normalized, last_pushed_at: new Date().toISOString(), last_synced_at: new Date().toISOString() })
+        .eq('location_id', locationId)
+
+      await adminClient.from('profile_recommendations').insert({
+        location_id: locationId,
+        field: 'categories',
+        current_value: currentCategories,
+        proposed_value: [...currentCategories, ...validCategories.map((c) => c.displayName)],
+        status: 'applied',
+        applied_at: new Date().toISOString(),
+        requires_client_approval: false,
+      })
+
+      actions.push({
+        type: 'category_update',
+        status: 'completed',
+        summary: `Added ${validCategories.length} categories: ${validCategories.map((c) => c.displayName).join(', ')}`,
+        details: { added: validCategories.map((c) => c.displayName) },
+      })
+    } catch (err) {
+      actions.push({
+        type: 'category_update',
+        status: 'failed',
+        summary: `Failed to update categories: ${err instanceof Error ? err.message : 'Unknown error'}`,
+      })
+    }
+  } else {
+    await queueRecommendation(
+      adminClient, locationId, 'categories',
+      currentCategories,
+      [...currentCategories, ...validCategories.map((c) => c.displayName)],
+      `Suggest adding: ${validCategories.map((c) => c.displayName).join(', ')}. Helps appear in more relevant searches.`,
+      actions
+    )
+  }
+}
+
+// ─── Attributes ─────────────────────────────────────────────
+
+async function handleAttributes(
+  adminClient: AdminClient,
+  locationId: string,
+  profile: GBPProfile,
+  config: AgentConfig,
+  actions: AgentAction[]
+) {
+  if (await hasExistingRec(adminClient, locationId, 'attributes')) return
+  if (!profile.primary_category_id) return
+
+  try {
+    await getValidAccessToken()
+
+    // Fetch what attributes are available vs what's set
+    const [available, current] = await Promise.all([
+      fetchAvailableAttributes(profile.primary_category_id),
+      fetchLocationAttributes(profile.gbp_location_name),
+    ])
+
+    const currentIds = new Set(current.map((a: any) => a.name?.split('/').pop() || ''))
+
+    // Find common attributes that aren't set yet
+    // Focus on BOOL type (yes/no attributes) as they're easiest to suggest
+    const missingBool = available.filter(
+      (a) => a.valueType === 'BOOL' && !currentIds.has(a.attributeId)
+    )
+
+    if (missingBool.length === 0) return
+
+    // Queue as a recommendation — we can't guess attribute values
+    const attributeNames = missingBool.slice(0, 10).map((a) => a.displayName)
+    await queueRecommendation(
+      adminClient, locationId, 'attributes',
+      { set_count: current.length },
+      { missing: attributeNames, total_available: available.length },
+      `${missingBool.length} attributes available but not set: ${attributeNames.join(', ')}. Setting these helps search visibility.`,
+      actions
+    )
   } catch (err) {
     actions.push({
-      type: 'profile_update',
+      type: 'attribute_update',
       status: 'failed',
-      summary: `Failed to generate description: ${err instanceof Error ? err.message : 'Unknown error'}`,
+      summary: `Failed to check attributes: ${err instanceof Error ? err.message : 'Unknown error'}`,
     })
   }
 }
+
+// ─── Media (photos / cover / logo) ──────────────────────────
+
+async function handleMedia(
+  adminClient: AdminClient,
+  locationId: string,
+  config: AgentConfig,
+  actions: AgentAction[],
+  intake: Record<string, any>
+) {
+  if (await hasExistingRec(adminClient, locationId, 'media')) return
+
+  // Check what media exists
+  const { data: media } = await adminClient
+    .from('gbp_media')
+    .select('category')
+    .eq('location_id', locationId)
+
+  const categories = new Set((media || []).map((m: any) => m.category))
+  const missing: string[] = []
+
+  if (!categories.has('COVER')) missing.push('cover photo')
+  if (!categories.has('LOGO')) missing.push('logo')
+  if ((media || []).length < 5) missing.push('additional photos (fewer than 5 total)')
+
+  if (missing.length === 0) return
+
+  // Check if intake has a cloud folder URL for sourcing media
+  const hasCloudFolder = !!intake.cloud_folder_url
+
+  await queueRecommendation(
+    adminClient, locationId, 'media',
+    { total_photos: (media || []).length, categories: Array.from(categories) },
+    { missing, cloud_folder_url: intake.cloud_folder_url || null },
+    `Missing: ${missing.join(', ')}.${hasCloudFolder ? ' Client provided media folder — check for usable assets.' : ' Request photos from client.'} Profiles with 10+ photos get 35% more clicks.`,
+    actions
+  )
+}
+
+// ─── Hours ──────────────────────────────────────────────────
+
+async function handleHours(
+  adminClient: AdminClient,
+  locationId: string,
+  profile: GBPProfile,
+  config: AgentConfig,
+  actions: AgentAction[],
+  intake: Record<string, any>
+) {
+  if (await hasExistingRec(adminClient, locationId, 'hours')) return
+
+  const hasHours = profile.regular_hours?.periods && profile.regular_hours.periods.length > 0
+
+  if (hasHours) return // Hours are set — audit scored it fine
+
+  // Hours are missing — can we fill them from intake?
+  if (intake.hours_of_operation) {
+    await queueRecommendation(
+      adminClient, locationId, 'hours',
+      null,
+      { from_intake: intake.hours_of_operation },
+      `No hours set on GBP. Client provided hours in intake: "${intake.hours_of_operation}". Add these to the profile.`,
+      actions
+    )
+  } else {
+    await queueRecommendation(
+      adminClient, locationId, 'hours',
+      null,
+      null,
+      'No business hours set on GBP profile. Request hours from client — missing hours significantly hurt local search ranking.',
+      actions
+    )
+  }
+}
+
+// ─── Services ───────────────────────────────────────────────
+
+async function handleServices(
+  adminClient: AdminClient,
+  locationId: string,
+  profile: GBPProfile,
+  config: AgentConfig,
+  actions: AgentAction[],
+  intake: Record<string, any>
+) {
+  if (await hasExistingRec(adminClient, locationId, 'services')) return
+
+  const intakeServices: Array<{ name: string; description?: string }> = intake.services || []
+  if (intakeServices.length === 0) return
+
+  // Compare intake services to what's on the profile
+  const existingServices = (profile.service_items || [])
+    .map((s: any) =>
+      (s.structuredServiceItem?.description || s.freeFormServiceItem?.label?.displayName || '').toLowerCase()
+    )
+    .filter(Boolean)
+
+  const existingSet = new Set(existingServices)
+  const missing = intakeServices.filter(
+    (s) => !existingSet.has(s.name.toLowerCase())
+  )
+
+  if (missing.length === 0) return
+
+  if (config.profile_updates === 'auto') {
+    try {
+      await getValidAccessToken()
+      const newServiceItems = [
+        ...(profile.service_items || []),
+        ...missing.map((s) => ({
+          freeFormServiceItem: {
+            category: profile.primary_category_name || 'Service',
+            label: { displayName: s.name, description: s.description || '' },
+          },
+        })),
+      ]
+
+      await updateGBPProfile(
+        profile.gbp_location_name,
+        { serviceItems: newServiceItems } as any,
+        'serviceItems'
+      )
+
+      const raw = await fetchGBPProfile(profile.gbp_location_name)
+      const normalized = normalizeGBPProfile(raw)
+      await adminClient
+        .from('gbp_profiles')
+        .update({ ...normalized, last_pushed_at: new Date().toISOString(), last_synced_at: new Date().toISOString() })
+        .eq('location_id', locationId)
+
+      actions.push({
+        type: 'service_update',
+        status: 'completed',
+        summary: `Added ${missing.length} services from intake: ${missing.map((s) => s.name).join(', ')}`,
+        details: { added: missing.map((s) => s.name) },
+      })
+    } catch (err) {
+      actions.push({
+        type: 'service_update',
+        status: 'failed',
+        summary: `Failed to add services: ${err instanceof Error ? err.message : 'Unknown error'}`,
+      })
+    }
+  } else {
+    await queueRecommendation(
+      adminClient, locationId, 'services',
+      existingServices,
+      [...existingServices, ...missing.map((s) => s.name)],
+      `${missing.length} services from intake not on profile: ${missing.map((s) => s.name).join(', ')}. Adding services improves keyword relevance.`,
+      actions
+    )
+  }
+}
+
+// ─── Website UTM tracking ───────────────────────────────────
+
+async function handleWebsiteTracking(
+  adminClient: AdminClient,
+  locationId: string,
+  profile: GBPProfile,
+  config: AgentConfig,
+  actions: AgentAction[]
+) {
+  if (!profile.website_uri) return
+  if (await hasExistingRec(adminClient, locationId, 'website')) return
+
+  // Check if website URL already has UTM parameters
+  const url = profile.website_uri
+  if (url.includes('utm_source') || url.includes('utm_medium')) return
+
+  // Suggest adding UTM tracking
+  const trackedUrl = addUtmParams(url, {
+    utm_source: 'google',
+    utm_medium: 'organic',
+    utm_campaign: 'gbp',
+  })
+
+  if (config.profile_updates === 'auto') {
+    try {
+      await getValidAccessToken()
+      await updateGBPProfile(
+        profile.gbp_location_name,
+        { websiteUri: trackedUrl } as any,
+        'websiteUri'
+      )
+
+      const raw = await fetchGBPProfile(profile.gbp_location_name)
+      const normalized = normalizeGBPProfile(raw)
+      await adminClient
+        .from('gbp_profiles')
+        .update({ ...normalized, last_pushed_at: new Date().toISOString(), last_synced_at: new Date().toISOString() })
+        .eq('location_id', locationId)
+
+      actions.push({
+        type: 'website_update',
+        status: 'completed',
+        summary: `Added UTM tracking to website URL`,
+        details: { old_url: url, new_url: trackedUrl },
+      })
+    } catch (err) {
+      actions.push({
+        type: 'website_update',
+        status: 'failed',
+        summary: `Failed to update website URL: ${err instanceof Error ? err.message : 'Unknown error'}`,
+      })
+    }
+  } else {
+    await queueRecommendation(
+      adminClient, locationId, 'website',
+      url, trackedUrl,
+      'Website URL has no UTM tracking. Adding utm_source=google&utm_medium=organic&utm_campaign=gbp enables attribution in analytics.',
+      actions
+    )
+  }
+}
+
+function addUtmParams(url: string, params: Record<string, string>): string {
+  const parsed = new URL(url)
+  for (const [key, val] of Object.entries(params)) {
+    if (!parsed.searchParams.has(key)) {
+      parsed.searchParams.set(key, val)
+    }
+  }
+  return parsed.toString()
+}
+
+// ════════════════════════════════════════════════════════════
+// Auto-apply + post publishing (unchanged)
+// ════════════════════════════════════════════════════════════
 
 /**
  * Auto-apply any pending profile recommendations that don't require client approval.
  */
 async function autoApplyPendingRecs(
-  adminClient: ReturnType<typeof createAdminClient>,
+  adminClient: AdminClient,
   locationId: string,
   actions: AgentAction[]
 ) {
@@ -334,8 +770,8 @@ async function autoApplyPendingRecs(
       if (rec.field === 'description') {
         fields.profile = { description: value as string }
         updateMaskParts.push('profile.description')
-      } else if (rec.field === 'hours') {
-        // Informational only — mark as applied
+      } else if (rec.field === 'hours' || rec.field === 'media' || rec.field === 'attributes') {
+        // These require human interpretation — mark as applied (informational)
         await adminClient
           .from('profile_recommendations')
           .update({ status: 'applied', applied_at: new Date().toISOString() })
@@ -343,9 +779,12 @@ async function autoApplyPendingRecs(
         actions.push({
           type: 'recommendation_applied',
           status: 'completed',
-          summary: `Marked hours recommendation as applied (informational)`,
+          summary: `Marked ${rec.field} recommendation as applied`,
         })
         continue
+      } else if (rec.field === 'website') {
+        fields.websiteUri = value as string
+        updateMaskParts.push('websiteUri')
       }
 
       if (updateMaskParts.length > 0) {
@@ -355,7 +794,6 @@ async function autoApplyPendingRecs(
           updateMaskParts.join(',')
         )
 
-        // Re-fetch profile
         const raw = await fetchGBPProfile((profile as any).gbp_location_name)
         const normalized = normalizeGBPProfile(raw)
         await adminClient
@@ -388,10 +826,9 @@ async function autoApplyPendingRecs(
 
 /**
  * Promote draft posts to pending so the post-queue cron publishes them.
- * Only runs when post_publishing = 'auto'.
  */
 async function promoteDraftPosts(
-  adminClient: ReturnType<typeof createAdminClient>,
+  adminClient: AdminClient,
   locationId: string,
   actions: AgentAction[]
 ) {
@@ -413,7 +850,7 @@ async function promoteDraftPosts(
 
   if (error) {
     actions.push({
-      type: 'post_publishing',
+      type: 'post_promotion',
       status: 'failed',
       summary: `Failed to promote draft posts: ${error.message}`,
     })
@@ -421,7 +858,7 @@ async function promoteDraftPosts(
   }
 
   actions.push({
-    type: 'post_publishing',
+    type: 'post_promotion',
     status: 'completed',
     summary: `Promoted ${drafts.length} draft post(s) to pending for auto-publish`,
     details: { count: drafts.length },

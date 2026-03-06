@@ -547,7 +547,7 @@ export interface ReviewReplyQueue {
 // Profile Optimization
 
 export type RecommendationStatus = 'pending' | 'approved' | 'client_review' | 'applied' | 'rejected'
-export type RecommendationField = 'description' | 'categories' | 'attributes' | 'hours'
+export type RecommendationField = 'description' | 'categories' | 'attributes' | 'hours' | 'media' | 'services' | 'website' | 'menu'
 
 export interface ProfileRecommendation {
   id: string
