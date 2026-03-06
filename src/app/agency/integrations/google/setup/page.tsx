@@ -863,11 +863,16 @@ export default function GoogleSetupPage() {
             </p>
           )}
           <p className="text-xs text-warm-gray mb-6">
-            Review sync will begin automatically. Check the Reviews dashboard for incoming reviews.
+            Review sync will begin automatically. Set up brand voice and agent config for your new locations.
           </p>
-          <button onClick={() => window.location.href = '/agency/integrations'} className="px-6 py-2 bg-ink text-cream text-xs font-medium rounded-full hover:bg-ink/90 transition-colors">
-            View Integrations
-          </button>
+          <div className="flex items-center justify-center gap-3">
+            <button onClick={() => window.location.href = '/agency/pipeline'} className="px-6 py-2 bg-ink text-cream text-xs font-medium rounded-full hover:bg-ink/90 transition-colors">
+              Set Up Locations
+            </button>
+            <button onClick={() => window.location.href = '/agency/integrations'} className="px-5 py-2 border border-warm-border text-warm-gray text-xs rounded-full hover:text-ink hover:border-ink transition-colors">
+              Skip
+            </button>
+          </div>
         </div>
       )}
       {/* New org modal */}
