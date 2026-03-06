@@ -26,7 +26,7 @@ export default async function AgentPage({
     .eq('location_id', location.id)
     .single()
 
-  const [{ data: activity }, { data: brandConfig }] = await Promise.all([
+  const [{ data: activity }, { data: brandConfig }, { count: pendingCount }] = await Promise.all([
     adminClient
       .from('agent_activity_log')
       .select('*')
@@ -38,6 +38,11 @@ export default async function AgentPage({
       .select('voice_selections')
       .eq('org_id', org.id)
       .single(),
+    adminClient
+      .from('profile_recommendations')
+      .select('*', { count: 'exact', head: true })
+      .eq('location_id', location.id)
+      .in('status', ['pending', 'client_review']),
   ])
 
   return (
@@ -68,6 +73,8 @@ export default async function AgentPage({
         isAdmin={isAdmin}
         orgSlug={params.orgSlug}
         brandVoice={brandConfig?.voice_selections}
+        pendingCount={pendingCount ?? 0}
+        recsHref={`${basePath}/recommendations`}
       />
     </div>
   )
