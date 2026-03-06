@@ -1,6 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createServerSupabase } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
+import { fetchPerformanceMetrics } from '@/lib/google/performance'
+import { getValidAccessToken, GoogleAuthError } from '@/lib/google/auth'
+import { completePhase, failPhase } from '@/lib/pipeline'
 
 /**
  * GET /api/locations/[locationId]/performance?period=30d
@@ -134,4 +137,93 @@ export async function GET(
     metrics,
     daily,
   })
+}
+
+export const maxDuration = 60
+
+/**
+ * POST /api/locations/[locationId]/performance
+ *
+ * Trigger a performance metrics sync for this specific location.
+ * Called by the pipeline advance handler for the benchmark phase.
+ */
+export async function POST(
+  request: NextRequest,
+  { params }: { params: { locationId: string } }
+) {
+  // Accept agency admin session or CRON_SECRET
+  const authHeader = request.headers.get('authorization')
+  const apiKey = process.env.CRON_SECRET
+  const isCronAuth = apiKey && authHeader === `Bearer ${apiKey}`
+
+  if (!isCronAuth) {
+    const supabase = createServerSupabase()
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    }
+  }
+
+  const locationId = params.locationId
+  const adminClient = createAdminClient()
+
+  try {
+    // Verify Google auth
+    try {
+      await getValidAccessToken()
+    } catch (err) {
+      await failPhase(locationId, 'benchmark', err instanceof GoogleAuthError
+        ? 'Google integration requires reconnection'
+        : 'Google auth error')
+      return NextResponse.json({ error: 'Google auth error' }, { status: 500 })
+    }
+
+    // Find the GBP mapping for this location
+    const { data: mapping } = await adminClient
+      .from('agency_integration_mappings')
+      .select('external_resource_id, external_resource_name')
+      .eq('location_id', locationId)
+      .eq('resource_type', 'gbp_location')
+      .single()
+
+    if (!mapping) {
+      await failPhase(locationId, 'benchmark', 'No GBP mapping found for this location')
+      return NextResponse.json({ error: 'No GBP mapping' }, { status: 404 })
+    }
+
+    // Fetch last 30 days of metrics
+    const endDate = new Date()
+    const startDate = new Date()
+    startDate.setDate(startDate.getDate() - 30)
+    const startStr = startDate.toISOString().split('T')[0]
+    const endStr = endDate.toISOString().split('T')[0]
+
+    const metrics = await fetchPerformanceMetrics(mapping.external_resource_id, startStr, endStr)
+
+    if (metrics.length > 0) {
+      const rows = metrics.map((m) => ({
+        location_id: locationId,
+        date: m.date,
+        metric: m.metric,
+        value: m.value,
+      }))
+
+      await adminClient
+        .from('gbp_performance_metrics')
+        .upsert(rows, { onConflict: 'location_id,date,metric' })
+    }
+
+    // Mark benchmark phase complete
+    await completePhase(locationId, 'benchmark')
+
+    return NextResponse.json({
+      ok: true,
+      metrics_synced: metrics.length,
+      date_range: { start: startStr, end: endStr },
+    })
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'Unknown error'
+    await failPhase(locationId, 'benchmark', message)
+    return NextResponse.json({ error: message }, { status: 500 })
+  }
 }

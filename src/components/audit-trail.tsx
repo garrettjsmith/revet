@@ -73,7 +73,10 @@ export default function AuditTrail({ resourceType, resourceId, limit = 10 }: Aud
           .limit(limit)
 
         if (error) {
-          console.error('Error fetching audit logs:', error)
+          // Table may not exist yet — suppress 404/42P01 errors
+          if (error.code !== '42P01' && !error.message?.includes('does not exist')) {
+            console.error('Error fetching audit logs:', error)
+          }
           return
         }
 
