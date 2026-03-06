@@ -26,12 +26,19 @@ export default async function AgentPage({
     .eq('location_id', location.id)
     .single()
 
-  const { data: activity } = await adminClient
-    .from('agent_activity_log')
-    .select('*')
-    .eq('location_id', location.id)
-    .order('created_at', { ascending: false })
-    .limit(50)
+  const [{ data: activity }, { data: brandConfig }] = await Promise.all([
+    adminClient
+      .from('agent_activity_log')
+      .select('*')
+      .eq('location_id', location.id)
+      .order('created_at', { ascending: false })
+      .limit(50),
+    adminClient
+      .from('brand_config')
+      .select('voice_selections')
+      .eq('org_id', org.id)
+      .single(),
+  ])
 
   return (
     <div>
@@ -59,6 +66,8 @@ export default async function AgentPage({
         config={config}
         activity={activity || []}
         isAdmin={isAdmin}
+        orgSlug={params.orgSlug}
+        brandVoice={brandConfig?.voice_selections}
       />
     </div>
   )

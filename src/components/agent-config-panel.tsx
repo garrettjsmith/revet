@@ -68,11 +68,15 @@ export function AgentConfigPanel({
   config: initialConfig,
   activity,
   isAdmin,
+  orgSlug,
+  brandVoice,
 }: {
   locationId: string
   config: AgentConfig | null
   activity: ActivityEntry[]
   isAdmin: boolean
+  orgSlug?: string
+  brandVoice?: { personality?: string; tone?: string[]; formality?: string } | null
 }) {
   const merged = { ...DEFAULTS, ...initialConfig, location_id: locationId }
   const [config, setConfig] = useState<AgentConfig>(merged)
@@ -226,31 +230,53 @@ export function AgentConfigPanel({
               </div>
             </div>
 
-            {/* Tone & context */}
+            {/* Brand voice reference */}
             <div>
               <h3 className="text-xs font-medium text-ink uppercase tracking-wider mb-3">Brand Voice</h3>
-              <div className="space-y-3">
-                <div>
-                  <label className="text-[10px] text-warm-gray uppercase tracking-wider block mb-1">Tone</label>
-                  <input
-                    type="text"
-                    value={config.tone}
-                    onChange={(e) => update('tone', e.target.value)}
-                    className="w-full border border-warm-border rounded-lg px-3 py-1.5 text-sm bg-white text-ink"
-                    placeholder="professional and friendly"
-                  />
+              {brandVoice && (brandVoice.personality || brandVoice.tone?.length || brandVoice.formality) ? (
+                <div className="bg-warm-light/50 rounded-lg px-4 py-3 space-y-1">
+                  {brandVoice.personality && (
+                    <div className="text-xs text-ink">
+                      <span className="text-warm-gray">Personality:</span> {brandVoice.personality}
+                    </div>
+                  )}
+                  {brandVoice.tone && brandVoice.tone.length > 0 && (
+                    <div className="text-xs text-ink">
+                      <span className="text-warm-gray">Tone:</span> {brandVoice.tone.join(', ')}
+                    </div>
+                  )}
+                  {brandVoice.formality && (
+                    <div className="text-xs text-ink">
+                      <span className="text-warm-gray">Formality:</span> {brandVoice.formality}
+                    </div>
+                  )}
+                  {orgSlug && (
+                    <a
+                      href={`/agency/${orgSlug}/brand`}
+                      className="text-[10px] text-warm-gray hover:text-ink no-underline transition-colors"
+                    >
+                      Edit in Brand settings
+                    </a>
+                  )}
                 </div>
-                <div>
-                  <label className="text-[10px] text-warm-gray uppercase tracking-wider block mb-1">Business context</label>
-                  <textarea
-                    value={config.business_context || ''}
-                    onChange={(e) => update('business_context', e.target.value || null)}
-                    rows={3}
-                    className="w-full border border-warm-border rounded-lg px-3 py-1.5 text-sm bg-white text-ink resize-none"
-                    placeholder="Optional context about this business for the agent..."
-                  />
+              ) : (
+                <div className="bg-warm-light/50 rounded-lg px-4 py-3">
+                  <p className="text-xs text-warm-gray">
+                    No brand voice configured.
+                    {orgSlug && (
+                      <>
+                        {' '}
+                        <a
+                          href={`/agency/${orgSlug}/brand`}
+                          className="text-ink hover:underline no-underline"
+                        >
+                          Set up brand voice
+                        </a>
+                      </>
+                    )}
+                  </p>
                 </div>
-              </div>
+              )}
             </div>
 
             {/* Save + Run */}
