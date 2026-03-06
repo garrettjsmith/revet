@@ -307,10 +307,10 @@ export function PipelineTable({ rows }: { rows: PipelineRow[] }) {
                   </td>
                   <td className="px-5 py-3.5">
                     <Link
-                      href={`/admin/${row.orgSlug}/locations/${row.id}`}
+                      href={row.progress < 100 ? `/admin/${row.orgSlug}/locations/${row.id}/setup` : `/admin/${row.orgSlug}/locations/${row.id}`}
                       className="text-xs text-warm-gray hover:text-ink no-underline transition-colors"
                     >
-                      View
+                      {row.progress < 100 ? 'Set Up' : 'View'}
                     </Link>
                   </td>
                 </tr>
