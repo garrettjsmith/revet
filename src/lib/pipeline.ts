@@ -327,6 +327,22 @@ export async function detectCompletedPhases(locationId: string): Promise<SetupPh
 }
 
 /**
+ * Build synthetic in-memory phase records when the DB table is unavailable.
+ */
+function buildSyntheticPhases(locationId: string): PhaseRecord[] {
+  return PHASE_ORDER.map((phase) => ({
+    id: '',
+    location_id: locationId,
+    phase,
+    status: 'pending' as PhaseStatus,
+    started_at: null,
+    completed_at: null,
+    error: null,
+    metadata: {},
+  }))
+}
+
+/**
  * Initialize and backfill pipeline phases for a location.
  * Creates all phase rows, then marks already-completed ones.
  */
@@ -351,28 +367,30 @@ export async function initializeAndBackfill(locationId: string): Promise<PhaseRe
 
   // Verify rows exist
   let phases = await getLocationPhases(locationId)
+
   if (phases.length === 0) {
-    // Last resort: individual inserts
-    for (const phase of PHASE_ORDER) {
-      await adminClient
-        .from('location_setup_phases')
-        .upsert(
-          { location_id: locationId, phase, status: 'pending' },
-          { onConflict: 'location_id,phase', ignoreDuplicates: true }
-        )
-    }
-    phases = await getLocationPhases(locationId)
+    // Table likely doesn't exist — use synthetic phases
+    phases = buildSyntheticPhases(locationId)
   }
 
   // Detect what's already done
   const completed = await detectCompletedPhases(locationId)
 
-  // Mark completed phases
+  // Mark completed phases (persists if table exists, no-op if not)
   for (const phase of completed) {
     await completePhase(locationId, phase, { backfilled: true })
   }
 
-  return getLocationPhases(locationId)
+  // Re-fetch or rebuild with completed statuses applied
+  const final = await getLocationPhases(locationId)
+  if (final.length > 0) return final
+
+  // Table doesn't exist — return synthetic phases with detected completions applied
+  return phases.map((p) =>
+    completed.includes(p.phase)
+      ? { ...p, status: 'completed' as PhaseStatus, completed_at: new Date().toISOString() }
+      : p
+  )
 }
 
 /**
@@ -423,9 +441,12 @@ export async function advancePipeline(locationId: string): Promise<AdvanceResult
 async function advancePipelineFromPhases(locationId: string, phases: PhaseRecord[]): Promise<AdvanceResult> {
   const triggered: SetupPhase[] = []
 
+  // Ensure we have phase records to work with (synthetic if table is missing)
+  let workingPhases = phases.length > 0 ? phases : buildSyntheticPhases(locationId)
+
   // First: detect any manually-completed work and mark those phases done
   const detectedComplete = await detectCompletedPhases(locationId)
-  const statusMap = new Map(phases.map((p) => [p.phase, p.status]))
+  const statusMap = new Map(workingPhases.map((p) => [p.phase, p.status]))
   for (const phase of detectedComplete) {
     if (statusMap.get(phase) === 'pending' || statusMap.get(phase) === 'running') {
       await completePhase(locationId, phase)
@@ -433,10 +454,18 @@ async function advancePipelineFromPhases(locationId: string, phases: PhaseRecord
     }
   }
 
-  // Re-fetch phases after backfill so getReadyPhases sees updated state
-  const currentPhases = triggered.length > 0
-    ? await getLocationPhases(locationId)
-    : phases
+  // Re-fetch phases after detection, with synthetic fallback
+  if (triggered.length > 0) {
+    const fetched = await getLocationPhases(locationId)
+    workingPhases = fetched.length > 0
+      ? fetched
+      : workingPhases.map((p) =>
+          detectedComplete.includes(p.phase)
+            ? { ...p, status: 'completed' as PhaseStatus, completed_at: new Date().toISOString() }
+            : p
+        )
+  }
+  const currentPhases = workingPhases
 
   const ready = getReadyPhases(currentPhases)
 

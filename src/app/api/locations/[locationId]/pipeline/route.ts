@@ -2,7 +2,6 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createServerSupabase } from '@/lib/supabase/server'
 import { checkAgencyAdmin } from '@/lib/locations'
 import {
-  getLocationPhases,
   advancePipeline,
   initializeAndBackfill,
   completePhase,
@@ -28,11 +27,7 @@ export async function GET(
   }
 
   const locationId = params.locationId
-  let phases = await getLocationPhases(locationId)
-
-  if (phases.length === 0) {
-    phases = await initializeAndBackfill(locationId)
-  }
+  const phases = await initializeAndBackfill(locationId)
 
   return NextResponse.json({ phases })
 }
@@ -73,7 +68,7 @@ export async function POST(
   switch (action) {
     case 'advance': {
       const result = await advancePipeline(locationId)
-      const phases = await getLocationPhases(locationId)
+      const phases = await initializeAndBackfill(locationId)
       return NextResponse.json({ triggered: result.triggered, blocking: result.blocking, phases })
     }
 
@@ -82,7 +77,7 @@ export async function POST(
       await completePhase(locationId, phase, body.metadata)
       // Auto-advance after completing a phase
       const advResult = await advancePipeline(locationId)
-      const phases = await getLocationPhases(locationId)
+      const phases = await initializeAndBackfill(locationId)
       return NextResponse.json({ triggered: advResult.triggered, phases })
     }
 
@@ -101,7 +96,7 @@ export async function POST(
           { onConflict: 'location_id,phase' }
         )
       const advResult = await advancePipeline(locationId)
-      const phases = await getLocationPhases(locationId)
+      const phases = await initializeAndBackfill(locationId)
       return NextResponse.json({ triggered: advResult.triggered, phases })
     }
 
@@ -116,7 +111,7 @@ export async function POST(
         .eq('location_id', locationId)
         .eq('phase', phase)
       const advResult = await advancePipeline(locationId)
-      const phases = await getLocationPhases(locationId)
+      const phases = await initializeAndBackfill(locationId)
       return NextResponse.json({ triggered: advResult.triggered, phases })
     }
 
