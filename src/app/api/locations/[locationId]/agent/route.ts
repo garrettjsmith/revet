@@ -4,19 +4,18 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { checkAgencyAdmin } from '@/lib/locations'
 
 const DEFAULT_PROFILE_SKILLS = {
-  description: true,
-  categories: true,
-  attributes: true,
-  hours: true,
-  media: true,
-  services: true,
-  website: true,
+  description: 'queue',
+  categories: 'queue',
+  attributes: 'queue',
+  hours: 'queue',
+  media: 'queue',
+  services: 'queue',
+  website: 'queue',
 }
 
 const DEFAULTS = {
   enabled: false,
   review_replies: 'queue',
-  profile_updates: 'queue',
   post_publishing: 'queue',
   auto_reply_min_rating: 4,
   auto_reply_max_rating: 5,
@@ -96,7 +95,6 @@ export async function PUT(
         location_id: params.locationId,
         enabled: body.enabled ?? DEFAULTS.enabled,
         review_replies: body.review_replies ?? DEFAULTS.review_replies,
-        profile_updates: body.profile_updates ?? DEFAULTS.profile_updates,
         post_publishing: body.post_publishing ?? DEFAULTS.post_publishing,
         auto_reply_min_rating: body.auto_reply_min_rating ?? DEFAULTS.auto_reply_min_rating,
         auto_reply_max_rating: body.auto_reply_max_rating ?? DEFAULTS.auto_reply_max_rating,
@@ -145,7 +143,6 @@ export async function POST(
         location_id: config.location_id,
         enabled: true,
         review_replies: config.review_replies || 'queue',
-        profile_updates: config.profile_updates || 'queue',
         post_publishing: config.post_publishing || 'queue',
         auto_reply_min_rating: config.auto_reply_min_rating ?? 4,
         auto_reply_max_rating: config.auto_reply_max_rating ?? 5,
@@ -158,7 +155,6 @@ export async function POST(
         location_id: params.locationId,
         enabled: true,
         review_replies: 'queue' as const,
-        profile_updates: 'queue' as const,
         post_publishing: 'queue' as const,
         auto_reply_min_rating: 4,
         auto_reply_max_rating: 5,

@@ -83,8 +83,8 @@ export default async function AgencyAgentsPage() {
       orgSlug: org?.slug || '',
       enabled: config?.enabled ?? false,
       review_replies: (config?.review_replies ?? 'queue') as TrustLevel,
-      profile_updates: (config?.profile_updates ?? 'queue') as TrustLevel,
       post_publishing: (config?.post_publishing ?? 'queue') as TrustLevel,
+      profile_skills: (config?.profile_skills ?? null) as Record<string, TrustLevel> | null,
       audit_score: auditMap.get(loc.id) ?? null,
       last_run: lastRunMap.get(loc.id) ?? null,
     }
@@ -93,7 +93,10 @@ export default async function AgencyAgentsPage() {
   // Stats
   const totalLocations = rows.length
   const enabledCount = rows.filter((r) => r.enabled).length
-  const autoCount = rows.filter((r) => r.review_replies === 'auto' || r.profile_updates === 'auto' || r.post_publishing === 'auto').length
+  const autoCount = rows.filter((r) => {
+    const hasAutoSkill = r.profile_skills ? Object.values(r.profile_skills).some((v) => v === 'auto') : false
+    return r.review_replies === 'auto' || hasAutoSkill || r.post_publishing === 'auto'
+  }).length
 
   return (
     <div>
@@ -170,7 +173,18 @@ export default async function AgencyAgentsPage() {
                     <TrustBadge value={row.review_replies} />
                   </td>
                   <td className="px-3 py-3 text-center">
-                    <TrustBadge value={row.profile_updates} />
+                    {(() => {
+                      const skills = row.profile_skills
+                      if (!skills) return <TrustBadge value="queue" />
+                      const vals = Object.values(skills)
+                      const autoCount = vals.filter((v) => v === 'auto').length
+                      const queueCount = vals.filter((v) => v === 'queue').length
+                      const offCount = vals.filter((v) => v === 'off').length
+                      if (offCount === vals.length) return <TrustBadge value="off" />
+                      if (autoCount === vals.length) return <TrustBadge value="auto" />
+                      if (queueCount === vals.length) return <TrustBadge value="queue" />
+                      return <span className="text-[10px] text-ink">{autoCount}A/{queueCount}Q/{offCount}O</span>
+                    })()}
                   </td>
                   <td className="px-3 py-3 text-center">
                     <TrustBadge value={row.post_publishing} />

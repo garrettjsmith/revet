@@ -13,6 +13,28 @@ interface StageInfo {
   phases: { phase: string; label: string; status: string }[]
 }
 
+type ProfileSkillKey = 'description' | 'categories' | 'attributes' | 'hours' | 'media' | 'services' | 'website'
+
+const PROFILE_SKILL_LABELS: { key: ProfileSkillKey; label: string }[] = [
+  { key: 'description', label: 'Description' },
+  { key: 'categories', label: 'Categories' },
+  { key: 'attributes', label: 'Attributes' },
+  { key: 'hours', label: 'Hours' },
+  { key: 'media', label: 'Media' },
+  { key: 'services', label: 'Services' },
+  { key: 'website', label: 'Website UTM' },
+]
+
+const DEFAULT_PROFILE_SKILLS: Record<ProfileSkillKey, TrustLevel> = {
+  description: 'queue',
+  categories: 'queue',
+  attributes: 'queue',
+  hours: 'queue',
+  media: 'queue',
+  services: 'queue',
+  website: 'queue',
+}
+
 interface SetupFlowProps {
   orgId: string
   orgSlug: string
@@ -23,8 +45,8 @@ interface SetupFlowProps {
   agentConfig: {
     enabled: boolean
     review_replies: TrustLevel
-    profile_updates: TrustLevel
     post_publishing: TrustLevel
+    profile_skills?: Record<ProfileSkillKey, TrustLevel>
   } | null
   auditScore: number | null
   stages: StageInfo[]
@@ -90,8 +112,10 @@ export function SetupFlow({
   // Agent config state
   const [agentEnabled, setAgentEnabled] = useState(agentConfig?.enabled ?? true)
   const [reviewReplies, setReviewReplies] = useState<TrustLevel>(agentConfig?.review_replies ?? 'queue')
-  const [profileUpdates, setProfileUpdates] = useState<TrustLevel>(agentConfig?.profile_updates ?? 'queue')
   const [postPublishing, setPostPublishing] = useState<TrustLevel>(agentConfig?.post_publishing ?? 'queue')
+  const [profileSkills, setProfileSkills] = useState<Record<ProfileSkillKey, TrustLevel>>(
+    agentConfig?.profile_skills ?? DEFAULT_PROFILE_SKILLS
+  )
 
   const goNext = () => {
     if (currentStepIndex < steps.length - 1) {
@@ -131,8 +155,8 @@ export function SetupFlow({
           location_id: locationId,
           enabled: agentEnabled,
           review_replies: reviewReplies,
-          profile_updates: profileUpdates,
           post_publishing: postPublishing,
+          profile_skills: profileSkills,
         }),
       })
       goNext()
@@ -308,32 +332,60 @@ export function SetupFlow({
 
             {/* Trust levels */}
             {agentEnabled && (
-              <div className="space-y-4">
-                {([
-                  { key: 'review_replies' as const, label: 'Review Replies', value: reviewReplies, set: setReviewReplies },
-                  { key: 'profile_updates' as const, label: 'Profile Updates', value: profileUpdates, set: setProfileUpdates },
-                  { key: 'post_publishing' as const, label: 'Post Publishing', value: postPublishing, set: setPostPublishing },
-                ]).map(({ label, value, set }) => (
-                  <div key={label} className="flex items-center justify-between">
-                    <span className="text-sm text-ink">{label}</span>
-                    <div className="flex gap-1">
-                      {TRUST_OPTIONS.map((opt) => (
-                        <button
-                          key={opt.value}
-                          onClick={() => set(opt.value)}
-                          title={opt.desc}
-                          className={`px-3 py-1 text-xs rounded-full border transition-colors ${
-                            value === opt.value
-                              ? 'bg-ink text-cream border-ink'
-                              : 'bg-white text-warm-gray border-warm-border hover:border-ink hover:text-ink'
-                          }`}
-                        >
-                          {opt.label}
-                        </button>
-                      ))}
+              <div className="space-y-6">
+                <div className="space-y-3">
+                  {([
+                    { label: 'Review Replies', value: reviewReplies, set: setReviewReplies },
+                    { label: 'Post Publishing', value: postPublishing, set: setPostPublishing },
+                  ]).map(({ label, value, set }) => (
+                    <div key={label} className="flex items-center justify-between">
+                      <span className="text-sm text-ink">{label}</span>
+                      <div className="flex gap-1">
+                        {TRUST_OPTIONS.map((opt) => (
+                          <button
+                            key={opt.value}
+                            onClick={() => set(opt.value)}
+                            title={opt.desc}
+                            className={`px-3 py-1 text-xs rounded-full border transition-colors ${
+                              value === opt.value
+                                ? 'bg-ink text-cream border-ink'
+                                : 'bg-white text-warm-gray border-warm-border hover:border-ink hover:text-ink'
+                            }`}
+                          >
+                            {opt.label}
+                          </button>
+                        ))}
+                      </div>
                     </div>
+                  ))}
+                </div>
+
+                <div>
+                  <div className="text-xs font-medium text-ink uppercase tracking-wider mb-3">Profile Updates</div>
+                  <div className="space-y-3">
+                    {PROFILE_SKILL_LABELS.map(({ key, label }) => (
+                      <div key={key} className="flex items-center justify-between">
+                        <span className="text-sm text-ink">{label}</span>
+                        <div className="flex gap-1">
+                          {TRUST_OPTIONS.map((opt) => (
+                            <button
+                              key={opt.value}
+                              onClick={() => setProfileSkills((prev) => ({ ...prev, [key]: opt.value }))}
+                              title={opt.desc}
+                              className={`px-3 py-1 text-xs rounded-full border transition-colors ${
+                                profileSkills[key] === opt.value
+                                  ? 'bg-ink text-cream border-ink'
+                                  : 'bg-white text-warm-gray border-warm-border hover:border-ink hover:text-ink'
+                              }`}
+                            >
+                              {opt.label}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    ))}
                   </div>
-                ))}
+                </div>
               </div>
             )}
 

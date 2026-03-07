@@ -4,7 +4,9 @@ import { useState } from 'react'
 
 type ProfileSkillKey = 'description' | 'categories' | 'attributes' | 'hours' | 'media' | 'services' | 'website'
 
-type ProfileSkills = Record<ProfileSkillKey, boolean>
+type TrustLevel = 'auto' | 'queue' | 'off'
+
+type ProfileSkills = Record<ProfileSkillKey, TrustLevel>
 
 const ALL_PROFILE_SKILLS: { key: ProfileSkillKey; label: string }[] = [
   { key: 'description', label: 'Description' },
@@ -17,13 +19,13 @@ const ALL_PROFILE_SKILLS: { key: ProfileSkillKey; label: string }[] = [
 ]
 
 const DEFAULT_PROFILE_SKILLS: ProfileSkills = {
-  description: true,
-  categories: true,
-  attributes: true,
-  hours: true,
-  media: true,
-  services: true,
-  website: true,
+  description: 'queue',
+  categories: 'queue',
+  attributes: 'queue',
+  hours: 'queue',
+  media: 'queue',
+  services: 'queue',
+  website: 'queue',
 }
 
 interface AgentConfig {
@@ -31,7 +33,6 @@ interface AgentConfig {
   location_id: string
   enabled: boolean
   review_replies: string
-  profile_updates: string
   post_publishing: string
   auto_reply_min_rating: number
   auto_reply_max_rating: number
@@ -55,7 +56,6 @@ const DEFAULTS: Omit<AgentConfig, 'id'> = {
   location_id: '',
   enabled: false,
   review_replies: 'queue',
-  profile_updates: 'queue',
   post_publishing: 'queue',
   auto_reply_min_rating: 4,
   auto_reply_max_rating: 5,
@@ -191,7 +191,6 @@ export function AgentConfigPanel({
               <div className="space-y-3">
                 {[
                   { key: 'review_replies', label: 'Review Replies' },
-                  { key: 'profile_updates', label: 'Profile Updates' },
                   { key: 'post_publishing', label: 'Post Publishing' },
                 ].map(({ key, label }) => (
                   <div key={key} className="flex items-center justify-between">
@@ -217,31 +216,34 @@ export function AgentConfigPanel({
               </div>
             </div>
 
-            {/* Profile update scope */}
+            {/* Profile updates — per-skill trust levels */}
             <div>
-              <h3 className="text-xs font-medium text-ink uppercase tracking-wider mb-3">Profile Updates Scope</h3>
-              <p className="text-xs text-warm-gray mb-2">Toggle which areas the agent manages:</p>
-              <div className="flex flex-wrap gap-1.5">
-                {ALL_PROFILE_SKILLS.map(({ key, label }) => {
-                  const enabled = config.profile_skills[key]
-                  return (
-                    <button
-                      key={key}
-                      type="button"
-                      onClick={() => {
-                        const updated = { ...config.profile_skills, [key]: !enabled }
-                        update('profile_skills', updated)
-                      }}
-                      className={`text-[10px] px-2.5 py-1 rounded-full border transition-colors ${
-                        enabled
-                          ? 'bg-ink text-cream border-ink'
-                          : 'bg-white text-warm-gray border-warm-border hover:border-ink hover:text-ink'
-                      }`}
-                    >
-                      {label}
-                    </button>
-                  )
-                })}
+              <h3 className="text-xs font-medium text-ink uppercase tracking-wider mb-3">Profile Updates</h3>
+              <div className="space-y-3">
+                {ALL_PROFILE_SKILLS.map(({ key, label }) => (
+                  <div key={key} className="flex items-center justify-between">
+                    <span className="text-sm text-ink">{label}</span>
+                    <div className="flex gap-1">
+                      {TRUST_OPTIONS.map((opt) => (
+                        <button
+                          key={opt.value}
+                          onClick={() => {
+                            const updated = { ...config.profile_skills, [key]: opt.value }
+                            update('profile_skills', updated)
+                          }}
+                          title={opt.desc}
+                          className={`px-3 py-1 text-xs rounded-full border transition-colors ${
+                            config.profile_skills[key] === opt.value
+                              ? 'bg-ink text-cream border-ink'
+                              : 'bg-white text-warm-gray border-warm-border hover:border-ink hover:text-ink'
+                          }`}
+                        >
+                          {opt.label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                ))}
               </div>
             </div>
 
