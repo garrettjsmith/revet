@@ -40,6 +40,7 @@ interface SetupFlowProps {
   orgSlug: string
   locationId: string
   locationName: string
+  hasIntake: boolean
   hasBrandVoice: boolean
   hasAgentConfig: boolean
   agentConfig: {
@@ -79,13 +80,14 @@ const TRUST_OPTIONS: { value: TrustLevel; label: string; desc: string }[] = [
   { value: 'off', label: 'Off', desc: 'Disabled for this skill' },
 ]
 
-type Step = 'brand' | 'agent' | 'review' | 'done'
+type Step = 'intake' | 'brand' | 'agent' | 'review' | 'done'
 
 export function SetupFlow({
   orgId,
   orgSlug,
   locationId,
   locationName,
+  hasIntake,
   hasBrandVoice,
   hasAgentConfig,
   agentConfig,
@@ -95,8 +97,9 @@ export function SetupFlow({
 }: SetupFlowProps) {
   const router = useRouter()
 
-  // Determine starting step
+  // Determine starting step — skip completed steps
   const steps: Step[] = []
+  if (!hasIntake) steps.push('intake')
   if (!hasBrandVoice) steps.push('brand')
   steps.push('agent', 'review', 'done')
 
@@ -165,11 +168,21 @@ export function SetupFlow({
     }
   }
 
-  const finish = () => {
+  const [launching, setLaunching] = useState(false)
+
+  const finish = async () => {
+    // Trigger initial agent run so the first audit has full context
+    setLaunching(true)
+    try {
+      await fetch(`/api/locations/${locationId}/agent`, {
+        method: 'POST',
+      })
+    } catch { /* best-effort */ }
     router.push(`/admin/${orgSlug}/locations/${locationId}`)
   }
 
   const stepLabels: Record<Step, string> = {
+    intake: 'Business Details',
     brand: 'Brand Voice',
     agent: 'Agent Setup',
     review: 'Pipeline Status',
@@ -205,6 +218,38 @@ export function SetupFlow({
 
       {/* Step content */}
       <div className="border border-warm-border rounded-xl p-6">
+        {currentStep === 'intake' && (
+          <div className="space-y-6">
+            <div>
+              <h2 className="text-lg font-serif text-ink mb-1">Business Details</h2>
+              <p className="text-xs text-warm-gray">
+                Before the agent can optimize this location, we need key business details — services, keywords, hours, and more.
+              </p>
+            </div>
+
+            <div className="bg-warm-light/50 border border-warm-border rounded-lg p-5 space-y-3">
+              <div className="text-sm font-medium text-ink">What you will provide:</div>
+              <ul className="space-y-2 text-sm text-warm-gray">
+                {['Business name, address, and contact info', 'Services and service descriptions', 'Target keywords and cities', 'Hours of operation', 'Brand voice preferences', 'Logo and photos'].map((item) => (
+                  <li key={item} className="flex items-start gap-2">
+                    <span className="w-1.5 h-1.5 rounded-full bg-warm-border mt-1.5 shrink-0" />
+                    {item}
+                  </li>
+                ))}
+              </ul>
+            </div>
+
+            <div className="flex items-center justify-end pt-4">
+              <a
+                href={`/admin/${orgSlug}/locations/${locationId}/intake?returnTo=setup`}
+                className="px-6 py-2 bg-ink text-cream text-sm font-medium rounded-full hover:bg-ink/90 transition-colors no-underline"
+              >
+                Start Intake Form
+              </a>
+            </div>
+          </div>
+        )}
+
         {currentStep === 'brand' && (
           <div className="space-y-6">
             <div>
@@ -504,9 +549,10 @@ export function SetupFlow({
             </p>
             <button
               onClick={finish}
-              className="px-6 py-2 bg-ink text-cream text-sm font-medium rounded-full hover:bg-ink/90 transition-colors"
+              disabled={launching}
+              className="px-6 py-2 bg-ink text-cream text-sm font-medium rounded-full hover:bg-ink/90 transition-colors disabled:opacity-50"
             >
-              Go to Location
+              {launching ? 'Launching Agent...' : 'Go to Location'}
             </button>
           </div>
         )}

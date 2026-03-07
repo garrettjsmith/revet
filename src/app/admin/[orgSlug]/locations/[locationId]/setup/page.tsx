@@ -28,6 +28,7 @@ export default async function LocationSetupPage({
     { data: brandConfig },
     { data: agentConfig },
     { data: auditHistory },
+    { data: locationData },
   ] = await Promise.all([
     getLocationPhases(params.locationId),
     adminClient
@@ -46,9 +47,15 @@ export default async function LocationSetupPage({
       .eq('location_id', params.locationId)
       .order('created_at', { ascending: false })
       .limit(1),
+    adminClient
+      .from('locations')
+      .select('intake_completed_at')
+      .eq('id', params.locationId)
+      .single(),
   ])
 
   const hasBrandVoice = !!brandConfig?.voice_selections && Object.keys(brandConfig.voice_selections).length > 0
+  const hasIntake = !!locationData?.intake_completed_at
   const hasAgentConfig = !!agentConfig
   const auditScore = auditHistory?.[0]?.score ?? null
 
@@ -72,6 +79,7 @@ export default async function LocationSetupPage({
       orgSlug={params.orgSlug}
       locationId={params.locationId}
       locationName={location.name}
+      hasIntake={hasIntake}
       hasBrandVoice={hasBrandVoice}
       hasAgentConfig={hasAgentConfig}
       agentConfig={agentConfig}
