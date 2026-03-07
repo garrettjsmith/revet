@@ -3,6 +3,16 @@ import { createServerSupabase } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { checkAgencyAdmin } from '@/lib/locations'
 
+const DEFAULT_PROFILE_SKILLS = {
+  description: true,
+  categories: true,
+  attributes: true,
+  hours: true,
+  media: true,
+  services: true,
+  website: true,
+}
+
 const DEFAULTS = {
   enabled: false,
   review_replies: 'queue',
@@ -13,6 +23,7 @@ const DEFAULTS = {
   escalate_below_rating: 3,
   tone: 'professional and friendly',
   business_context: null,
+  profile_skills: DEFAULT_PROFILE_SKILLS,
 }
 
 /**
@@ -92,6 +103,7 @@ export async function PUT(
         escalate_below_rating: body.escalate_below_rating ?? DEFAULTS.escalate_below_rating,
         tone: body.tone ?? DEFAULTS.tone,
         business_context: body.business_context ?? DEFAULTS.business_context,
+        profile_skills: body.profile_skills ?? DEFAULTS.profile_skills,
       },
       { onConflict: 'location_id' }
     )
@@ -140,6 +152,7 @@ export async function POST(
         escalate_below_rating: config.escalate_below_rating ?? 3,
         tone: config.tone || 'professional and friendly',
         business_context: config.business_context,
+        profile_skills: config.profile_skills ?? DEFAULT_PROFILE_SKILLS,
       }
     : {
         location_id: params.locationId,
@@ -152,6 +165,7 @@ export async function POST(
         escalate_below_rating: 3,
         tone: 'professional and friendly',
         business_context: null,
+        profile_skills: DEFAULT_PROFILE_SKILLS,
       }
 
   const result = await runAgentForLocation(params.locationId, agentConfig)

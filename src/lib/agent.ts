@@ -10,6 +10,18 @@ import {
 import type { GBPProfile, ServiceTier } from '@/lib/types'
 import { tierIncludes } from '@/lib/tiers'
 
+export type ProfileSkillKey = 'description' | 'categories' | 'attributes' | 'hours' | 'media' | 'services' | 'website'
+
+export const DEFAULT_PROFILE_SKILLS: Record<ProfileSkillKey, boolean> = {
+  description: true,
+  categories: true,
+  attributes: true,
+  hours: true,
+  media: true,
+  services: true,
+  website: true,
+}
+
 export interface AgentConfig {
   location_id: string
   enabled: boolean
@@ -21,6 +33,7 @@ export interface AgentConfig {
   escalate_below_rating: number
   tone: string
   business_context: string | null
+  profile_skills: Record<ProfileSkillKey, boolean>
 }
 
 export interface AgentRunResult {
@@ -151,6 +164,17 @@ export async function runAgentForLocation(
       .single()
     const intake = (intakeRow as any)?.intake_data || {}
 
+    const skills = config.profile_skills ?? DEFAULT_PROFILE_SKILLS
+
+    // Map audit section keys to skill keys (photos → media)
+    const sectionToSkill: Record<string, ProfileSkillKey> = {
+      description: 'description',
+      categories: 'categories',
+      attributes: 'attributes',
+      photos: 'media',
+      hours: 'hours',
+    }
+
     const sectionHandlers: Record<string, () => Promise<void>> = {
       description: () => handleDescription(adminClient, locationId, location, profile!, config, actions),
       categories: () => handleCategories(adminClient, locationId, profile!, config, actions, intake),
@@ -162,6 +186,8 @@ export async function runAgentForLocation(
 
     for (const section of audit.sections) {
       if (section.status === 'good') continue
+      const skillKey = sectionToSkill[section.key]
+      if (skillKey && !skills[skillKey]) continue // Skill toggled off
       const handler = sectionHandlers[section.key]
       if (handler) {
         try {
@@ -177,10 +203,14 @@ export async function runAgentForLocation(
     }
 
     // Services — always check if intake has services not yet on the profile
-    await handleServices(adminClient, locationId, profile, config, actions, intake)
+    if (skills.services) {
+      await handleServices(adminClient, locationId, profile, config, actions, intake)
+    }
 
     // Website — check for UTM tracking
-    await handleWebsiteTracking(adminClient, locationId, profile, config, actions)
+    if (skills.website) {
+      await handleWebsiteTracking(adminClient, locationId, profile, config, actions)
+    }
   }
 
   // ─── DECIDE + ACT: Auto-apply pending recommendations ─────

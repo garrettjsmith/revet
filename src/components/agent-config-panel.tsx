@@ -2,6 +2,30 @@
 
 import { useState } from 'react'
 
+type ProfileSkillKey = 'description' | 'categories' | 'attributes' | 'hours' | 'media' | 'services' | 'website'
+
+type ProfileSkills = Record<ProfileSkillKey, boolean>
+
+const ALL_PROFILE_SKILLS: { key: ProfileSkillKey; label: string }[] = [
+  { key: 'description', label: 'Description' },
+  { key: 'categories', label: 'Categories' },
+  { key: 'attributes', label: 'Attributes' },
+  { key: 'hours', label: 'Hours' },
+  { key: 'media', label: 'Media' },
+  { key: 'services', label: 'Services' },
+  { key: 'website', label: 'Website UTM' },
+]
+
+const DEFAULT_PROFILE_SKILLS: ProfileSkills = {
+  description: true,
+  categories: true,
+  attributes: true,
+  hours: true,
+  media: true,
+  services: true,
+  website: true,
+}
+
 interface AgentConfig {
   id?: string
   location_id: string
@@ -14,6 +38,7 @@ interface AgentConfig {
   escalate_below_rating: number
   tone: string
   business_context: string | null
+  profile_skills: ProfileSkills
 }
 
 interface ActivityEntry {
@@ -37,6 +62,7 @@ const DEFAULTS: Omit<AgentConfig, 'id'> = {
   escalate_below_rating: 3,
   tone: 'professional and friendly',
   business_context: null,
+  profile_skills: DEFAULT_PROFILE_SKILLS,
 }
 
 const TRUST_OPTIONS = [
@@ -194,24 +220,28 @@ export function AgentConfigPanel({
             {/* Profile update scope */}
             <div>
               <h3 className="text-xs font-medium text-ink uppercase tracking-wider mb-3">Profile Updates Scope</h3>
-              <p className="text-xs text-warm-gray mb-2">What the agent manages under Profile Updates:</p>
+              <p className="text-xs text-warm-gray mb-2">Toggle which areas the agent manages:</p>
               <div className="flex flex-wrap gap-1.5">
-                {[
-                  'Description',
-                  'Categories',
-                  'Attributes',
-                  'Hours',
-                  'Media',
-                  'Services',
-                  'Website UTM',
-                ].map((s) => (
-                  <span
-                    key={s}
-                    className="text-[10px] px-2.5 py-1 rounded-full border border-warm-border text-warm-gray bg-warm-light/50"
-                  >
-                    {s}
-                  </span>
-                ))}
+                {ALL_PROFILE_SKILLS.map(({ key, label }) => {
+                  const enabled = config.profile_skills[key]
+                  return (
+                    <button
+                      key={key}
+                      type="button"
+                      onClick={() => {
+                        const updated = { ...config.profile_skills, [key]: !enabled }
+                        update('profile_skills', updated)
+                      }}
+                      className={`text-[10px] px-2.5 py-1 rounded-full border transition-colors ${
+                        enabled
+                          ? 'bg-ink text-cream border-ink'
+                          : 'bg-white text-warm-gray border-warm-border hover:border-ink hover:text-ink'
+                      }`}
+                    >
+                      {label}
+                    </button>
+                  )
+                })}
               </div>
             </div>
 
