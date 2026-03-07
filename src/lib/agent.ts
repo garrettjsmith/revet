@@ -12,28 +12,29 @@ import { tierIncludes } from '@/lib/tiers'
 
 export type ProfileSkillKey = 'description' | 'categories' | 'attributes' | 'hours' | 'media' | 'services' | 'website'
 
-export const DEFAULT_PROFILE_SKILLS: Record<ProfileSkillKey, boolean> = {
-  description: true,
-  categories: true,
-  attributes: true,
-  hours: true,
-  media: true,
-  services: true,
-  website: true,
+export type ProfileSkillTrust = 'auto' | 'queue' | 'off'
+
+export const DEFAULT_PROFILE_SKILLS: Record<ProfileSkillKey, ProfileSkillTrust> = {
+  description: 'queue',
+  categories: 'queue',
+  attributes: 'queue',
+  hours: 'queue',
+  media: 'queue',
+  services: 'queue',
+  website: 'queue',
 }
 
 export interface AgentConfig {
   location_id: string
   enabled: boolean
   review_replies: 'auto' | 'queue' | 'off'
-  profile_updates: 'auto' | 'queue' | 'off'
   post_publishing: 'auto' | 'queue' | 'off'
   auto_reply_min_rating: number
   auto_reply_max_rating: number
   escalate_below_rating: number
   tone: string
   business_context: string | null
-  profile_skills: Record<ProfileSkillKey, boolean>
+  profile_skills: Record<ProfileSkillKey, ProfileSkillTrust>
 }
 
 export interface AgentRunResult {
@@ -155,7 +156,10 @@ export async function runAgentForLocation(
   }
 
   // ─── DECIDE + ACT: Profile updates ────────────────────────
-  if (config.profile_updates !== 'off' && audit && profile && tierIncludes(tier, 'profile_optimization')) {
+  const skills = config.profile_skills ?? DEFAULT_PROFILE_SKILLS
+  const hasAnyProfileSkill = Object.values(skills).some((v) => v !== 'off')
+
+  if (hasAnyProfileSkill && audit && profile && tierIncludes(tier, 'profile_optimization')) {
     // Fetch intake data for richer context
     const { data: intakeRow } = await adminClient
       .from('locations')
@@ -163,8 +167,6 @@ export async function runAgentForLocation(
       .eq('id', locationId)
       .single()
     const intake = (intakeRow as any)?.intake_data || {}
-
-    const skills = config.profile_skills ?? DEFAULT_PROFILE_SKILLS
 
     // Map audit section keys to skill keys (photos → media)
     const sectionToSkill: Record<string, ProfileSkillKey> = {
@@ -176,18 +178,18 @@ export async function runAgentForLocation(
     }
 
     const sectionHandlers: Record<string, () => Promise<void>> = {
-      description: () => handleDescription(adminClient, locationId, location, profile!, config, actions),
-      categories: () => handleCategories(adminClient, locationId, profile!, config, actions, intake),
-      attributes: () => handleAttributes(adminClient, locationId, profile!, config, actions),
-      photos: () => handleMedia(adminClient, locationId, config, actions, intake),
-      hours: () => handleHours(adminClient, locationId, profile!, config, actions, intake),
+      description: () => handleDescription(adminClient, locationId, location, profile!, skills.description, actions),
+      categories: () => handleCategories(adminClient, locationId, profile!, skills.categories, actions, intake),
+      attributes: () => handleAttributes(adminClient, locationId, profile!, skills.attributes, actions),
+      photos: () => handleMedia(adminClient, locationId, skills.media, actions, intake),
+      hours: () => handleHours(adminClient, locationId, profile!, skills.hours, actions, intake),
       activity: () => Promise.resolve(), // Handled by post_publishing trust level below
     }
 
     for (const section of audit.sections) {
       if (section.status === 'good') continue
       const skillKey = sectionToSkill[section.key]
-      if (skillKey && !skills[skillKey]) continue // Skill toggled off
+      if (skillKey && skills[skillKey] === 'off') continue
       const handler = sectionHandlers[section.key]
       if (handler) {
         try {
@@ -202,19 +204,20 @@ export async function runAgentForLocation(
       }
     }
 
-    // Services — always check if intake has services not yet on the profile
-    if (skills.services) {
-      await handleServices(adminClient, locationId, profile, config, actions, intake)
+    // Services — check if intake has services not yet on the profile
+    if (skills.services !== 'off') {
+      await handleServices(adminClient, locationId, profile, skills.services, actions, intake)
     }
 
     // Website — check for UTM tracking
-    if (skills.website) {
-      await handleWebsiteTracking(adminClient, locationId, profile, config, actions)
+    if (skills.website !== 'off') {
+      await handleWebsiteTracking(adminClient, locationId, profile, skills.website, actions)
     }
   }
 
   // ─── DECIDE + ACT: Auto-apply pending recommendations ─────
-  if (config.profile_updates === 'auto' && tierIncludes(tier, 'profile_optimization')) {
+  const hasAutoSkill = Object.values(skills).some((v) => v === 'auto')
+  if (hasAutoSkill && tierIncludes(tier, 'profile_optimization')) {
     await autoApplyPendingRecs(adminClient, locationId, actions)
   }
 
@@ -294,7 +297,7 @@ async function handleDescription(
   locationId: string,
   location: { name: string; city: string | null; state: string | null },
   profile: GBPProfile,
-  config: AgentConfig,
+  trust: ProfileSkillTrust,
   actions: AgentAction[]
 ) {
   if (await hasExistingRec(adminClient, locationId, 'description')) return
@@ -329,7 +332,7 @@ async function handleDescription(
     brandVoice: voiceNotes,
   })
 
-  if (config.profile_updates === 'auto') {
+  if (trust === 'auto') {
     try {
       await getValidAccessToken()
       await updateGBPProfile(
@@ -384,7 +387,7 @@ async function handleCategories(
   adminClient: AdminClient,
   locationId: string,
   profile: GBPProfile,
-  config: AgentConfig,
+  trust: ProfileSkillTrust,
   actions: AgentAction[],
   intake: Record<string, any>
 ) {
@@ -424,7 +427,7 @@ async function handleCategories(
 
   if (validCategories.length === 0) return
 
-  if (config.profile_updates === 'auto') {
+  if (trust === 'auto') {
     try {
       await getValidAccessToken()
       const newAdditional = [
@@ -484,7 +487,7 @@ async function handleAttributes(
   adminClient: AdminClient,
   locationId: string,
   profile: GBPProfile,
-  config: AgentConfig,
+  trust: ProfileSkillTrust,
   actions: AgentAction[]
 ) {
   if (await hasExistingRec(adminClient, locationId, 'attributes')) return
@@ -532,7 +535,7 @@ async function handleAttributes(
 async function handleMedia(
   adminClient: AdminClient,
   locationId: string,
-  config: AgentConfig,
+  trust: ProfileSkillTrust,
   actions: AgentAction[],
   intake: Record<string, any>
 ) {
@@ -571,7 +574,7 @@ async function handleHours(
   adminClient: AdminClient,
   locationId: string,
   profile: GBPProfile,
-  config: AgentConfig,
+  trust: ProfileSkillTrust,
   actions: AgentAction[],
   intake: Record<string, any>
 ) {
@@ -607,7 +610,7 @@ async function handleServices(
   adminClient: AdminClient,
   locationId: string,
   profile: GBPProfile,
-  config: AgentConfig,
+  trust: ProfileSkillTrust,
   actions: AgentAction[],
   intake: Record<string, any>
 ) {
@@ -630,7 +633,7 @@ async function handleServices(
 
   if (missing.length === 0) return
 
-  if (config.profile_updates === 'auto') {
+  if (trust === 'auto') {
     try {
       await getValidAccessToken()
       const newServiceItems = [
@@ -686,7 +689,7 @@ async function handleWebsiteTracking(
   adminClient: AdminClient,
   locationId: string,
   profile: GBPProfile,
-  config: AgentConfig,
+  trust: ProfileSkillTrust,
   actions: AgentAction[]
 ) {
   if (!profile.website_uri) return
@@ -703,7 +706,7 @@ async function handleWebsiteTracking(
     utm_campaign: 'gbp',
   })
 
-  if (config.profile_updates === 'auto') {
+  if (trust === 'auto') {
     try {
       await getValidAccessToken()
       await updateGBPProfile(

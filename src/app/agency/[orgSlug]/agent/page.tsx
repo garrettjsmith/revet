@@ -79,8 +79,11 @@ export default async function OrgAgentPage({
       service_tier: loc.service_tier,
       enabled: config?.enabled ?? false,
       review_replies: (config?.review_replies ?? 'queue') as 'auto' | 'queue' | 'off',
-      profile_updates: (config?.profile_updates ?? 'queue') as 'auto' | 'queue' | 'off',
       post_publishing: (config?.post_publishing ?? 'queue') as 'auto' | 'queue' | 'off',
+      profile_skills: config?.profile_skills ?? {
+        description: 'queue', categories: 'queue', attributes: 'queue',
+        hours: 'queue', media: 'queue', services: 'queue', website: 'queue',
+      },
       auto_reply_min_rating: config?.auto_reply_min_rating ?? 4,
       auto_reply_max_rating: config?.auto_reply_max_rating ?? 5,
       escalate_below_rating: config?.escalate_below_rating ?? 3,

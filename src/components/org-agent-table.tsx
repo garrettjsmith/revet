@@ -6,6 +6,18 @@ import Link from 'next/link'
 
 type TrustLevel = 'auto' | 'queue' | 'off'
 
+type ProfileSkills = Record<string, TrustLevel>
+
+const DEFAULT_PROFILE_SKILLS: ProfileSkills = {
+  description: 'queue',
+  categories: 'queue',
+  attributes: 'queue',
+  hours: 'queue',
+  media: 'queue',
+  services: 'queue',
+  website: 'queue',
+}
+
 interface LocationAgent {
   location_id: string
   location_name: string
@@ -14,8 +26,8 @@ interface LocationAgent {
   service_tier: string
   enabled: boolean
   review_replies: TrustLevel
-  profile_updates: TrustLevel
   post_publishing: TrustLevel
+  profile_skills: ProfileSkills
   auto_reply_min_rating: number
   auto_reply_max_rating: number
   escalate_below_rating: number
@@ -137,8 +149,8 @@ export function OrgAgentTable({
             location_id: row.location_id,
             enabled: row.enabled,
             review_replies: row.review_replies,
-            profile_updates: row.profile_updates,
             post_publishing: row.post_publishing,
+            profile_skills: row.profile_skills,
             auto_reply_min_rating: row.auto_reply_min_rating,
             auto_reply_max_rating: row.auto_reply_max_rating,
             escalate_below_rating: row.escalate_below_rating,
@@ -221,10 +233,10 @@ export function OrgAgentTable({
           </button>
           <div className="h-4 border-l border-warm-border" />
           <span className="text-[10px] text-warm-gray">Set trust:</span>
-          {(['review_replies', 'profile_updates', 'post_publishing'] as const).map((field) => (
+          {(['review_replies', 'post_publishing'] as const).map((field) => (
             <div key={field} className="flex items-center gap-1">
               <span className="text-[10px] text-warm-gray capitalize">
-                {field === 'review_replies' ? 'Reviews' : field === 'profile_updates' ? 'Profile' : 'Posts'}
+                {field === 'review_replies' ? 'Reviews' : 'Posts'}
               </span>
               <select
                 onChange={(e) => {
@@ -241,6 +253,27 @@ export function OrgAgentTable({
               </select>
             </div>
           ))}
+          <div className="flex items-center gap-1">
+            <span className="text-[10px] text-warm-gray">Profile</span>
+            <select
+              onChange={(e) => {
+                if (!e.target.value) return
+                const level = e.target.value as TrustLevel
+                const allSkills = Object.fromEntries(
+                  Object.keys(DEFAULT_PROFILE_SKILLS).map((k) => [k, level])
+                )
+                handleBulkPatch({ profile_skills: allSkills })
+                e.target.value = ''
+              }}
+              className="text-[10px] border border-warm-border rounded px-1 py-0.5 bg-white text-ink"
+              defaultValue=""
+            >
+              <option value="" disabled>--</option>
+              <option value="auto">All Auto</option>
+              <option value="queue">All Queue</option>
+              <option value="off">All Off</option>
+            </select>
+          </div>
           <button
             onClick={() => setSelected(new Set())}
             className="ml-auto text-xs text-warm-gray hover:text-ink transition-colors"
@@ -315,13 +348,18 @@ export function OrgAgentTable({
                     />
                   </div>
                 </td>
-                <td className="px-3 py-3">
-                  <div className="flex justify-center">
-                    <TrustPill
-                      value={row.profile_updates}
-                      onChange={(v) => updateRow(row.location_id, 'profile_updates', v)}
-                    />
-                  </div>
+                <td className="px-3 py-3 text-center">
+                  {(() => {
+                    const skills = row.profile_skills ?? DEFAULT_PROFILE_SKILLS
+                    const vals = Object.values(skills)
+                    const autoCount = vals.filter((v) => v === 'auto').length
+                    const queueCount = vals.filter((v) => v === 'queue').length
+                    const offCount = vals.filter((v) => v === 'off').length
+                    if (offCount === vals.length) return <span className="text-[10px] text-warm-gray">Off</span>
+                    if (autoCount === vals.length) return <span className="text-[10px] text-emerald-600">All Auto</span>
+                    if (queueCount === vals.length) return <span className="text-[10px] text-amber-600">All Queue</span>
+                    return <span className="text-[10px] text-ink">{autoCount}A / {queueCount}Q / {offCount}O</span>
+                  })()}
                 </td>
                 <td className="px-3 py-3">
                   <div className="flex justify-center">

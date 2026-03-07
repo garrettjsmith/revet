@@ -2,16 +2,26 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { checkAgencyAdmin } from '@/lib/locations'
 
+const DEFAULT_PROFILE_SKILLS = {
+  description: 'queue',
+  categories: 'queue',
+  attributes: 'queue',
+  hours: 'queue',
+  media: 'queue',
+  services: 'queue',
+  website: 'queue',
+}
+
 const DEFAULTS = {
   enabled: false,
   review_replies: 'queue',
-  profile_updates: 'queue',
   post_publishing: 'queue',
   auto_reply_min_rating: 4,
   auto_reply_max_rating: 5,
   escalate_below_rating: 3,
   tone: 'professional and friendly',
   business_context: null,
+  profile_skills: DEFAULT_PROFILE_SKILLS,
 }
 
 /**
@@ -57,8 +67,8 @@ export async function PUT(
     location_id: locationId,
     enabled: updates.enabled ?? DEFAULTS.enabled,
     review_replies: updates.review_replies ?? DEFAULTS.review_replies,
-    profile_updates: updates.profile_updates ?? DEFAULTS.profile_updates,
     post_publishing: updates.post_publishing ?? DEFAULTS.post_publishing,
+    profile_skills: updates.profile_skills ?? DEFAULTS.profile_skills,
     auto_reply_min_rating: updates.auto_reply_min_rating ?? DEFAULTS.auto_reply_min_rating,
     auto_reply_max_rating: updates.auto_reply_max_rating ?? DEFAULTS.auto_reply_max_rating,
     escalate_below_rating: updates.escalate_below_rating ?? DEFAULTS.escalate_below_rating,
