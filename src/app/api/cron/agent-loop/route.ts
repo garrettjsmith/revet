@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
-import { runAgentForLocation, type AgentConfig } from '@/lib/agent'
+import { runAgentForLocation, type AgentConfig, DEFAULT_PROFILE_SKILLS } from '@/lib/agent'
 import { tiersWithFeature } from '@/lib/tiers'
 
 export const maxDuration = 300
@@ -63,6 +63,7 @@ export async function POST(request: NextRequest) {
       escalate_below_rating: c.escalate_below_rating ?? 3,
       tone: c.tone || 'professional and friendly',
       business_context: c.business_context,
+      profile_skills: c.profile_skills ?? DEFAULT_PROFILE_SKILLS,
     })),
     // Unconfigured eligible locations get default config (queue everything)
     ...(unconfiguredLocations || [])
@@ -78,6 +79,7 @@ export async function POST(request: NextRequest) {
         escalate_below_rating: 3,
         tone: 'professional and friendly',
         business_context: null,
+        profile_skills: DEFAULT_PROFILE_SKILLS,
       })),
   ]
 
