@@ -35,9 +35,17 @@ export async function GET(request: NextRequest) {
   }
 
   const supabase = createAdminClient()
+  const now = new Date().toISOString()
+
+  // Recover entries stuck in 'sending' for >15 minutes (crashed/timed-out runs)
+  const staleThreshold = new Date(Date.now() - 15 * 60 * 1000).toISOString()
+  await supabase
+    .from('gbp_post_queue')
+    .update({ status: 'pending' })
+    .eq('status', 'sending')
+    .lt('updated_at', staleThreshold)
 
   // Atomically claim pending entries by setting status to 'sending'
-  const now = new Date().toISOString()
   const { data: entries } = await supabase
     .from('gbp_post_queue')
     .update({ status: 'sending' })

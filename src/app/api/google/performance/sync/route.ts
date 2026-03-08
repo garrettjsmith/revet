@@ -18,18 +18,25 @@ export const maxDuration = 120
  * Defaults to last 7 days if not specified.
  */
 export async function POST(request: NextRequest) {
+  console.log('[performance/sync] Starting performance sync')
+
   const authError = verifyCronSecret(request)
-  if (authError) return authError
+  if (authError) {
+    console.error('[performance/sync] Cron auth failed')
+    return authError
+  }
 
   try {
     await getValidAccessToken()
   } catch (err) {
     if (err instanceof GoogleAuthError) {
+      console.error('[performance/sync] Google auth requires reconnection:', err.message)
       return NextResponse.json(
         { error: 'Google integration requires reconnection' },
         { status: 401 }
       )
     }
+    console.error('[performance/sync] Google auth error:', err instanceof Error ? err.message : err)
     return NextResponse.json({ error: 'Google auth error' }, { status: 500 })
   }
 
@@ -46,11 +53,18 @@ export async function POST(request: NextRequest) {
 
   // Get ALL GBP location mappings linked to a location, then pick the 10
   // least-recently-synced so every location rotates through over multiple runs.
-  const { data: allMappings } = await supabase
+  const { data: allMappings, error: mappingError } = await supabase
     .from('agency_integration_mappings')
     .select('id, external_resource_id, location_id, external_resource_name, metadata')
     .eq('resource_type', 'gbp_location')
     .not('location_id', 'is', null)
+
+  if (mappingError) {
+    console.error('[performance/sync] Failed to query mappings:', mappingError.message)
+    return NextResponse.json({ error: 'Failed to query mappings' }, { status: 500 })
+  }
+
+  console.log(`[performance/sync] Found ${allMappings?.length ?? 0} total GBP mappings`)
 
   // Sort by last_performance_sync_at (nulls first = never synced), take first 10
   const mappings = (allMappings || [])
@@ -62,6 +76,7 @@ export async function POST(request: NextRequest) {
     .slice(0, 10)
 
   if (!mappings || mappings.length === 0) {
+    console.warn('[performance/sync] No GBP locations mapped — nothing to sync')
     return NextResponse.json({ ok: true, message: 'No GBP locations mapped', synced: 0 })
   }
 
@@ -117,6 +132,10 @@ export async function POST(request: NextRequest) {
   }
 
   const totalSynced = results.reduce((sum, r) => sum + r.metrics_synced, 0)
+  const errors = results.filter((r) => r.error)
+  console.log(
+    `[performance/sync] Done: ${results.length} locations processed, ${totalSynced} metrics synced, ${errors.length} errors`
+  )
 
   return NextResponse.json({
     ok: true,
