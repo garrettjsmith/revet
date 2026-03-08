@@ -1,5 +1,5 @@
 import { getOrgBySlug } from '@/lib/org'
-import { getLocation } from '@/lib/locations'
+import { getLocation, requireAgencyAdmin } from '@/lib/locations'
 import { ProfileForm } from '@/components/profile-form'
 import { notFound } from 'next/navigation'
 
@@ -10,6 +10,7 @@ export default async function NewLocationReviewFunnelPage({
 }: {
   params: { orgSlug: string; locationId: string }
 }) {
+  await requireAgencyAdmin()
   const org = await getOrgBySlug(params.orgSlug)
   const location = await getLocation(params.locationId, org.id)
   if (!location) notFound()

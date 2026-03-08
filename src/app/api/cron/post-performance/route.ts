@@ -63,20 +63,30 @@ export async function GET(request: NextRequest) {
       .map(([t, c]) => `${t}:${c}`)
       .join(', ')
 
-    await supabase.from('agent_activity_log').insert({
-      location_id: locationId,
-      action_type: 'post_performance',
-      status: 'completed',
-      summary: `${totalPosts} posts in 60d (${postsPerWeek}/week). Mix: ${typeMix}. ${withSearchUrl}/${totalPosts} indexed.`,
-      details: {
-        total_posts: totalPosts,
-        posts_per_week: postsPerWeek,
-        type_distribution: typeCount,
-        indexed_count: withSearchUrl,
-        period: '60d',
-      },
-    })
-    insightsLogged++
+    const today = new Date().toISOString().split('T')[0]
+    const { count: existingCount } = await supabase
+      .from('agent_activity_log')
+      .select('id', { count: 'exact', head: true })
+      .eq('location_id', locationId)
+      .eq('action_type', 'post_performance')
+      .gte('created_at', today)
+
+    if ((existingCount || 0) === 0) {
+      await supabase.from('agent_activity_log').insert({
+        location_id: locationId,
+        action_type: 'post_performance',
+        status: 'completed',
+        summary: `${totalPosts} posts in 60d (${postsPerWeek}/week). Mix: ${typeMix}. ${withSearchUrl}/${totalPosts} indexed.`,
+        details: {
+          total_posts: totalPosts,
+          posts_per_week: postsPerWeek,
+          type_distribution: typeCount,
+          indexed_count: withSearchUrl,
+          period: '60d',
+        },
+      })
+      insightsLogged++
+    }
   }
 
   return NextResponse.json({

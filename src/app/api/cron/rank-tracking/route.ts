@@ -18,10 +18,13 @@ export async function GET(request: NextRequest) {
 
   const adminClient = createAdminClient()
 
-  // Get distinct location_ids that have LocalFalcon scan data
+  // Get distinct location_ids that have LocalFalcon scan data (scoped to last 90 days)
+  const ninetyDaysAgo = new Date(Date.now() - 90 * 24 * 60 * 60 * 1000).toISOString()
   const { data: locationRows } = await adminClient
     .from('local_falcon_scans')
     .select('location_id, keyword')
+    .gte('scanned_at', ninetyDaysAgo)
+    .limit(5000)
 
   if (!locationRows || locationRows.length === 0) {
     return NextResponse.json({ processed: 0, tracked: 0, alerts: 0 })
@@ -80,19 +83,28 @@ export async function GET(request: NextRequest) {
     // Alert if rank dropped significantly (3+ positions worse = higher ARP)
     const rankChange = latestRank - previousRank
     if (rankChange >= 3) {
-      alerts++
-      await adminClient.from('agent_activity_log').insert({
-        location_id: locationId,
-        action_type: 'competitor_tracking',
-        status: 'completed',
-        summary: `Local rank dropped: ${previousRank.toFixed(1)} -> ${latestRank.toFixed(1)} (+${rankChange.toFixed(1)} positions)`,
-        details: {
-          previous_rank: previousRank,
-          current_rank: latestRank,
-          change: rankChange,
-          keyword: latest.keyword || null,
-        },
-      })
+      const { count: existingCount } = await adminClient
+        .from('agent_activity_log')
+        .select('id', { count: 'exact', head: true })
+        .eq('location_id', locationId)
+        .eq('action_type', 'competitor_tracking')
+        .gte('created_at', today)
+
+      if ((existingCount || 0) === 0) {
+        alerts++
+        await adminClient.from('agent_activity_log').insert({
+          location_id: locationId,
+          action_type: 'competitor_tracking',
+          status: 'completed',
+          summary: `Local rank dropped: ${previousRank.toFixed(1)} -> ${latestRank.toFixed(1)} (+${rankChange.toFixed(1)} positions)`,
+          details: {
+            previous_rank: previousRank,
+            current_rank: latestRank,
+            change: rankChange,
+            keyword: latest.keyword || null,
+          },
+        })
+      }
     }
   }
 

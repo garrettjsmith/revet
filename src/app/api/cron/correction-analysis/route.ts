@@ -104,18 +104,28 @@ Be concise. Return 2-4 bullet points, nothing else.`,
       .single()
 
     if (loc) {
-      await adminClient.from('agent_activity_log').insert({
-        location_id: loc.id,
-        action_type: 'correction_pattern',
-        status: 'completed',
-        summary: `${insight.field}: ${insight.count} corrections analyzed. Patterns identified.`,
-        details: {
-          field: insight.field,
-          correction_count: insight.count,
-          patterns: insight.patterns,
-          period: '30d',
-        },
-      })
+      const today = new Date().toISOString().split('T')[0]
+      const { count: existingCount } = await adminClient
+        .from('agent_activity_log')
+        .select('id', { count: 'exact', head: true })
+        .eq('location_id', loc.id)
+        .eq('action_type', 'correction_pattern')
+        .gte('created_at', today)
+
+      if ((existingCount || 0) === 0) {
+        await adminClient.from('agent_activity_log').insert({
+          location_id: loc.id,
+          action_type: 'correction_pattern',
+          status: 'completed',
+          summary: `${insight.field}: ${insight.count} corrections analyzed. Patterns identified.`,
+          details: {
+            field: insight.field,
+            correction_count: insight.count,
+            patterns: insight.patterns,
+            period: '30d',
+          },
+        })
+      }
     }
   }
 

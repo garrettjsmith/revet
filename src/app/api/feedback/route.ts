@@ -2,6 +2,8 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { sendEmail, buildFeedbackEmail } from '@/lib/email'
 import { NextRequest, NextResponse } from 'next/server'
 
+export const maxDuration = 15
+
 const rateLimitMap = new Map<string, { count: number; resetAt: number }>()
 const RATE_LIMIT_WINDOW = 60_000 // 1 minute
 const RATE_LIMIT_MAX = 5 // max 5 submissions per minute per IP

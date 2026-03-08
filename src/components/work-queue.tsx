@@ -167,7 +167,7 @@ export function WorkQueue() {
     } finally {
       setLoading(false)
     }
-  }, [filter, scope]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [filter, scope, selectedId])
 
   const fetchMore = useCallback(async () => {
     if (!data?.has_more || loadingMore) return
@@ -209,7 +209,7 @@ export function WorkQueue() {
     fetch('/api/agency/members')
       .then((res) => res.ok ? res.json() : { members: [] })
       .then((data) => setTeamMembers(data.members || []))
-      .catch(() => {})
+      .catch((err) => console.error('[work-queue] Failed to fetch team members:', err))
   }, [])
 
   // Infinite scroll — load more when sentinel becomes visible

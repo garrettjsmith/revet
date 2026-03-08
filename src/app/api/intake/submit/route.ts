@@ -194,10 +194,11 @@ export async function POST(request: NextRequest) {
   try {
     fetch(`${appUrl}/api/locations/${location_id}/recommendations/generate`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-    }).catch(() => {
-      // Non-blocking — pipeline will run on next cron if this fails
-    })
+      headers: {
+        'Content-Type': 'application/json',
+        ...(process.env.CRON_SECRET ? { Authorization: `Bearer ${process.env.CRON_SECRET}` } : {}),
+      },
+    }).catch((err) => console.error('[intake/submit] Pipeline trigger failed:', err))
   } catch {
     // Non-blocking
   }

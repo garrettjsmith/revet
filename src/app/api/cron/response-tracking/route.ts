@@ -29,6 +29,7 @@ export async function GET(request: NextRequest) {
   }> = []
 
   const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString()
+  const today = new Date().toISOString().split('T')[0]
 
   for (const loc of locations) {
     // Get reviews from last 30 days with reply data
@@ -73,27 +74,34 @@ export async function GET(request: NextRequest) {
     const isLowRate = responseRate < 0.8 && reviews.length >= 3
 
     if (isSlowResponse || isLowRate) {
-      const issues: string[] = []
-      if (isSlowResponse) issues.push(`avg response time: ${Math.round(avgResponseHours!)}h`)
-      if (isLowRate) issues.push(`response rate: ${Math.round(responseRate * 100)}%`)
+      const { count: existingCount } = await adminClient
+        .from('agent_activity_log')
+        .select('id', { count: 'exact', head: true })
+        .eq('location_id', loc.id)
+        .eq('action_type', 'response_time_alert')
+        .gte('created_at', today)
 
-      await adminClient.from('agent_activity_log').insert({
-        location_id: loc.id,
-        action_type: 'response_time_alert',
-        status: 'completed',
-        summary: `Review response needs attention: ${issues.join(', ')}`,
-        details: {
-          total_reviews_30d: reviews.length,
-          replied_count: replied.length,
-          response_rate: responseRate,
-          avg_response_hours: avgResponseHours,
-        },
-      })
+      if ((existingCount || 0) === 0) {
+        const issues: string[] = []
+        if (isSlowResponse) issues.push(`avg response time: ${Math.round(avgResponseHours!)}h`)
+        if (isLowRate) issues.push(`response rate: ${Math.round(responseRate * 100)}%`)
+
+        await adminClient.from('agent_activity_log').insert({
+          location_id: loc.id,
+          action_type: 'response_time_alert',
+          status: 'completed',
+          summary: `Review response needs attention: ${issues.join(', ')}`,
+          details: {
+            total_reviews_30d: reviews.length,
+            replied_count: replied.length,
+            response_rate: responseRate,
+            avg_response_hours: avgResponseHours,
+          },
+        })
+      }
     }
 
     // Store metrics as performance data
-    const today = new Date().toISOString().split('T')[0]
-
     await adminClient
       .from('gbp_performance_metrics')
       .upsert(

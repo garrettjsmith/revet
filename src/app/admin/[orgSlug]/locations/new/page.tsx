@@ -1,9 +1,11 @@
 import { getOrgBySlug } from '@/lib/org'
+import { requireAgencyAdmin } from '@/lib/locations'
 import { LocationForm } from '@/components/location-form'
 
 export const dynamic = 'force-dynamic'
 
 export default async function NewLocationPage({ params }: { params: { orgSlug: string } }) {
+  await requireAgencyAdmin()
   const org = await getOrgBySlug(params.orgSlug)
 
   return (

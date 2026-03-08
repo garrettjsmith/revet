@@ -227,9 +227,8 @@ export async function searchBusinessCategory(
   const prefix = res.items.find((c) => c.name.toLowerCase().startsWith(lower))
   if (prefix) return String(prefix.id)
 
-  // Fall back to first category (the endpoint doesn't support query filtering,
-  // it returns all categories for a country)
-  return String(res.items[0].id)
+  // No exact or prefix match found
+  return null
 }
 
 // ─── Management API: Locations ──────────────────────────────

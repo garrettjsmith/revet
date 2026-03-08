@@ -75,7 +75,7 @@ POST: The post body text${recentContext}`
 
   // Parse HEADLINE: / POST: format
   const headlineMatch = text.match(/HEADLINE:\s*(.+)/i)
-  const postMatch = text.match(/POST:\s*(.+)/i)
+  const postMatch = text.match(/POST:\s*([\s\S]+)/i)
 
   if (headlineMatch && postMatch) {
     return {

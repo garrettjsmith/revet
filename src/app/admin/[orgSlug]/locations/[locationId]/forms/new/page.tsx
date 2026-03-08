@@ -1,6 +1,6 @@
 import { createServerSupabase } from '@/lib/supabase/server'
 import { getOrgBySlug } from '@/lib/org'
-import { getLocation } from '@/lib/locations'
+import { getLocation, requireAgencyAdmin } from '@/lib/locations'
 import { FormBuilder } from '@/components/form-builder'
 import { notFound } from 'next/navigation'
 
@@ -11,6 +11,7 @@ export default async function NewFormPage({
 }: {
   params: { orgSlug: string; locationId: string }
 }) {
+  await requireAgencyAdmin()
   const org = await getOrgBySlug(params.orgSlug)
   const location = await getLocation(params.locationId, org.id)
   if (!location) notFound()

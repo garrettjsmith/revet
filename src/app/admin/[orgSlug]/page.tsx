@@ -124,7 +124,7 @@ export default async function OrgDashboard({ params }: { params: { orgSlug: stri
       <ActionItems apiPath={`/api/admin/action-items?orgId=${org.id}`} />
 
       {/* Stats */}
-      <div className="grid grid-cols-4 gap-4 mb-8">
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
         {statCards.map((s) => (
           <div key={s.label} className="bg-ink rounded-xl p-5">
             <div className="text-[11px] text-warm-gray uppercase tracking-wider mb-1">{s.label}</div>

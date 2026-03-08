@@ -73,14 +73,16 @@ export function NotificationSettings({ orgId }: { orgId: string }) {
 
       setLocations(locs || [])
 
-      // Load org members for the member picker
-      const { data: orgMembers } = await supabase
-        .from('org_members')
-        .select('user_id')
-        .eq('org_id', orgId)
-
-      if (orgMembers) {
-        setMembers(orgMembers.map(m => ({ user_id: m.user_id, email: m.user_id })))
+      // Load org members with emails for the member picker
+      const teamRes = await fetch(`/api/team?org_id=${orgId}`)
+      if (teamRes.ok) {
+        const teamData = await teamRes.json()
+        if (teamData.members) {
+          setMembers(teamData.members.map((m: { user_id: string; email: string }) => ({
+            user_id: m.user_id,
+            email: m.email,
+          })))
+        }
       }
 
       await loadSubscriptions()

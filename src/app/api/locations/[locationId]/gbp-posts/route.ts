@@ -5,6 +5,8 @@ import { checkAgencyAdmin } from '@/lib/locations'
 import { deletePost } from '@/lib/google/profiles'
 import { getValidAccessToken, GoogleAuthError } from '@/lib/google/auth'
 
+export const maxDuration = 30
+
 /**
  * GET /api/locations/[locationId]/gbp-posts
  *

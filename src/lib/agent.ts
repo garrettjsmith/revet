@@ -113,11 +113,12 @@ export async function runAgentForLocation(
       const { count: reviewCount } = await adminClient
         .from('reviews')
         .select('id', { count: 'exact', head: true })
-        .eq('source_id', locationId)
+        .eq('location_id', locationId)
 
-      const { data: repliedReviews } = await adminClient
+      const { count: repliedReviewCount } = await adminClient
         .from('reviews')
-        .select('id', { head: true })
+        .select('id', { count: 'exact', head: true })
+        .eq('location_id', locationId)
         .not('reply_body', 'is', null)
 
       const { count: postCount } = await adminClient
@@ -128,7 +129,7 @@ export async function runAgentForLocation(
       const { data: ratingRows } = await adminClient
         .from('reviews')
         .select('rating')
-        .eq('source_id', locationId)
+        .eq('location_id', locationId)
 
       const avgRating = ratingRows && ratingRows.length > 0
         ? ratingRows.reduce((sum: number, r: any) => sum + (r.rating || 0), 0) / ratingRows.length
@@ -140,7 +141,7 @@ export async function runAgentForLocation(
         reviewCount: reviewCount || 0,
         avgRating,
         responseRate: reviewCount && reviewCount > 0
-          ? (repliedReviews?.length || 0) / reviewCount
+          ? (repliedReviewCount || 0) / reviewCount
           : 0,
         postCount: postCount || 0,
       })

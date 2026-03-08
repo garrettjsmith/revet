@@ -3,13 +3,13 @@ import './globals.css'
 
 export const metadata: Metadata = {
   title: 'Revet',
-  description: 'Review management tools',
+  description: 'Search everywhere optimization platform',
 }
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en">
-      <body className="antialiased bg-cream text-ink">{children}</body>
+      <body className="antialiased">{children}</body>
     </html>
   )
 }

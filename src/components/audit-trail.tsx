@@ -87,7 +87,7 @@ export default function AuditTrail({ resourceType, resourceId, limit = 10 }: Aud
     }
 
     fetchLogs()
-  }, [resourceType, resourceId, limit, supabase])
+  }, [resourceType, resourceId, limit])
 
   if (loading) {
     return (

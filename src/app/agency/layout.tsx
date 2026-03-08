@@ -39,7 +39,7 @@ export default async function AgencyLayout({
 
   return (
     <ChatProvider>
-      <div className="flex min-h-screen">
+      <div className="flex min-h-screen bg-cream text-ink">
         <Sidebar
           currentOrg={currentOrg}
           memberships={allMemberships}

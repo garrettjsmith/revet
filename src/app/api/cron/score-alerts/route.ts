@@ -103,8 +103,18 @@ export async function GET(request: NextRequest) {
     emailsSent++
   }
 
-  // Log alerts to agent_activity_log
+  // Log alerts to agent_activity_log (deduplicate by location + action_type + date)
+  const today = new Date().toISOString().split('T')[0]
   for (const alert of alerts) {
+    const { count } = await adminClient
+      .from('agent_activity_log')
+      .select('id', { count: 'exact', head: true })
+      .eq('location_id', alert.locationId)
+      .eq('action_type', 'score_drop_alert')
+      .gte('created_at', today)
+
+    if ((count || 0) > 0) continue
+
     await adminClient.from('agent_activity_log').insert({
       location_id: alert.locationId,
       action_type: 'score_drop_alert',
