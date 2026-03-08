@@ -10,6 +10,7 @@ import {
   searchBusinessCategory,
 } from '@/lib/brightlocal'
 import { pullAuditResults } from '@/lib/citation-sync'
+import { verifyCronSecret } from '@/lib/cron-auth'
 
 export const maxDuration = 120
 
@@ -29,12 +30,8 @@ export const maxDuration = 120
  * Runs every 15 minutes via Vercel cron.
  */
 export async function GET(request: NextRequest) {
-  const authHeader = request.headers.get('authorization')
-  const apiKey = process.env.CRON_SECRET
-
-  if (apiKey && authHeader !== `Bearer ${apiKey}`) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-  }
+  const authError = verifyCronSecret(request)
+  if (authError) return authError
 
   if (!process.env.BRIGHTLOCAL_API_KEY) {
     return NextResponse.json({ error: 'BrightLocal not configured' }, { status: 200 })

@@ -20,6 +20,17 @@ export async function GET(
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
 
+  // Verify user has access to this location via RLS
+  const { data: locationAccess } = await supabase
+    .from('locations')
+    .select('id')
+    .eq('id', params.locationId)
+    .single()
+
+  if (!locationAccess) {
+    return NextResponse.json({ error: 'Access denied' }, { status: 403 })
+  }
+
   const adminClient = createAdminClient()
 
   const { data: posts } = await adminClient

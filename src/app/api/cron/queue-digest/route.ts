@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { sendEmail, buildQueueDigestEmail } from '@/lib/email'
+import { verifyCronSecret } from '@/lib/cron-auth'
 
 export const maxDuration = 60
 
@@ -110,12 +111,8 @@ async function countQueueItems(
  * Schedule: Daily at 13:00 UTC (8am ET / 5am PT)
  */
 export async function GET(request: NextRequest) {
-  const authHeader = request.headers.get('authorization')
-  const apiKey = process.env.CRON_SECRET
-
-  if (apiKey && authHeader !== `Bearer ${apiKey}`) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-  }
+  const authError = verifyCronSecret(request)
+  if (authError) return authError
 
   const supabase = createAdminClient()
 

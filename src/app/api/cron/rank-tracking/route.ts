@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
+import { verifyCronSecret } from '@/lib/cron-auth'
 
 export const maxDuration = 120
 
@@ -12,11 +13,8 @@ export const maxDuration = 120
  * agent_activity_log when rank drops by 3+ positions.
  */
 export async function GET(request: NextRequest) {
-  const apiKey = process.env.CRON_SECRET
-
-  if (apiKey && request.headers.get('authorization') !== `Bearer ${apiKey}`) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-  }
+  const authError = verifyCronSecret(request)
+  if (authError) return authError
 
   const adminClient = createAdminClient()
 

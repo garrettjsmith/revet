@@ -1,5 +1,17 @@
 import { Resend } from 'resend'
 
+function escapeHtml(str: string): string {
+  return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')
+}
+
+function safeHref(url: string): string {
+  try {
+    const parsed = new URL(url)
+    if (parsed.protocol === 'https:' || parsed.protocol === 'http:') return url
+  } catch {}
+  return '#'
+}
+
 let _resend: Resend | null = null
 function getResend() {
   if (!_resend) {
@@ -104,14 +116,14 @@ export function buildReviewAlertEmail({
         <h1 style="margin:0;color:#FAF8F5;font-size:16px;font-weight:600;">
           ${isNegative ? 'Negative Review Alert' : 'New Review'}
         </h1>
-        <p style="margin:4px 0 0;color:#9b9590;font-size:12px;">${locationName} · ${platform}</p>
+        <p style="margin:4px 0 0;color:#9b9590;font-size:12px;">${escapeHtml(locationName)} · ${escapeHtml(platform)}</p>
       </div>
       <div style="padding:20px 24px;">
         <div style="margin-bottom:12px;">
           ${stars}
         </div>
         <p style="margin:0 0 8px;color:#6b6560;font-size:13px;font-weight:500;">
-          ${reviewerName || 'Anonymous'}
+          ${escapeHtml(reviewerName || 'Anonymous')}
         </p>
         <p style="margin:0 0 16px;color:#1a1a1a;font-size:14px;line-height:1.6;">
           &ldquo;${escaped}&rdquo;
@@ -167,14 +179,14 @@ export function buildReviewResponseEmail({
     <div style="background:#ffffff;border:1px solid #e8e4dc;border-radius:12px;overflow:hidden;">
       <div style="background:#1a1a1a;padding:20px 24px;">
         <h1 style="margin:0;color:#FAF8F5;font-size:16px;font-weight:600;">Response Posted</h1>
-        <p style="margin:4px 0 0;color:#9b9590;font-size:12px;">${locationName} &middot; ${platform}</p>
+        <p style="margin:4px 0 0;color:#9b9590;font-size:12px;">${escapeHtml(locationName)} &middot; ${escapeHtml(platform)}</p>
       </div>
       <div style="padding:20px 24px;">
         <div style="margin-bottom:12px;">
           ${stars}
         </div>
         <p style="margin:0 0 8px;color:#6b6560;font-size:13px;font-weight:500;">
-          ${reviewerName || 'Anonymous'}
+          ${escapeHtml(reviewerName || 'Anonymous')}
         </p>
         <p style="margin:0 0 16px;color:#1a1a1a;font-size:14px;line-height:1.6;">
           &ldquo;${escapedReview}&rdquo;
@@ -228,7 +240,7 @@ export function buildFeedbackEmail({
 <head><meta charset="utf-8"></head>
 <body style="margin:0;padding:0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;color:#111827;">
   <div style="max-width:560px;margin:0 auto;padding:32px 16px;">
-    <p style="margin:0 0 4px;font-size:14px;font-weight:600;">${profileName}</p>
+    <p style="margin:0 0 4px;font-size:14px;font-weight:600;">${escapeHtml(profileName)}</p>
     ${stars ? `<p style="margin:0 0 16px;font-size:18px;line-height:1;">${stars}</p>` : ''}
     <p style="margin:0 0 24px;font-size:14px;line-height:1.6;color:#374151;">
       ${escapedFeedback}
@@ -261,7 +273,7 @@ export function buildFormSubmissionEmail({
       const escaped = value.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
       return `
         <tr>
-          <td style="padding:8px 12px;border-bottom:1px solid #e8e4dc;color:#6b6560;font-size:13px;white-space:nowrap;vertical-align:top;">${f.label}</td>
+          <td style="padding:8px 12px;border-bottom:1px solid #e8e4dc;color:#6b6560;font-size:13px;white-space:nowrap;vertical-align:top;">${escapeHtml(f.label)}</td>
           <td style="padding:8px 12px;border-bottom:1px solid #e8e4dc;color:#1a1a1a;font-size:13px;">${escaped}</td>
         </tr>`
     })
@@ -276,7 +288,7 @@ export function buildFormSubmissionEmail({
     <div style="background:#ffffff;border:1px solid #e8e4dc;border-radius:12px;overflow:hidden;">
       <div style="background:#1a1a1a;padding:20px 24px;">
         <h1 style="margin:0;color:#FAF8F5;font-size:16px;font-weight:600;">New Form Submission</h1>
-        <p style="margin:4px 0 0;color:#9b9590;font-size:12px;">${formName}</p>
+        <p style="margin:4px 0 0;color:#9b9590;font-size:12px;">${escapeHtml(formName)}</p>
       </div>
       <div style="padding:20px 24px;">
         <table style="width:100%;border-collapse:collapse;">
@@ -334,7 +346,7 @@ export function buildReviewDigestEmail({
         const locAvg = loc.avgRating ? loc.avgRating.toFixed(1) : '--'
         return `
           <tr>
-            <td style="padding:6px 0;color:#1a1a1a;font-size:14px;">${loc.name}</td>
+            <td style="padding:6px 0;color:#1a1a1a;font-size:14px;">${escapeHtml(loc.name)}</td>
             <td style="padding:6px 0;color:#6b6560;font-size:14px;text-align:right;">${loc.reviewCount} review${loc.reviewCount === 1 ? '' : 's'}</td>
             <td style="padding:6px 0;color:#6b6560;font-size:14px;text-align:right;padding-left:16px;">${locAvg} avg</td>
           </tr>`
@@ -353,7 +365,7 @@ export function buildReviewDigestEmail({
       <div style="padding:12px 0;border-bottom:1px solid #e8e4dc;">
         <div>${stars}</div>
         <p style="margin:4px 0;color:#1a1a1a;font-size:13px;line-height:1.5;">&ldquo;${snippet}&rdquo;</p>
-        <p style="margin:0;color:#9b9590;font-size:11px;">${r.reviewerName || 'Anonymous'} &middot; ${r.locationName} &middot; ${r.publishedAt}</p>
+        <p style="margin:0;color:#9b9590;font-size:11px;">${escapeHtml(r.reviewerName || 'Anonymous')} &middot; ${escapeHtml(r.locationName)} &middot; ${r.publishedAt}</p>
       </div>`
   }).join('')
 
@@ -366,7 +378,7 @@ export function buildReviewDigestEmail({
     <div style="background:#ffffff;border:1px solid #e8e4dc;border-radius:12px;overflow:hidden;">
       <div style="background:#1a1a1a;padding:20px 24px;">
         <h1 style="margin:0;color:#FAF8F5;font-size:16px;font-weight:600;">Daily Review Summary</h1>
-        <p style="margin:4px 0 0;color:#9b9590;font-size:12px;">${orgName} &middot; ${date}</p>
+        <p style="margin:4px 0 0;color:#9b9590;font-size:12px;">${escapeHtml(orgName)} &middot; ${date}</p>
       </div>
       <div style="padding:20px 24px;">
         <div style="text-align:center;padding:16px 0 20px;">
@@ -433,13 +445,13 @@ export function buildProfileUpdateEmail({
     <div style="background:#ffffff;border:1px solid #bfdbfe;border-radius:12px;overflow:hidden;">
       <div style="background:#1e40af;padding:20px 24px;">
         <h1 style="margin:0;color:#ffffff;font-size:16px;font-weight:600;">Profile Update Detected</h1>
-        <p style="margin:4px 0 0;color:#93c5fd;font-size:12px;">${locationName}</p>
+        <p style="margin:4px 0 0;color:#93c5fd;font-size:12px;">${escapeHtml(locationName)}</p>
       </div>
       <div style="padding:20px 24px;">
         <p style="margin:0 0 16px;color:#1a1a1a;font-size:14px;line-height:1.6;">
-          Google has suggested changes to the business profile for <strong>${locationName}</strong>. Review and accept or reject the changes to keep your listing accurate.
+          Google has suggested changes to the business profile for <strong>${escapeHtml(locationName)}</strong>. Review and accept or reject the changes to keep your listing accurate.
         </p>
-        <a href="${profileUrl}" style="display:inline-block;padding:10px 20px;background:#1a1a1a;color:#FAF8F5;text-decoration:none;border-radius:999px;font-size:13px;font-weight:500;">
+        <a href="${safeHref(profileUrl)}" style="display:inline-block;padding:10px 20px;background:#1a1a1a;color:#FAF8F5;text-decoration:none;border-radius:999px;font-size:13px;font-weight:500;">
           Review Changes
         </a>
       </div>
@@ -489,15 +501,15 @@ export function buildPostReviewEmail({
         <h1 style="margin:0;color:#FAF8F5;font-size:16px;font-weight:600;">
           ${count > 1 ? `${count} Posts` : 'Post'} Ready for Review
         </h1>
-        <p style="margin:4px 0 0;color:#9b9590;font-size:12px;">${locationName} &middot; ${orgName}</p>
+        <p style="margin:4px 0 0;color:#9b9590;font-size:12px;">${escapeHtml(locationName)} &middot; ${escapeHtml(orgName)}</p>
       </div>
       <div style="padding:20px 24px;">
-        ${mediaUrl ? `<img src="${mediaUrl}" alt="" style="width:100%;border-radius:8px;margin-bottom:16px;" />` : ''}
+        ${mediaUrl ? `<img src="${safeHref(mediaUrl)}" alt="" style="width:100%;border-radius:8px;margin-bottom:16px;" />` : ''}
         <p style="margin:0 0 12px;color:#1a1a1a;font-size:14px;line-height:1.6;">
           ${escapedSummary}${count > 1 ? `<br><span style="color:#9b9590;font-size:12px;">+ ${count - 1} more post${count > 2 ? 's' : ''}</span>` : ''}
         </p>
         ${scheduleText ? `<p style="margin:0 0 16px;color:#9b9590;font-size:12px;">Scheduled for ${scheduleText}</p>` : ''}
-        <a href="${reviewUrl}" style="display:inline-block;padding:10px 20px;background:#1a1a1a;color:#FAF8F5;text-decoration:none;border-radius:999px;font-size:13px;font-weight:500;">
+        <a href="${safeHref(reviewUrl)}" style="display:inline-block;padding:10px 20px;background:#1a1a1a;color:#FAF8F5;text-decoration:none;border-radius:999px;font-size:13px;font-weight:500;">
           Review Posts
         </a>
       </div>
@@ -538,7 +550,7 @@ export function buildProfileRecommendationEmail({
     <div style="background:#ffffff;border:1px solid #e8e4dc;border-radius:12px;overflow:hidden;">
       <div style="background:#1a1a1a;padding:20px 24px;">
         <h1 style="margin:0;color:#FAF8F5;font-size:16px;font-weight:600;">Profile Update for Review</h1>
-        <p style="margin:4px 0 0;color:#9b9590;font-size:12px;">${locationName} &middot; ${orgName}</p>
+        <p style="margin:4px 0 0;color:#9b9590;font-size:12px;">${escapeHtml(locationName)} &middot; ${escapeHtml(orgName)}</p>
       </div>
       <div style="padding:20px 24px;">
         <p style="margin:0 0 8px;color:#6b6560;font-size:12px;font-weight:600;text-transform:uppercase;letter-spacing:0.5px;">
@@ -547,7 +559,7 @@ export function buildProfileRecommendationEmail({
         <div style="background:#faf8f5;border:1px solid #e8e4dc;border-radius:8px;padding:16px;margin-bottom:20px;">
           <p style="margin:0;color:#1a1a1a;font-size:14px;line-height:1.6;">${escapedValue}</p>
         </div>
-        <a href="${reviewUrl}" style="display:inline-block;padding:10px 20px;background:#1a1a1a;color:#FAF8F5;text-decoration:none;border-radius:999px;font-size:13px;font-weight:500;">
+        <a href="${safeHref(reviewUrl)}" style="display:inline-block;padding:10px 20px;background:#1a1a1a;color:#FAF8F5;text-decoration:none;border-radius:999px;font-size:13px;font-weight:500;">
           Review &amp; Approve
         </a>
       </div>
@@ -588,7 +600,7 @@ export function buildQueueDigestEmail({
   queueUrl: string
 }) {
   const urgentCount = reviewCount + googleUpdateCount
-  const greeting = recipientName ? `Hi ${recipientName},` : 'Hi,'
+  const greeting = recipientName ? `Hi ${escapeHtml(recipientName)},` : 'Hi,'
 
   const rows = [
     reviewCount > 0 ? `<tr><td style="padding:6px 0;color:#1a1a1a;font-size:14px;">Negative reviews</td><td style="padding:6px 0;color:#dc2626;font-size:14px;text-align:right;font-weight:600;">${reviewCount}</td></tr>` : '',
@@ -620,7 +632,7 @@ export function buildQueueDigestEmail({
         <table style="width:100%;border-collapse:collapse;margin-bottom:20px;">
           ${rows}
         </table>
-        <a href="${queueUrl}" style="display:inline-block;padding:10px 20px;background:#1a1a1a;color:#FAF8F5;text-decoration:none;border-radius:999px;font-size:13px;font-weight:500;">
+        <a href="${safeHref(queueUrl)}" style="display:inline-block;padding:10px 20px;background:#1a1a1a;color:#FAF8F5;text-decoration:none;border-radius:999px;font-size:13px;font-weight:500;">
           Open Work Queue
         </a>
       </div>
@@ -647,7 +659,7 @@ export function buildScoreDropAlertEmail({
     .map(
       (a) =>
         `<tr>
-          <td style="padding: 8px 12px; border-bottom: 1px solid #eee;">${a.locationName}</td>
+          <td style="padding: 8px 12px; border-bottom: 1px solid #eee;">${escapeHtml(a.locationName)}</td>
           <td style="padding: 8px 12px; border-bottom: 1px solid #eee; text-align: center;">${a.previousScore}</td>
           <td style="padding: 8px 12px; border-bottom: 1px solid #eee; text-align: center; color: #dc2626; font-weight: 600;">${a.currentScore}</td>
           <td style="padding: 8px 12px; border-bottom: 1px solid #eee; text-align: center; color: #dc2626;">-${a.drop}</td>
@@ -657,7 +669,7 @@ export function buildScoreDropAlertEmail({
 
   return `
     <div style="font-family: sans-serif; max-width: 600px; margin: 0 auto; color: #1a1a1a;">
-      <p style="margin: 0 0 16px;">Profile scores dropped for <strong>${orgName}</strong>:</p>
+      <p style="margin: 0 0 16px;">Profile scores dropped for <strong>${escapeHtml(orgName)}</strong>:</p>
       <table style="width: 100%; border-collapse: collapse; font-size: 14px;">
         <thead>
           <tr style="background: #f9f9f9;">

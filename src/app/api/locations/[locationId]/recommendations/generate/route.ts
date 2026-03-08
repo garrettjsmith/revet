@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { checkAgencyAdmin } from '@/lib/locations'
+import { verifyCronSecret } from '@/lib/cron-auth'
 import { auditGBPProfile, type AuditResult } from '@/lib/ai/profile-audit'
 import {
   generateProfileDescription,
@@ -32,9 +33,8 @@ export async function POST(
   { params }: { params: { locationId: string } }
 ) {
   // Accept either agency admin session or CRON_SECRET for server-side triggers
-  const authHeader = request.headers.get('authorization')
-  const apiKey = process.env.CRON_SECRET
-  const isCronAuth = apiKey && authHeader === `Bearer ${apiKey}`
+  const cronAuth = verifyCronSecret(request)
+  const isCronAuth = cronAuth === null
 
   if (!isCronAuth) {
     const isAdmin = await checkAgencyAdmin()

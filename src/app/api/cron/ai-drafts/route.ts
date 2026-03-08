@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { generateReviewReply } from '@/lib/ai/generate-reply'
 import { tiersWithFeature } from '@/lib/tiers'
+import { verifyCronSecret } from '@/lib/cron-auth'
 
 export const maxDuration = 60
 
@@ -17,12 +18,8 @@ const MAX_REVIEWS_PER_RUN = 50
  * Runs every 30 minutes via Vercel cron.
  */
 export async function GET(request: NextRequest) {
-  const authHeader = request.headers.get('authorization')
-  const apiKey = process.env.CRON_SECRET
-
-  if (apiKey && authHeader !== `Bearer ${apiKey}`) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-  }
+  const authError = verifyCronSecret(request)
+  if (authError) return authError
 
   const supabase = createAdminClient()
 

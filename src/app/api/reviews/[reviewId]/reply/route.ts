@@ -2,11 +2,13 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createServerSupabase } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { replyToGoogleReview } from '@/lib/google/reviews'
+import { checkAgencyAdmin } from '@/lib/locations'
 
 /**
  * POST /api/reviews/[reviewId]/reply
  *
- * Posts a reply to a review. For Google reviews, this calls the GBP API directly.
+ * Posts a reply to a review. Agency admin only.
+ * For Google reviews, this calls the GBP API directly.
  * For other platforms, stores the reply for manual posting.
  */
 export async function POST(
@@ -18,6 +20,11 @@ export async function POST(
 
   if (!user) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  }
+
+  const isAdmin = await checkAgencyAdmin()
+  if (!isAdmin) {
+    return NextResponse.json({ error: 'Agency admin required' }, { status: 403 })
   }
 
   const body = await request.json()

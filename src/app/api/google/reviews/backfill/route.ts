@@ -4,6 +4,7 @@ import { createServerSupabase } from '@/lib/supabase/server'
 import { fetchGoogleReviews, normalizeGoogleReview } from '@/lib/google/reviews'
 import { getValidAccessToken, GoogleAuthError } from '@/lib/google/auth'
 import { processAutopilot } from '@/lib/autopilot'
+import { verifyCronSecret } from '@/lib/cron-auth'
 
 export const maxDuration = 300
 
@@ -21,18 +22,11 @@ export const maxDuration = 300
  * }
  */
 export async function POST(request: NextRequest) {
-  const authHeader = request.headers.get('authorization')
-  const apiKey = process.env.CRON_SECRET
+  const cronAuthError = verifyCronSecret(request)
 
-  // Allow API key auth OR authenticated agency admin
-  let authorized = false
-
-  if (apiKey && authHeader === `Bearer ${apiKey}`) {
-    authorized = true
-  }
-
-  if (!authorized) {
-    // Check for agency admin session
+  if (cronAuthError) {
+    // Cron auth failed — try session auth as fallback
+    let authorized = false
     try {
       const supabase = createServerSupabase()
       const { data: { user } } = await supabase.auth.getUser()
@@ -49,10 +43,10 @@ export async function POST(request: NextRequest) {
     } catch {
       // Auth check failed — fall through to unauthorized
     }
-  }
 
-  if (!authorized) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    if (!authorized) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    }
   }
 
   try {

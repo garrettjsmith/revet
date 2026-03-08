@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { fetchSearchKeywords } from '@/lib/google/performance'
 import { getValidAccessToken, GoogleAuthError } from '@/lib/google/auth'
+import { verifyCronSecret } from '@/lib/cron-auth'
 
 export const dynamic = 'force-dynamic'
 export const maxDuration = 120
@@ -18,6 +19,9 @@ export const maxDuration = 120
  * regular syncing is essential.
  */
 export async function GET(request: NextRequest) {
+  const authError = verifyCronSecret(request)
+  if (authError) return authError
+
   try {
     await getValidAccessToken()
   } catch (err) {

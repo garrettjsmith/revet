@@ -10,6 +10,11 @@ export const dynamic = 'force-dynamic'
  * Returns all organizations (for agency-level UI components).
  */
 export async function GET() {
+  const isAdmin = await checkAgencyAdmin()
+  if (!isAdmin) {
+    return NextResponse.json({ error: 'Agency admin required' }, { status: 403 })
+  }
+
   const supabase = createAdminClient()
 
   const { data: organizations } = await supabase

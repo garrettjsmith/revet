@@ -3,6 +3,7 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { generateGBPPost } from '@/lib/ai/generate-post'
 import { generateTopicPool } from '@/lib/ai/generate-topics'
 import { generatePostImage } from '@/lib/ideogram'
+import { verifyCronSecret } from '@/lib/cron-auth'
 
 export const maxDuration = 300
 
@@ -31,12 +32,8 @@ const BATCH_LIMIT = 2
  * Schedule: Hourly
  */
 export async function GET(request: NextRequest) {
-  const authHeader = request.headers.get('authorization')
-  const apiKey = process.env.CRON_SECRET
-
-  if (apiKey && authHeader !== `Bearer ${apiKey}`) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-  }
+  const authError = verifyCronSecret(request)
+  if (authError) return authError
 
   const supabase = createAdminClient()
 

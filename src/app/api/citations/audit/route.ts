@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { findBLLocation, createBLLocation, findExistingCTReport, createCTReport, runCTReport, searchBusinessCategory } from '@/lib/brightlocal'
 import { pullAuditResults } from '@/lib/citation-sync'
+import { verifyCronSecret } from '@/lib/cron-auth'
 
 export const maxDuration = 120
 
@@ -17,13 +18,10 @@ export const maxDuration = 120
  */
 export async function POST(request: NextRequest) {
   // Auth: CRON_SECRET or agency admin
-  const authHeader = request.headers.get('authorization')
-  const cronSecret = process.env.CRON_SECRET
+  const cronAuth = verifyCronSecret(request)
+  const isCron = cronAuth === null
 
-  let isCron = false
-  if (cronSecret && authHeader === `Bearer ${cronSecret}`) {
-    isCron = true
-  } else {
+  if (!isCron) {
     const { createServerSupabase } = await import('@/lib/supabase/server')
     const supabase = createServerSupabase()
     const { data: { user } } = await supabase.auth.getUser()

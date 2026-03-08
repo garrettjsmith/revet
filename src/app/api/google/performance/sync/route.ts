@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { fetchPerformanceMetrics } from '@/lib/google/performance'
 import { getValidAccessToken, GoogleAuthError } from '@/lib/google/auth'
+import { verifyCronSecret } from '@/lib/cron-auth'
 
 export const maxDuration = 120
 
@@ -17,12 +18,8 @@ export const maxDuration = 120
  * Defaults to last 7 days if not specified.
  */
 export async function POST(request: NextRequest) {
-  const authHeader = request.headers.get('authorization')
-  const apiKey = process.env.CRON_SECRET
-
-  if (apiKey && authHeader !== `Bearer ${apiKey}`) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-  }
+  const authError = verifyCronSecret(request)
+  if (authError) return authError
 
   try {
     await getValidAccessToken()

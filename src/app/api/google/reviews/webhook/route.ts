@@ -2,11 +2,13 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { fetchGoogleReviews, normalizeGoogleReview } from '@/lib/google/reviews'
 import { getValidAccessToken } from '@/lib/google/auth'
+import { verifyCronSecret } from '@/lib/cron-auth'
 
 /**
  * POST /api/google/reviews/webhook
  *
  * Receives Google Pub/Sub push notifications for new/updated reviews.
+ * Authenticated via CRON_SECRET bearer token (configure in Pub/Sub subscription).
  *
  * Pub/Sub message format:
  * {
@@ -21,6 +23,9 @@ import { getValidAccessToken } from '@/lib/google/auth'
  * Decoded data contains: { location_name, review_name, ... }
  */
 export async function POST(request: NextRequest) {
+  const authError = verifyCronSecret(request)
+  if (authError) return authError
+
   try {
     const body = await request.json()
 
