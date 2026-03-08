@@ -632,3 +632,47 @@ export function buildQueueDigestEmail({
 </body>
 </html>`
 }
+
+/**
+ * Build an HTML email for a score drop alert.
+ */
+export function buildScoreDropAlertEmail({
+  orgName,
+  alerts,
+}: {
+  orgName: string
+  alerts: Array<{ locationName: string; previousScore: number; currentScore: number; drop: number }>
+}): string {
+  const rows = alerts
+    .map(
+      (a) =>
+        `<tr>
+          <td style="padding: 8px 12px; border-bottom: 1px solid #eee;">${a.locationName}</td>
+          <td style="padding: 8px 12px; border-bottom: 1px solid #eee; text-align: center;">${a.previousScore}</td>
+          <td style="padding: 8px 12px; border-bottom: 1px solid #eee; text-align: center; color: #dc2626; font-weight: 600;">${a.currentScore}</td>
+          <td style="padding: 8px 12px; border-bottom: 1px solid #eee; text-align: center; color: #dc2626;">-${a.drop}</td>
+        </tr>`
+    )
+    .join('')
+
+  return `
+    <div style="font-family: sans-serif; max-width: 600px; margin: 0 auto; color: #1a1a1a;">
+      <p style="margin: 0 0 16px;">Profile scores dropped for <strong>${orgName}</strong>:</p>
+      <table style="width: 100%; border-collapse: collapse; font-size: 14px;">
+        <thead>
+          <tr style="background: #f9f9f9;">
+            <th style="padding: 8px 12px; text-align: left;">Location</th>
+            <th style="padding: 8px 12px; text-align: center;">Previous</th>
+            <th style="padding: 8px 12px; text-align: center;">Current</th>
+            <th style="padding: 8px 12px; text-align: center;">Change</th>
+          </tr>
+        </thead>
+        <tbody>${rows}</tbody>
+      </table>
+      <p style="margin: 24px 0 0; font-size: 13px; color: #666;">
+        Scores below 60 may indicate profile issues that need attention. Review these locations in your dashboard.
+      </p>
+      <p style="margin: 24px 0 0; font-size: 12px; color: #999;">Revet — revet.app</p>
+    </div>
+  `
+}

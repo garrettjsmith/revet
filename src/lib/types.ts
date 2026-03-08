@@ -433,7 +433,7 @@ export interface GBPPostQueue {
 
 // Post Topics
 
-export type PostTopicSource = 'ai' | 'manual'
+export type PostTopicSource = 'ai' | 'manual' | 'seasonal'
 
 export interface GBPPostTopic {
   id: string

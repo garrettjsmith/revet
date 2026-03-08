@@ -386,3 +386,68 @@ Total photos: ${totalPhotos}`
     })
     .filter((r): r is NonNullable<typeof r> => r !== null && r.description.length > 0)
 }
+
+/**
+ * Generate seasonal/holiday-aware post topics for a given month.
+ * Returns structured topics with type, suggested date, and rationale.
+ */
+export async function generateSeasonalTopics({
+  businessName,
+  category,
+  city,
+  state,
+  month,
+  year,
+}: {
+  businessName: string
+  category: string | null
+  city: string | null
+  state: string | null
+  month: number // 1-12
+  year: number
+}): Promise<Array<{ topic: string; type: 'STANDARD' | 'EVENT' | 'OFFER'; suggested_date: string; rationale: string }>> {
+  const monthNames = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December']
+  const monthName = monthNames[month - 1]
+
+  const systemPrompt = `You are a local business marketing expert creating seasonal Google Business Profile post topics.
+
+Rules:
+- Generate 3-5 post topics relevant to the business and the given month/location
+- Include major holidays, seasonal events, and industry-specific occasions
+- Each topic should work as a GBP post (update, event, or offer)
+- Return JSON array with objects: { "topic": "Post topic/title", "type": "STANDARD|EVENT|OFFER", "suggested_date": "YYYY-MM-DD", "rationale": "Why this topic" }
+- Only output the JSON array, nothing else
+- Dates should fall within the specified month
+- Be specific to the business type -- a dental office has different seasonal content than a restaurant`
+
+  const userMessage = `Business: ${businessName}
+Category: ${category || 'General business'}
+Location: ${[city, state].filter(Boolean).join(', ') || 'US'}
+Month: ${monthName} ${year}
+
+Generate seasonal post topics for this business for ${monthName} ${year}.`
+
+  const client = getClient()
+  const response = await client.messages.create({
+    model: 'claude-haiku-4-5-20251001',
+    max_tokens: 512,
+    system: systemPrompt,
+    messages: [{ role: 'user', content: userMessage }],
+  })
+
+  const block = response.content[0]
+  if (block.type !== 'text') return []
+
+  try {
+    const text = block.text.trim()
+    const jsonMatch = text.match(/\[[\s\S]*\]/)
+    if (!jsonMatch) return []
+    const parsed = JSON.parse(jsonMatch[0])
+    if (!Array.isArray(parsed)) return []
+    return parsed.filter(
+      (t: any) => t.topic && t.type && t.suggested_date && t.rationale
+    )
+  } catch {
+    return []
+  }
+}
