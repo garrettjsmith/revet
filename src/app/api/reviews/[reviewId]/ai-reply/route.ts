@@ -2,12 +2,14 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createServerSupabase } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { generateReviewReply } from '@/lib/ai/generate-reply'
+import { checkAgencyAdmin } from '@/lib/locations'
 
 /**
  * POST /api/reviews/[reviewId]/ai-reply
  *
- * Generates an AI draft reply for a review. Saves the draft on the review
- * record and returns it so the UI can pre-fill the reply textarea.
+ * Generates an AI draft reply for a review. Agency admin only.
+ * Saves the draft on the review record and returns it so the UI
+ * can pre-fill the reply textarea.
  */
 export async function POST(
   request: NextRequest,
@@ -22,6 +24,11 @@ export async function POST(
 
   if (!user) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  }
+
+  const isAdmin = await checkAgencyAdmin()
+  if (!isAdmin) {
+    return NextResponse.json({ error: 'Agency admin required' }, { status: 403 })
   }
 
   const adminClient = createAdminClient()

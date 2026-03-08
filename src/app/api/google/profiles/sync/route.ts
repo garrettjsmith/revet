@@ -3,6 +3,7 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { fetchGBPProfile, normalizeGBPProfile, fetchLocationAttributes } from '@/lib/google/profiles'
 import { getValidAccessToken, GoogleAuthError } from '@/lib/google/auth'
 import { sendEmail, buildProfileUpdateEmail } from '@/lib/email'
+import { verifyCronSecret } from '@/lib/cron-auth'
 
 export const maxDuration = 120
 
@@ -18,12 +19,10 @@ export const maxDuration = 120
  * }
  */
 export async function POST(request: NextRequest) {
-  const authHeader = request.headers.get('authorization')
-  const apiKey = process.env.CRON_SECRET
+  const cronAuthError = verifyCronSecret(request)
 
-  if (apiKey && authHeader === `Bearer ${apiKey}`) {
-    // API key auth
-  } else {
+  if (cronAuthError) {
+    // Cron auth failed — try session auth as fallback
     const { createServerSupabase } = await import('@/lib/supabase/server')
     const supabase = createServerSupabase()
     const { data: { user } } = await supabase.auth.getUser()

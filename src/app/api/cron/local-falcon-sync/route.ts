@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { listScanReports, getScanReport, formatScanForDb } from '@/lib/local-falcon'
+import { verifyCronSecret } from '@/lib/cron-auth'
 
 export const dynamic = 'force-dynamic'
 export const maxDuration = 120
@@ -15,6 +16,8 @@ export const maxDuration = 120
  * Runs daily — only imports scans not already stored (by report_key).
  */
 export async function GET(request: NextRequest) {
+  const authError = verifyCronSecret(request)
+  if (authError) return authError
   if (!process.env.LOCALFALCON_API_KEY) {
     return NextResponse.json({ ok: true, message: 'LOCALFALCON_API_KEY not configured', synced: 0 })
   }

@@ -3,6 +3,7 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { createPost } from '@/lib/google/profiles'
 import { getValidAccessToken, GoogleAuthError } from '@/lib/google/auth'
 import type { GBPLocalPost } from '@/lib/google/profiles'
+import { verifyCronSecret } from '@/lib/cron-auth'
 
 export const maxDuration = 60
 
@@ -18,12 +19,8 @@ const MAX_ATTEMPTS = 5
  * Runs every 5 minutes via Vercel cron.
  */
 export async function GET(request: NextRequest) {
-  const authHeader = request.headers.get('authorization')
-  const apiKey = process.env.CRON_SECRET
-
-  if (apiKey && authHeader !== `Bearer ${apiKey}`) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-  }
+  const authError = verifyCronSecret(request)
+  if (authError) return authError
 
   try {
     await getValidAccessToken()

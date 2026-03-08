@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createServerSupabase } from '@/lib/supabase/server'
 import { checkAgencyAdmin } from '@/lib/locations'
+import { verifyCronSecret } from '@/lib/cron-auth'
 import {
   advancePipeline,
   initializeAndBackfill,
@@ -49,9 +50,8 @@ export async function POST(
   { params }: { params: { locationId: string } }
 ) {
   // Accept agency admin session or CRON_SECRET
-  const authHeader = request.headers.get('authorization')
-  const apiKey = process.env.CRON_SECRET
-  const isCronAuth = apiKey && authHeader === `Bearer ${apiKey}`
+  const cronAuth = verifyCronSecret(request)
+  const isCronAuth = cronAuth === null
 
   if (!isCronAuth) {
     const isAdmin = await checkAgencyAdmin()

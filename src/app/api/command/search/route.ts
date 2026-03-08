@@ -33,7 +33,9 @@ export async function GET(req: NextRequest) {
 
   const isAgencyAdmin = adminCheck && adminCheck.length > 0
 
-  const searchPattern = `%${q}%`
+  // Sanitize search input: strip characters meaningful in PostgREST filter syntax
+  const sanitized = q.replace(/[,.()"\\]/g, '')
+  const searchPattern = `%${sanitized}%`
 
   if (isAgencyAdmin) {
     // Agency admin: search all orgs and locations

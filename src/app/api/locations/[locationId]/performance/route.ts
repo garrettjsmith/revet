@@ -4,6 +4,7 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { fetchPerformanceMetrics } from '@/lib/google/performance'
 import { getValidAccessToken, GoogleAuthError } from '@/lib/google/auth'
 import { completePhase, failPhase } from '@/lib/pipeline'
+import { verifyCronSecret } from '@/lib/cron-auth'
 
 /**
  * GET /api/locations/[locationId]/performance?period=30d
@@ -152,9 +153,8 @@ export async function POST(
   { params }: { params: { locationId: string } }
 ) {
   // Accept agency admin session or CRON_SECRET
-  const authHeader = request.headers.get('authorization')
-  const apiKey = process.env.CRON_SECRET
-  const isCronAuth = apiKey && authHeader === `Bearer ${apiKey}`
+  const cronAuth = verifyCronSecret(request)
+  const isCronAuth = cronAuth === null
 
   if (!isCronAuth) {
     const supabase = createServerSupabase()

@@ -1,4 +1,4 @@
-import { NextResponse } from 'next/server'
+import { NextRequest, NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { auditGBPProfile, type AuditResult } from '@/lib/ai/profile-audit'
 import {
@@ -16,6 +16,7 @@ import {
 import { getValidAccessToken } from '@/lib/google/auth'
 import type { GBPProfile } from '@/lib/types'
 import { randomUUID } from 'crypto'
+import { verifyCronSecret } from '@/lib/cron-auth'
 
 export const maxDuration = 300
 
@@ -27,7 +28,9 @@ export const maxDuration = 300
  * Runs on the 15th of each month at 10:00 UTC.
  * Only runs for standard/premium tier locations.
  */
-export async function GET() {
+export async function GET(request: NextRequest) {
+  const authError = verifyCronSecret(request)
+  if (authError) return authError
   const adminClient = createAdminClient()
 
   // Get all active locations with GBP profiles (standard/premium only)

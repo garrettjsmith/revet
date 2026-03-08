@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
+import { checkAgencyAdmin } from '@/lib/locations'
 
 export const dynamic = 'force-dynamic'
 
@@ -8,6 +9,11 @@ export const dynamic = 'force-dynamic'
  * Returns all locations across all organizations (for agency-level mapping UI).
  */
 export async function GET() {
+  const isAdmin = await checkAgencyAdmin()
+  if (!isAdmin) {
+    return NextResponse.json({ error: 'Agency admin required' }, { status: 403 })
+  }
+
   const supabase = createAdminClient()
 
   const { data: locations } = await supabase

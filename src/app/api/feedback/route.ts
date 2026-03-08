@@ -2,6 +2,21 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { sendEmail, buildFeedbackEmail } from '@/lib/email'
 import { NextRequest, NextResponse } from 'next/server'
 
+const rateLimitMap = new Map<string, { count: number; resetAt: number }>()
+const RATE_LIMIT_WINDOW = 60_000 // 1 minute
+const RATE_LIMIT_MAX = 5 // max 5 submissions per minute per IP
+
+function checkRateLimit(ip: string): boolean {
+  const now = Date.now()
+  const entry = rateLimitMap.get(ip)
+  if (!entry || now > entry.resetAt) {
+    rateLimitMap.set(ip, { count: 1, resetAt: now + RATE_LIMIT_WINDOW })
+    return true
+  }
+  entry.count++
+  return entry.count <= RATE_LIMIT_MAX
+}
+
 /**
  * POST /api/feedback
  *
@@ -9,6 +24,11 @@ import { NextRequest, NextResponse } from 'next/server'
  * stores it as a review event, and emails the location manager.
  */
 export async function POST(request: NextRequest) {
+  const ip = request.headers.get('x-forwarded-for')?.split(',')[0]?.trim() || 'unknown'
+  if (!checkRateLimit(ip)) {
+    return NextResponse.json({ error: 'Too many requests' }, { status: 429 })
+  }
+
   try {
     const body = await request.json()
     const { profile_id, session_id, rating, feedback } = body

@@ -73,8 +73,11 @@ export async function GET(request: NextRequest) {
   }
 
   if (q.trim()) {
-    // Search name OR city
-    query = query.or(`name.ilike.%${q.trim()}%,city.ilike.%${q.trim()}%`)
+    // Sanitize search input: strip characters meaningful in PostgREST filter syntax
+    const sanitized = q.trim().replace(/[,.()"\\]/g, '')
+    if (sanitized) {
+      query = query.or(`name.ilike.%${sanitized}%,city.ilike.%${sanitized}%`)
+    }
   }
 
   const { data, count } = await query

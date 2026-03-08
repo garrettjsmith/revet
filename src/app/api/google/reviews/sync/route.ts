@@ -3,6 +3,7 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { fetchGoogleReviews, normalizeGoogleReview } from '@/lib/google/reviews'
 import { fetchGBPProfile, normalizeGBPProfile } from '@/lib/google/profiles'
 import { getValidAccessToken, GoogleAuthError } from '@/lib/google/auth'
+import { verifyCronSecret } from '@/lib/cron-auth'
 
 export const maxDuration = 120
 
@@ -16,12 +17,8 @@ export const maxDuration = 120
  * Auth: CRON_SECRET bearer token (same as the generic sync endpoint).
  */
 export async function POST(request: NextRequest) {
-  const authHeader = request.headers.get('authorization')
-  const apiKey = process.env.CRON_SECRET
-
-  if (apiKey && authHeader !== `Bearer ${apiKey}`) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-  }
+  const authError = verifyCronSecret(request)
+  if (authError) return authError
 
   // Verify Google integration is connected
   try {
@@ -118,7 +115,7 @@ export async function POST(request: NextRequest) {
             method: 'POST',
             headers: {
               'Content-Type': 'application/json',
-              Authorization: apiKey ? `Bearer ${apiKey}` : '',
+              Authorization: process.env.CRON_SECRET ? `Bearer ${process.env.CRON_SECRET}` : '',
             },
             body: JSON.stringify({
               source_id: source.id,
