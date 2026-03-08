@@ -50,23 +50,40 @@ export async function POST(request: NextRequest) {
     .in('service_tier', eligibleTiers)
     .eq('active', true)
 
-  // Merge: configured + unconfigured with defaults
+  // Skip locations that haven't completed intake — the agent needs
+  // business context (services, keywords, brand voice) to produce
+  // useful recommendations.
+  const allLocationIds = [
+    ...configuredIds,
+    ...(unconfiguredLocations || []).map((l: any) => l.id),
+  ]
+  const { data: readyLocations } = await adminClient
+    .from('locations')
+    .select('id')
+    .in('id', allLocationIds)
+    .not('intake_completed_at', 'is', null)
+
+  const readyIds = new Set((readyLocations || []).map((l: any) => l.id))
+
+  // Merge: configured + unconfigured with defaults, filtered to intake-complete
   const allConfigs: AgentConfig[] = [
-    ...(configs || []).map((c: any) => ({
-      location_id: c.location_id,
-      enabled: c.enabled,
-      review_replies: c.review_replies || 'queue',
-      post_publishing: c.post_publishing || 'queue',
-      auto_reply_min_rating: c.auto_reply_min_rating ?? 4,
-      auto_reply_max_rating: c.auto_reply_max_rating ?? 5,
-      escalate_below_rating: c.escalate_below_rating ?? 3,
-      tone: c.tone || 'professional and friendly',
-      business_context: c.business_context,
-      profile_skills: c.profile_skills ?? DEFAULT_PROFILE_SKILLS,
-    })),
+    ...(configs || [])
+      .filter((c: any) => readyIds.has(c.location_id))
+      .map((c: any) => ({
+        location_id: c.location_id,
+        enabled: c.enabled,
+        review_replies: c.review_replies || 'queue',
+        post_publishing: c.post_publishing || 'queue',
+        auto_reply_min_rating: c.auto_reply_min_rating ?? 4,
+        auto_reply_max_rating: c.auto_reply_max_rating ?? 5,
+        escalate_below_rating: c.escalate_below_rating ?? 3,
+        tone: c.tone || 'professional and friendly',
+        business_context: c.business_context,
+        profile_skills: c.profile_skills ?? DEFAULT_PROFILE_SKILLS,
+      })),
     // Unconfigured eligible locations get default config (queue everything)
     ...(unconfiguredLocations || [])
-      .filter((l: any) => !configuredIds.includes(l.id))
+      .filter((l: any) => !configuredIds.includes(l.id) && readyIds.has(l.id))
       .map((l: any) => ({
         location_id: l.id,
         enabled: true,

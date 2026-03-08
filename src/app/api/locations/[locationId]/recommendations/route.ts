@@ -306,8 +306,8 @@ async function applyRecommendation(
   rec: { id: string; field: string; proposed_value: unknown },
   editedValue: unknown | null
 ): Promise<{ error?: string }> {
-  // Hours recommendations are informational only (can't auto-apply)
-  if (rec.field === 'hours') {
+  // Media recommendations are informational (shot list — requires human to take photos)
+  if (rec.field === 'media') {
     await adminClient
       .from('profile_recommendations')
       .update({ status: 'applied', applied_at: new Date().toISOString() })
@@ -326,7 +326,7 @@ async function applyRecommendation(
 
   const { data: profile } = await adminClient
     .from('gbp_profiles')
-    .select('gbp_location_name')
+    .select('gbp_location_name, primary_category_name, service_items')
     .eq('location_id', locationId)
     .single()
 
@@ -339,12 +339,12 @@ async function applyRecommendation(
   try {
     const fields: Partial<GBPProfileRaw> = {}
     const updateMaskParts: string[] = []
+    let needsProfileSync = true
 
     if (rec.field === 'description') {
       fields.profile = { description: value as string }
       updateMaskParts.push('profile.description')
     } else if (rec.field === 'categories') {
-      // value is an array of category display names — add as additional categories
       const catNames = value as string[]
       fields.categories = {
         additionalCategories: catNames.map((name) => ({
@@ -353,6 +353,48 @@ async function applyRecommendation(
         })),
       }
       updateMaskParts.push('categories')
+    } else if (rec.field === 'hours') {
+      const proposed = value as { periods?: Array<{ openDay: string; openTime: string; closeDay: string; closeTime: string }>; action_needed?: string; parse_failed?: boolean }
+      if (!proposed?.periods || proposed.periods.length === 0) {
+        // Hours need manual entry — just mark as applied (informational)
+        await adminClient
+          .from('profile_recommendations')
+          .update({ status: 'applied', applied_at: new Date().toISOString() })
+          .eq('id', rec.id)
+        return {}
+      }
+      fields.regularHours = { periods: proposed.periods }
+      updateMaskParts.push('regularHours')
+    } else if (rec.field === 'website') {
+      fields.websiteUri = value as string
+      updateMaskParts.push('websiteUri')
+    } else if (rec.field === 'services') {
+      const proposed = value as { services: Array<{ name: string; description: string }> }
+      const newServiceItems = [
+        ...((profile as any).service_items || []),
+        ...(proposed.services || []).map((s) => ({
+          freeFormServiceItem: {
+            category: (profile as any).primary_category_name || 'Service',
+            label: { displayName: s.name, description: s.description },
+          },
+        })),
+      ]
+      fields.serviceItems = newServiceItems as any
+      updateMaskParts.push('serviceItems')
+    } else if (rec.field === 'attributes') {
+      // Attributes use a separate API endpoint
+      const proposed = value as { attributes: Array<{ attributeId: string; value: boolean | string }>; display_names: string[] }
+      if (proposed?.attributes?.length > 0) {
+        const { updateLocationAttributes, fetchLocationAttributes } = await import('@/lib/google/profiles')
+        const attrPayload = proposed.attributes.map((r) => ({
+          name: `${profile.gbp_location_name}/attributes/${r.attributeId}`,
+          valueType: typeof r.value === 'boolean' ? 'BOOL' : 'ENUM',
+          values: [r.value],
+        }))
+        const attrMask = proposed.attributes.map((r) => r.attributeId).join(',')
+        await updateLocationAttributes(profile.gbp_location_name, attrPayload, attrMask)
+      }
+      needsProfileSync = false // Attributes don't come through profile fetch
     }
 
     if (updateMaskParts.length > 0) {
@@ -361,7 +403,9 @@ async function applyRecommendation(
         fields,
         updateMaskParts.join(',')
       )
+    }
 
+    if (needsProfileSync && updateMaskParts.length > 0) {
       // Re-fetch and update local DB
       const raw = await fetchGBPProfile(profile.gbp_location_name)
       const normalized = normalizeGBPProfile(raw)

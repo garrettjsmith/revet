@@ -1,7 +1,14 @@
 import { createAdminClient } from '@/lib/supabase/admin'
 import { getValidAccessToken } from '@/lib/google/auth'
 import { auditGBPProfile, type AuditResult } from '@/lib/ai/profile-audit'
-import { generateProfileDescription, suggestCategories } from '@/lib/ai/profile-optimize'
+import {
+  generateProfileDescription,
+  suggestCategories,
+  recommendAttributes,
+  parseHoursToGBP,
+  generateServiceDescriptions,
+  generatePhotoShotList,
+} from '@/lib/ai/profile-optimize'
 import {
   updateGBPProfile, fetchGBPProfile, normalizeGBPProfile, type GBPProfileRaw,
   searchCategories,
@@ -180,8 +187,8 @@ export async function runAgentForLocation(
     const sectionHandlers: Record<string, () => Promise<void>> = {
       description: () => handleDescription(adminClient, locationId, location, profile!, skills.description, actions),
       categories: () => handleCategories(adminClient, locationId, profile!, skills.categories, actions, intake),
-      attributes: () => handleAttributes(adminClient, locationId, profile!, skills.attributes, actions),
-      photos: () => handleMedia(adminClient, locationId, skills.media, actions, intake),
+      attributes: () => handleAttributes(adminClient, locationId, profile!, skills.attributes, actions, intake),
+      photos: () => handleMedia(adminClient, locationId, profile!, skills.media, actions, intake),
       hours: () => handleHours(adminClient, locationId, profile!, skills.hours, actions, intake),
       activity: () => Promise.resolve(), // Handled by post_publishing trust level below
     }
@@ -295,22 +302,32 @@ async function queueRecommendation(
 async function handleDescription(
   adminClient: AdminClient,
   locationId: string,
-  location: { name: string; city: string | null; state: string | null },
+  location: { name: string; city: string | null; state: string | null; org_id: string },
   profile: GBPProfile,
   trust: ProfileSkillTrust,
   actions: AgentAction[]
 ) {
   if (await hasExistingRec(adminClient, locationId, 'description')) return
 
-  const services = (profile.service_items || [])
+  // Pull services from both profile and intake for richer context
+  const { data: intakeRow } = await adminClient
+    .from('locations')
+    .select('intake_data')
+    .eq('id', locationId)
+    .single()
+  const intake = (intakeRow as any)?.intake_data || {}
+
+  const profileServices = (profile.service_items || [])
     .map((s: any) => s.structuredServiceItem?.description || s.freeFormServiceItem?.label?.displayName || '')
     .filter(Boolean)
+  const intakeServices = (intake.services || []).map((s: any) => s.name || s)
+  const services = Array.from(new Set([...profileServices, ...intakeServices]))
 
   // Fetch brand voice from org
   const { data: brandConfig } = await adminClient
     .from('brand_config')
     .select('voice_selections')
-    .eq('org_id', (await adminClient.from('locations').select('org_id').eq('id', locationId).single()).data?.org_id)
+    .eq('org_id', location.org_id)
     .single()
 
   const voiceNotes = brandConfig?.voice_selections
@@ -322,6 +339,31 @@ async function handleDescription(
       ].filter(Boolean).join('. ')
     : null
 
+  // Fetch corrections for learning context
+  const { data: corrections } = await adminClient
+    .from('ai_corrections')
+    .select('field, original_text, corrected_text')
+    .eq('org_id', location.org_id)
+    .eq('field', 'description')
+    .order('created_at', { ascending: false })
+    .limit(5)
+
+  const correctionsContext = (corrections || [])
+    .map((c) => `Changed "${c.original_text.slice(0, 80)}..." to "${c.corrected_text.slice(0, 80)}..."`)
+    .join('\n')
+
+  // Build enriched brand voice with intake context
+  let enrichedVoice = voiceNotes || ''
+  if (intake.highlights?.length) {
+    enrichedVoice += `\nBusiness highlights: ${intake.highlights.join(', ')}`
+  }
+  if (intake.keywords?.length) {
+    enrichedVoice += `\nTarget keywords: ${intake.keywords.join(', ')}`
+  }
+  if (intake.founding_year) {
+    enrichedVoice += `\nEstablished: ${intake.founding_year}${intake.founding_city ? ` in ${intake.founding_city}` : ''}`
+  }
+
   const newDescription = await generateProfileDescription({
     businessName: profile.business_name || location.name,
     category: profile.primary_category_name,
@@ -329,7 +371,8 @@ async function handleDescription(
     state: location.state,
     services,
     currentDescription: profile.description,
-    brandVoice: voiceNotes,
+    brandVoice: enrichedVoice || null,
+    correctionsContext: correctionsContext || undefined,
   })
 
   if (trust === 'auto') {
@@ -488,7 +531,8 @@ async function handleAttributes(
   locationId: string,
   profile: GBPProfile,
   trust: ProfileSkillTrust,
-  actions: AgentAction[]
+  actions: AgentAction[],
+  intake: Record<string, any>
 ) {
   if (await hasExistingRec(adminClient, locationId, 'attributes')) return
   if (!profile.primary_category_id) return
@@ -504,23 +548,77 @@ async function handleAttributes(
 
     const currentIds = new Set(current.map((a: any) => a.name?.split('/').pop() || ''))
 
-    // Find common attributes that aren't set yet
-    // Focus on BOOL type (yes/no attributes) as they're easiest to suggest
-    const missingBool = available.filter(
-      (a) => a.valueType === 'BOOL' && !currentIds.has(a.attributeId)
-    )
+    // Filter to only unset attributes
+    const unset = available.filter((a) => !currentIds.has(a.attributeId))
+    if (unset.length === 0) return
 
-    if (missingBool.length === 0) return
+    // Use AI to determine which attributes apply to this business
+    const intakeServices = (intake.services || []).map((s: any) => s.name || s)
+    const profileServices = (profile.service_items || [])
+      .map((s: any) => s.structuredServiceItem?.description || s.freeFormServiceItem?.label?.displayName || '')
+      .filter(Boolean)
 
-    // Queue as a recommendation — we can't guess attribute values
-    const attributeNames = missingBool.slice(0, 10).map((a) => a.displayName)
-    await queueRecommendation(
-      adminClient, locationId, 'attributes',
-      { set_count: current.length },
-      { missing: attributeNames, total_available: available.length },
-      `${missingBool.length} attributes available but not set: ${attributeNames.join(', ')}. Setting these helps search visibility.`,
-      actions
-    )
+    const recommendations = await recommendAttributes({
+      businessName: profile.business_name || '',
+      category: profile.primary_category_name,
+      services: [...intakeServices, ...profileServices],
+      highlights: intake.highlights || [],
+      availableAttributes: unset,
+    })
+
+    if (recommendations.length === 0) return
+
+    // Build attribute update payload
+    const attrPayload = recommendations.map((r) => ({
+      name: `${profile.gbp_location_name}/attributes/${r.attributeId}`,
+      valueType: typeof r.value === 'boolean' ? 'BOOL' : 'ENUM',
+      values: typeof r.value === 'boolean'
+        ? [r.value]
+        : [r.value],
+    }))
+
+    const attrNames = recommendations.map((r) => {
+      const meta = unset.find((a) => a.attributeId === r.attributeId)
+      return meta?.displayName || r.attributeId
+    })
+
+    if (trust === 'auto') {
+      try {
+        const attrMask = recommendations.map((r) => r.attributeId).join(',')
+        await updateLocationAttributes(profile.gbp_location_name, attrPayload, attrMask)
+
+        await adminClient.from('profile_recommendations').insert({
+          location_id: locationId,
+          field: 'attributes',
+          current_value: { set_count: current.length },
+          proposed_value: { attributes: recommendations, display_names: attrNames },
+          status: 'applied',
+          applied_at: new Date().toISOString(),
+          requires_client_approval: false,
+        })
+
+        actions.push({
+          type: 'attribute_update',
+          status: 'completed',
+          summary: `Set ${recommendations.length} attributes: ${attrNames.join(', ')}`,
+          details: { added: attrNames },
+        })
+      } catch (err) {
+        actions.push({
+          type: 'attribute_update',
+          status: 'failed',
+          summary: `Failed to set attributes: ${err instanceof Error ? err.message : 'Unknown error'}`,
+        })
+      }
+    } else {
+      await queueRecommendation(
+        adminClient, locationId, 'attributes',
+        { set_count: current.length },
+        { attributes: recommendations, display_names: attrNames },
+        `AI recommends setting ${recommendations.length} attributes: ${attrNames.join(', ')}. Each one was evaluated against the business services and type.`,
+        actions
+      )
+    }
   } catch (err) {
     actions.push({
       type: 'attribute_update',
@@ -535,6 +633,7 @@ async function handleAttributes(
 async function handleMedia(
   adminClient: AdminClient,
   locationId: string,
+  profile: GBPProfile,
   trust: ProfileSkillTrust,
   actions: AgentAction[],
   intake: Record<string, any>
@@ -547,23 +646,42 @@ async function handleMedia(
     .select('category')
     .eq('location_id', locationId)
 
-  const categories = new Set((media || []).map((m: any) => m.category))
-  const missing: string[] = []
+  const existingCategories = Array.from(new Set((media || []).map((m: any) => m.category).filter(Boolean)))
+  const totalPhotos = (media || []).length
 
-  if (!categories.has('COVER')) missing.push('cover photo')
-  if (!categories.has('LOGO')) missing.push('logo')
-  if ((media || []).length < 5) missing.push('additional photos (fewer than 5 total)')
+  // Don't bother if they have 10+ photos with cover and logo
+  const hasCover = existingCategories.includes('COVER')
+  const hasLogo = existingCategories.includes('LOGO')
+  if (totalPhotos >= 10 && hasCover && hasLogo) return
 
-  if (missing.length === 0) return
+  // Use AI to generate a specific shot list for this business
+  const intakeServices = (intake.services || []).map((s: any) => s.name || s)
+  const profileServices = (profile.service_items || [])
+    .map((s: any) => s.structuredServiceItem?.description || s.freeFormServiceItem?.label?.displayName || '')
+    .filter(Boolean)
 
-  // Check if intake has a cloud folder URL for sourcing media
+  const shotList = await generatePhotoShotList({
+    businessName: profile.business_name || '',
+    category: profile.primary_category_name,
+    services: [...intakeServices, ...profileServices],
+    existingCategories,
+    totalPhotos,
+  })
+
   const hasCloudFolder = !!intake.cloud_folder_url
 
   await queueRecommendation(
     adminClient, locationId, 'media',
-    { total_photos: (media || []).length, categories: Array.from(categories) },
-    { missing, cloud_folder_url: intake.cloud_folder_url || null },
-    `Missing: ${missing.join(', ')}.${hasCloudFolder ? ' Client provided media folder — check for usable assets.' : ' Request photos from client.'} Profiles with 10+ photos get 35% more clicks.`,
+    { total_photos: totalPhotos, categories: existingCategories },
+    {
+      shot_list: shotList,
+      cloud_folder_url: intake.cloud_folder_url || null,
+      missing_essentials: [
+        ...(!hasCover ? ['COVER photo'] : []),
+        ...(!hasLogo ? ['LOGO'] : []),
+      ],
+    },
+    `${shotList.length} photos recommended for this business.${!hasCover || !hasLogo ? ` Missing essentials: ${[!hasCover && 'cover photo', !hasLogo && 'logo'].filter(Boolean).join(', ')}.` : ''}${hasCloudFolder ? ' Client provided media folder — check for usable assets.' : ''} Profiles with 10+ photos get 35% more clicks.`,
     actions
   )
 }
@@ -581,24 +699,83 @@ async function handleHours(
   if (await hasExistingRec(adminClient, locationId, 'hours')) return
 
   const hasHours = profile.regular_hours?.periods && profile.regular_hours.periods.length > 0
+  if (hasHours) return
 
-  if (hasHours) return // Hours are set — audit scored it fine
-
-  // Hours are missing — can we fill them from intake?
-  if (intake.hours_of_operation) {
+  // No hours on GBP — try to parse from intake
+  if (!intake.hours_of_operation) {
     await queueRecommendation(
       adminClient, locationId, 'hours',
       null,
-      { from_intake: intake.hours_of_operation },
-      `No hours set on GBP. Client provided hours in intake: "${intake.hours_of_operation}". Add these to the profile.`,
+      { action_needed: 'Request hours from client. Missing hours significantly hurt local search ranking.' },
+      'No business hours set on GBP profile and no hours provided in intake. Request hours from client.',
       actions
     )
+    return
+  }
+
+  // Use AI to parse intake hours text into GBP format
+  const parsedPeriods = await parseHoursToGBP({
+    hoursText: intake.hours_of_operation,
+    businessName: profile.business_name || '',
+    category: profile.primary_category_name,
+  })
+
+  if (parsedPeriods.length === 0) {
+    await queueRecommendation(
+      adminClient, locationId, 'hours',
+      null,
+      { from_intake: intake.hours_of_operation, parse_failed: true },
+      `Could not auto-parse hours from intake: "${intake.hours_of_operation}". Needs manual entry.`,
+      actions
+    )
+    return
+  }
+
+  if (trust === 'auto') {
+    try {
+      await getValidAccessToken()
+      await updateGBPProfile(
+        profile.gbp_location_name,
+        { regularHours: { periods: parsedPeriods } } as any,
+        'regularHours'
+      )
+
+      const raw = await fetchGBPProfile(profile.gbp_location_name)
+      const normalized = normalizeGBPProfile(raw)
+      await adminClient
+        .from('gbp_profiles')
+        .update({ ...normalized, last_pushed_at: new Date().toISOString(), last_synced_at: new Date().toISOString() })
+        .eq('location_id', locationId)
+
+      await adminClient.from('profile_recommendations').insert({
+        location_id: locationId,
+        field: 'hours',
+        current_value: null,
+        proposed_value: { periods: parsedPeriods, from_intake: intake.hours_of_operation },
+        status: 'applied',
+        applied_at: new Date().toISOString(),
+        requires_client_approval: false,
+      })
+
+      actions.push({
+        type: 'hours_update',
+        status: 'completed',
+        summary: `Set business hours from intake (${parsedPeriods.length} periods)`,
+        details: { periods: parsedPeriods },
+      })
+    } catch (err) {
+      actions.push({
+        type: 'hours_update',
+        status: 'failed',
+        summary: `Failed to set hours: ${err instanceof Error ? err.message : 'Unknown error'}`,
+      })
+    }
   } else {
     await queueRecommendation(
       adminClient, locationId, 'hours',
       null,
-      null,
-      'No business hours set on GBP profile. Request hours from client — missing hours significantly hurt local search ranking.',
+      { periods: parsedPeriods, from_intake: intake.hours_of_operation },
+      `Parsed hours from intake: "${intake.hours_of_operation}" → ${parsedPeriods.length} periods. Ready to push to GBP.`,
       actions
     )
   }
@@ -633,15 +810,31 @@ async function handleServices(
 
   if (missing.length === 0) return
 
+  // Use AI to generate descriptions for services that don't have them
+  const enriched = await generateServiceDescriptions({
+    businessName: profile.business_name || '',
+    category: profile.primary_category_name,
+    services: missing,
+  })
+
+  // Merge AI descriptions with intake descriptions
+  const finalServices = missing.map((s) => {
+    const aiDesc = enriched.find((e) => e.name.toLowerCase() === s.name.toLowerCase())
+    return {
+      name: s.name,
+      description: s.description || aiDesc?.description || '',
+    }
+  })
+
   if (trust === 'auto') {
     try {
       await getValidAccessToken()
       const newServiceItems = [
         ...(profile.service_items || []),
-        ...missing.map((s) => ({
+        ...finalServices.map((s) => ({
           freeFormServiceItem: {
             category: profile.primary_category_name || 'Service',
-            label: { displayName: s.name, description: s.description || '' },
+            label: { displayName: s.name, description: s.description },
           },
         })),
       ]
@@ -662,8 +855,8 @@ async function handleServices(
       actions.push({
         type: 'service_update',
         status: 'completed',
-        summary: `Added ${missing.length} services from intake: ${missing.map((s) => s.name).join(', ')}`,
-        details: { added: missing.map((s) => s.name) },
+        summary: `Added ${finalServices.length} services with AI descriptions: ${finalServices.map((s) => s.name).join(', ')}`,
+        details: { added: finalServices },
       })
     } catch (err) {
       actions.push({
@@ -676,8 +869,8 @@ async function handleServices(
     await queueRecommendation(
       adminClient, locationId, 'services',
       existingServices,
-      [...existingServices, ...missing.map((s) => s.name)],
-      `${missing.length} services from intake not on profile: ${missing.map((s) => s.name).join(', ')}. Adding services improves keyword relevance.`,
+      { services: finalServices },
+      `${finalServices.length} services from intake not on profile: ${finalServices.map((s) => s.name).join(', ')}. AI-generated descriptions for each.`,
       actions
     )
   }
@@ -788,7 +981,7 @@ async function autoApplyPendingRecs(
 
   const { data: profile } = await adminClient
     .from('gbp_profiles')
-    .select('gbp_location_name')
+    .select('gbp_location_name, primary_category_name, service_items')
     .eq('location_id', locationId)
     .single()
 
@@ -799,12 +992,13 @@ async function autoApplyPendingRecs(
       const value = rec.proposed_value
       const fields: Partial<GBPProfileRaw> = {}
       const updateMaskParts: string[] = []
+      let needsProfileSync = true
 
       if (rec.field === 'description') {
         fields.profile = { description: value as string }
         updateMaskParts.push('profile.description')
-      } else if (rec.field === 'hours' || rec.field === 'media' || rec.field === 'attributes') {
-        // These require human interpretation — mark as applied (informational)
+      } else if (rec.field === 'media') {
+        // Media shot list is informational — mark as applied
         await adminClient
           .from('profile_recommendations')
           .update({ status: 'applied', applied_at: new Date().toISOString() })
@@ -812,12 +1006,63 @@ async function autoApplyPendingRecs(
         actions.push({
           type: 'recommendation_applied',
           status: 'completed',
-          summary: `Marked ${rec.field} recommendation as applied`,
+          summary: `Marked media shot list as applied`,
         })
         continue
+      } else if (rec.field === 'hours') {
+        const proposed = value as { periods?: any[]; action_needed?: string; parse_failed?: boolean }
+        if (!proposed?.periods || proposed.periods.length === 0) {
+          // Can't auto-apply hours without parsed periods
+          await adminClient
+            .from('profile_recommendations')
+            .update({ status: 'applied', applied_at: new Date().toISOString() })
+            .eq('id', rec.id)
+          actions.push({
+            type: 'recommendation_applied',
+            status: 'completed',
+            summary: `Marked hours recommendation as applied (needs manual entry)`,
+          })
+          continue
+        }
+        fields.regularHours = { periods: proposed.periods }
+        updateMaskParts.push('regularHours')
       } else if (rec.field === 'website') {
         fields.websiteUri = value as string
         updateMaskParts.push('websiteUri')
+      } else if (rec.field === 'services') {
+        const proposed = value as { services: Array<{ name: string; description: string }> }
+        const newServiceItems = [
+          ...((profile as any).service_items || []),
+          ...(proposed.services || []).map((s) => ({
+            freeFormServiceItem: {
+              category: (profile as any).primary_category_name || 'Service',
+              label: { displayName: s.name, description: s.description },
+            },
+          })),
+        ]
+        fields.serviceItems = newServiceItems as any
+        updateMaskParts.push('serviceItems')
+      } else if (rec.field === 'attributes') {
+        const proposed = value as { attributes: Array<{ attributeId: string; value: boolean | string }> }
+        if (proposed?.attributes?.length > 0) {
+          const attrPayload = proposed.attributes.map((r) => ({
+            name: `${(profile as any).gbp_location_name}/attributes/${r.attributeId}`,
+            valueType: typeof r.value === 'boolean' ? 'BOOL' : 'ENUM',
+            values: [r.value],
+          }))
+          const attrMask = proposed.attributes.map((r) => r.attributeId).join(',')
+          await updateLocationAttributes((profile as any).gbp_location_name, attrPayload, attrMask)
+        }
+        needsProfileSync = false
+      } else if (rec.field === 'categories') {
+        const catNames = value as string[]
+        fields.categories = {
+          additionalCategories: catNames.map((name: string) => ({
+            name: `categories/${name.toLowerCase().replace(/\s+/g, '_')}`,
+            displayName: name,
+          })),
+        } as any
+        updateMaskParts.push('categories')
       }
 
       if (updateMaskParts.length > 0) {
@@ -826,7 +1071,9 @@ async function autoApplyPendingRecs(
           fields,
           updateMaskParts.join(',')
         )
+      }
 
+      if (needsProfileSync && updateMaskParts.length > 0) {
         const raw = await fetchGBPProfile((profile as any).gbp_location_name)
         const normalized = normalizeGBPProfile(raw)
         await adminClient
