@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 
-export const dynamic = 'force-dynamic'
 export const maxDuration = 120
 
 /**
@@ -24,23 +23,33 @@ export async function GET(request: NextRequest) {
   // Get distinct location_ids that have LocalFalcon scan data
   const { data: locationRows } = await adminClient
     .from('local_falcon_scans')
-    .select('location_id')
+    .select('location_id, keyword')
 
   if (!locationRows || locationRows.length === 0) {
     return NextResponse.json({ processed: 0, tracked: 0, alerts: 0 })
   }
 
-  const locationIds = [...new Set(locationRows.map((r) => r.location_id))]
+  // Build unique location+keyword pairs
+  const pairKeys = new Set<string>()
+  const pairs: Array<{ locationId: string; keyword: string }> = []
+  for (const r of locationRows) {
+    const key = `${r.location_id}:${r.keyword}`
+    if (!pairKeys.has(key)) {
+      pairKeys.add(key)
+      pairs.push({ locationId: r.location_id, keyword: r.keyword })
+    }
+  }
 
   let alerts = 0
   let tracked = 0
 
-  for (const locationId of locationIds) {
-    // Get last 2 scans ordered by scan date
+  for (const { locationId, keyword } of pairs) {
+    // Get last 2 scans for this location+keyword
     const { data: scans } = await adminClient
       .from('local_falcon_scans')
       .select('arp, keyword, scanned_at')
       .eq('location_id', locationId)
+      .eq('keyword', keyword)
       .order('scanned_at', { ascending: false })
       .limit(2)
 
@@ -89,5 +98,5 @@ export async function GET(request: NextRequest) {
     }
   }
 
-  return NextResponse.json({ processed: locationIds.length, tracked, alerts })
+  return NextResponse.json({ processed: pairs.length, tracked, alerts })
 }

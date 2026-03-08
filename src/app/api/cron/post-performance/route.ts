@@ -45,7 +45,7 @@ export async function GET(request: NextRequest) {
 
   let insightsLogged = 0
 
-  for (const [locationId, locationPosts] of byLocation) {
+  for (const [locationId, locationPosts] of Array.from(byLocation)) {
     if (locationPosts.length < 3) continue // Need enough data for meaningful analysis
 
     // Analyze topic type distribution

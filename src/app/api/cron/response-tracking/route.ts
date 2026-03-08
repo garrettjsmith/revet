@@ -117,7 +117,7 @@ export async function GET(request: NextRequest) {
             location_id: loc.id,
             date: today,
             metric: 'avg_response_hours',
-            value: Math.round(avgResponseHours * 10) / 10,
+            value: Math.round(avgResponseHours),
           },
           { onConflict: 'location_id,date,metric' }
         )

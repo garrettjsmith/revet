@@ -26,6 +26,10 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
 
+  if (!process.env.ANTHROPIC_API_KEY) {
+    return NextResponse.json({ error: 'AI not configured' }, { status: 503 })
+  }
+
   const adminClient = createAdminClient()
 
   const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString()
@@ -50,7 +54,7 @@ export async function GET(request: NextRequest) {
 
   const insights: Array<{ field: string; count: number; patterns: string }> = []
 
-  for (const [field, fieldCorrections] of byField) {
+  for (const [field, fieldCorrections] of Array.from(byField)) {
     if (fieldCorrections.length < 2) continue
 
     // Take up to 10 examples for analysis
