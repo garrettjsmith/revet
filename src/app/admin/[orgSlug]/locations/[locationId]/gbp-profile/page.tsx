@@ -5,6 +5,7 @@ import { notFound } from 'next/navigation'
 import Link from 'next/link'
 import type { GBPProfile, GBPMedia, GBPPost, GBPPostQueue } from '@/lib/types'
 import { GBPProfileContent } from '@/components/gbp-profile-content'
+import { RankKeywordsManager } from '@/components/rank-keywords-manager'
 
 export const dynamic = 'force-dynamic'
 
@@ -129,6 +130,12 @@ export default async function GBPProfilePage({
           basePath={basePath}
           orgSlug={params.orgSlug}
         />
+      )}
+
+      {isAdmin && (
+        <div className="mt-6">
+          <RankKeywordsManager locationId={location.id} />
+        </div>
       )}
     </div>
   )
