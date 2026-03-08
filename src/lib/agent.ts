@@ -14,7 +14,7 @@ import {
   searchCategories,
   fetchAvailableAttributes, fetchLocationAttributes, updateLocationAttributes,
 } from '@/lib/google/profiles'
-import type { GBPProfile, ServiceTier } from '@/lib/types'
+import type { GBPProfile, IntakeData, ServiceTier } from '@/lib/types'
 import { tierIncludes } from '@/lib/tiers'
 
 export type ProfileSkillKey = 'description' | 'categories' | 'attributes' | 'hours' | 'media' | 'services' | 'website'
@@ -174,7 +174,7 @@ export async function runAgentForLocation(
       .select('intake_data')
       .eq('id', locationId)
       .single()
-    const intake = (intakeRow as any)?.intake_data || {}
+    const intake = ((intakeRow as { intake_data?: IntakeData } | null)?.intake_data || {}) as IntakeData
 
     // Map audit section keys to skill keys (photos → media)
     const sectionToSkill: Record<string, ProfileSkillKey> = {
@@ -316,12 +316,12 @@ async function handleDescription(
     .select('intake_data')
     .eq('id', locationId)
     .single()
-  const intake = (intakeRow as any)?.intake_data || {}
+  const intake = ((intakeRow as { intake_data?: IntakeData } | null)?.intake_data || {}) as IntakeData
 
   const profileServices = (profile.service_items || [])
-    .map((s: any) => s.structuredServiceItem?.description || s.freeFormServiceItem?.label?.displayName || '')
+    .map((s: Record<string, any>) => s.structuredServiceItem?.description || s.freeFormServiceItem?.label?.displayName || '')
     .filter(Boolean)
-  const intakeServices = (intake.services || []).map((s: any) => s.name || s)
+  const intakeServices = (intake.services || []).map((s) => s.name)
   const services = Array.from(new Set([...profileServices, ...intakeServices]))
 
   // Fetch brand voice from org
@@ -433,7 +433,7 @@ async function handleCategories(
   profile: GBPProfile,
   trust: ProfileSkillTrust,
   actions: AgentAction[],
-  intake: Record<string, any>
+  intake: IntakeData
 ) {
   if (await hasExistingRec(adminClient, locationId, 'categories')) return
 
@@ -443,7 +443,7 @@ async function handleCategories(
   ].filter(Boolean) as string[]
 
   // Use AI to suggest categories based on business info
-  const services = intake.services?.map((s: any) => s.name || s) || []
+  const services = intake.services?.map((s) => s.name) || []
   const suggestions = await suggestCategories({
     businessName: profile.business_name || '',
     currentCategories,
@@ -533,7 +533,7 @@ async function handleAttributes(
   profile: GBPProfile,
   trust: ProfileSkillTrust,
   actions: AgentAction[],
-  intake: Record<string, any>
+  intake: IntakeData
 ) {
   if (await hasExistingRec(adminClient, locationId, 'attributes')) return
   if (!profile.primary_category_id) return
@@ -554,9 +554,9 @@ async function handleAttributes(
     if (unset.length === 0) return
 
     // Use AI to determine which attributes apply to this business
-    const intakeServices = (intake.services || []).map((s: any) => s.name || s)
+    const intakeServices = (intake.services || []).map((s) => s.name)
     const profileServices = (profile.service_items || [])
-      .map((s: any) => s.structuredServiceItem?.description || s.freeFormServiceItem?.label?.displayName || '')
+      .map((s: Record<string, any>) => s.structuredServiceItem?.description || s.freeFormServiceItem?.label?.displayName || '')
       .filter(Boolean)
 
     const recommendations = await recommendAttributes({
@@ -637,7 +637,7 @@ async function handleMedia(
   profile: GBPProfile,
   trust: ProfileSkillTrust,
   actions: AgentAction[],
-  intake: Record<string, any>
+  intake: IntakeData
 ) {
   if (await hasExistingRec(adminClient, locationId, 'media')) return
 
@@ -647,7 +647,7 @@ async function handleMedia(
     .select('category')
     .eq('location_id', locationId)
 
-  const existingCategories = Array.from(new Set((media || []).map((m: any) => m.category).filter(Boolean)))
+  const existingCategories = Array.from(new Set((media || []).map((m) => m.category).filter(Boolean)))
   const totalPhotos = (media || []).length
 
   // Don't bother if they have 10+ photos with cover and logo
@@ -656,9 +656,9 @@ async function handleMedia(
   if (totalPhotos >= 10 && hasCover && hasLogo) return
 
   // Use AI to generate a specific shot list for this business
-  const intakeServices = (intake.services || []).map((s: any) => s.name || s)
+  const intakeServices = (intake.services || []).map((s) => s.name)
   const profileServices = (profile.service_items || [])
-    .map((s: any) => s.structuredServiceItem?.description || s.freeFormServiceItem?.label?.displayName || '')
+    .map((s: Record<string, any>) => s.structuredServiceItem?.description || s.freeFormServiceItem?.label?.displayName || '')
     .filter(Boolean)
 
   const shotList = await generatePhotoShotList({
@@ -695,7 +695,7 @@ async function handleHours(
   profile: GBPProfile,
   trust: ProfileSkillTrust,
   actions: AgentAction[],
-  intake: Record<string, any>
+  intake: IntakeData
 ) {
   if (await hasExistingRec(adminClient, locationId, 'hours')) return
 
@@ -790,7 +790,7 @@ async function handleServices(
   profile: GBPProfile,
   trust: ProfileSkillTrust,
   actions: AgentAction[],
-  intake: Record<string, any>
+  intake: IntakeData
 ) {
   if (await hasExistingRec(adminClient, locationId, 'services')) return
 
@@ -799,7 +799,7 @@ async function handleServices(
 
   // Compare intake services to what's on the profile
   const existingServices = (profile.service_items || [])
-    .map((s: any) =>
+    .map((s: Record<string, any>) =>
       (s.structuredServiceItem?.description || s.freeFormServiceItem?.label?.displayName || '').toLowerCase()
     )
     .filter(Boolean)
@@ -980,13 +980,15 @@ async function autoApplyPendingRecs(
 
   if (!hasToken) return
 
-  const { data: profile } = await adminClient
+  const { data: profileData } = await adminClient
     .from('gbp_profiles')
     .select('gbp_location_name, primary_category_name, service_items')
     .eq('location_id', locationId)
     .single()
 
-  if (!profile) return
+  if (!profileData) return
+
+  const profile = profileData as Pick<GBPProfile, 'gbp_location_name' | 'primary_category_name' | 'service_items'>
 
   for (const rec of pendingRecs) {
     try {
@@ -1033,10 +1035,10 @@ async function autoApplyPendingRecs(
       } else if (rec.field === 'services') {
         const proposed = value as { services: Array<{ name: string; description: string }> }
         const newServiceItems = [
-          ...((profile as any).service_items || []),
+          ...(profile.service_items || []),
           ...(proposed.services || []).map((s) => ({
             freeFormServiceItem: {
-              category: (profile as any).primary_category_name || 'Service',
+              category: profile.primary_category_name || 'Service',
               label: { displayName: s.name, description: s.description },
             },
           })),
@@ -1047,12 +1049,12 @@ async function autoApplyPendingRecs(
         const proposed = value as { attributes: Array<{ attributeId: string; value: boolean | string }> }
         if (proposed?.attributes?.length > 0) {
           const attrPayload = proposed.attributes.map((r) => ({
-            name: `${(profile as any).gbp_location_name}/attributes/${r.attributeId}`,
+            name: `${profile.gbp_location_name}/attributes/${r.attributeId}`,
             valueType: typeof r.value === 'boolean' ? 'BOOL' : 'ENUM',
             values: [r.value],
           }))
           const attrMask = proposed.attributes.map((r) => r.attributeId).join(',')
-          await updateLocationAttributes((profile as any).gbp_location_name, attrPayload, attrMask)
+          await updateLocationAttributes(profile.gbp_location_name, attrPayload, attrMask)
         }
         needsProfileSync = false
       } else if (rec.field === 'categories') {
@@ -1068,14 +1070,14 @@ async function autoApplyPendingRecs(
 
       if (updateMaskParts.length > 0) {
         await updateGBPProfile(
-          (profile as any).gbp_location_name,
+          profile.gbp_location_name,
           fields,
           updateMaskParts.join(',')
         )
       }
 
       if (needsProfileSync && updateMaskParts.length > 0) {
-        const raw = await fetchGBPProfile((profile as any).gbp_location_name)
+        const raw = await fetchGBPProfile(profile.gbp_location_name)
         const normalized = normalizeGBPProfile(raw)
         await adminClient
           .from('gbp_profiles')

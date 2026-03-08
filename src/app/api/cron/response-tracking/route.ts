@@ -31,17 +31,32 @@ export async function GET(request: NextRequest) {
   const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString()
   const today = new Date().toISOString().split('T')[0]
 
-  for (const loc of locations) {
-    // Get reviews from last 30 days with reply data
-    const { data: reviews } = await adminClient
-      .from('reviews')
-      .select('id, published_at, reply_body, reply_published_at')
-      .eq('location_id', loc.id)
-      .gte('published_at', thirtyDaysAgo)
+  // Batch fetch all reviews from last 30 days for all active locations
+  const locationIds = locations.map((l) => l.id)
+  const { data: allReviews } = await adminClient
+    .from('reviews')
+    .select('id, location_id, published_at, reply_body, reply_published_at')
+    .in('location_id', locationIds)
+    .gte('published_at', thirtyDaysAgo)
 
+  // Group reviews by location_id
+  const reviewsByLocation = new Map<string, Array<typeof allReviews extends (infer T)[] | null ? T : never>>()
+  if (allReviews) {
+    for (const review of allReviews) {
+      const existing = reviewsByLocation.get(review.location_id)
+      if (existing) {
+        existing.push(review)
+      } else {
+        reviewsByLocation.set(review.location_id, [review])
+      }
+    }
+  }
+
+  for (const loc of locations) {
+    const reviews = reviewsByLocation.get(loc.id)
     if (!reviews || reviews.length === 0) continue
 
-    const replied = reviews.filter((r: any) => r.reply_body)
+    const replied = reviews.filter((r) => r.reply_body)
     const responseRate = replied.length / reviews.length
 
     // Calculate average response time for reviews that have both timestamps

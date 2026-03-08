@@ -41,18 +41,36 @@ export async function GET(request: NextRequest) {
     }
   }
 
+  // Batch fetch all scans with arp data, ordered by scanned_at desc
+  const locationIds = Array.from(new Set(pairs.map((p) => p.locationId)))
+  const { data: allScans } = await adminClient
+    .from('local_falcon_scans')
+    .select('location_id, arp, keyword, scanned_at')
+    .in('location_id', locationIds)
+    .gte('scanned_at', ninetyDaysAgo)
+    .order('scanned_at', { ascending: false })
+
+  // Group by location_id+keyword, keeping only the 2 most recent per pair
+  const scansByPair = new Map<string, Array<{ arp: number; keyword: string; scanned_at: string }>>()
+  if (allScans) {
+    for (const scan of allScans) {
+      const key = `${scan.location_id}:${scan.keyword}`
+      const existing = scansByPair.get(key)
+      if (!existing) {
+        scansByPair.set(key, [scan as any])
+      } else if (existing.length < 2) {
+        existing.push(scan as any)
+      }
+    }
+  }
+
   let alerts = 0
   let tracked = 0
+  const today = new Date().toISOString().split('T')[0]
 
   for (const { locationId, keyword } of pairs) {
-    // Get last 2 scans for this location+keyword
-    const { data: scans } = await adminClient
-      .from('local_falcon_scans')
-      .select('arp, keyword, scanned_at')
-      .eq('location_id', locationId)
-      .eq('keyword', keyword)
-      .order('scanned_at', { ascending: false })
-      .limit(2)
+    const key = `${locationId}:${keyword}`
+    const scans = scansByPair.get(key)
 
     if (!scans || scans.length < 2) continue
 
@@ -67,7 +85,6 @@ export async function GET(request: NextRequest) {
     tracked++
 
     // Store as performance metric (value is bigint, so round)
-    const today = new Date().toISOString().split('T')[0]
     await adminClient
       .from('gbp_performance_metrics')
       .upsert(

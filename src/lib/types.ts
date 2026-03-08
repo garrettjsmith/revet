@@ -527,6 +527,32 @@ export interface NotificationSubscription {
   subscriber_display?: string  // resolved display name (email or user name)
 }
 
+// Autopilot Config
+
+export interface AutopilotConfig {
+  id: string
+  location_id: string
+  enabled: boolean
+  auto_reply_ratings: number[]
+  delay_min_minutes: number
+  delay_max_minutes: number
+  business_context: string | null
+  tone: string | null
+  require_approval: boolean
+  created_at: string
+  updated_at: string
+}
+
+// Review Source with joined Location
+
+export interface ReviewSourceWithLocation extends ReviewSource {
+  locations: {
+    id: string
+    name: string
+    org_id: string
+  }
+}
+
 // Review Reply Queue
 
 export type ReplyQueueStatus = 'pending' | 'sending' | 'confirmed' | 'failed'

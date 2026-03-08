@@ -10,6 +10,7 @@ import {
 import { getValidAccessToken, GoogleAuthError } from '@/lib/google/auth'
 import { completePhase, advancePipeline } from '@/lib/pipeline'
 import type { GBPProfileRaw } from '@/lib/google/profiles'
+import type { GBPProfile } from '@/lib/types'
 import { sendEmail, buildProfileRecommendationEmail } from '@/lib/email'
 
 /**
@@ -324,16 +325,17 @@ async function applyRecommendation(
     return { error: 'Google auth error' }
   }
 
-  const { data: profile } = await adminClient
+  const { data: profileData } = await adminClient
     .from('gbp_profiles')
     .select('gbp_location_name, primary_category_name, service_items')
     .eq('location_id', locationId)
     .single()
 
-  if (!profile) {
+  if (!profileData) {
     return { error: 'No GBP profile found' }
   }
 
+  const profile = profileData as Pick<GBPProfile, 'gbp_location_name' | 'primary_category_name' | 'service_items'>
   const value = editedValue !== null && editedValue !== undefined ? editedValue : rec.proposed_value
 
   try {
@@ -371,10 +373,10 @@ async function applyRecommendation(
     } else if (rec.field === 'services') {
       const proposed = value as { services: Array<{ name: string; description: string }> }
       const newServiceItems = [
-        ...((profile as any).service_items || []),
+        ...(profile.service_items || []),
         ...(proposed.services || []).map((s) => ({
           freeFormServiceItem: {
-            category: (profile as any).primary_category_name || 'Service',
+            category: profile.primary_category_name || 'Service',
             label: { displayName: s.name, description: s.description },
           },
         })),
@@ -479,7 +481,7 @@ async function sendClientApprovalEmail(
 
   if (!location) return
 
-  const org = (location as any).organizations
+  const org = (location as unknown as { organizations?: { name: string; slug: string } }).organizations
   const orgSlug = org?.slug || ''
 
   // Get non-agency org members to email

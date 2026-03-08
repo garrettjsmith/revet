@@ -3,6 +3,7 @@ import { sendEmail, buildReviewAlertEmail, buildReviewResponseEmail } from '@/li
 import { processAutopilot } from '@/lib/autopilot'
 import { NextRequest, NextResponse } from 'next/server'
 import { verifyCronSecret } from '@/lib/cron-auth'
+import type { ReviewSourceWithLocation } from '@/lib/types'
 
 /**
  * POST /api/reviews/sync
@@ -41,6 +42,8 @@ export async function POST(request: NextRequest) {
     if (sourceError || !source) {
       return NextResponse.json({ error: 'Review source not found' }, { status: 404 })
     }
+
+    const typedSource = source as unknown as ReviewSourceWithLocation
 
     if (!incomingReviews || !Array.isArray(incomingReviews) || incomingReviews.length === 0) {
       return NextResponse.json({ error: 'No reviews to sync' }, { status: 400 })
@@ -133,9 +136,9 @@ export async function POST(request: NextRequest) {
       try {
         await processAlertRules(
           supabase,
-          (source.locations as any).org_id,
+          typedSource.locations.org_id,
           source.location_id,
-          (source.locations as any).name,
+          typedSource.locations.name,
           source.platform,
           notifiableReviews
         )
@@ -155,9 +158,9 @@ export async function POST(request: NextRequest) {
     if (!isInitialSync && reviewsWithNewReplies.length > 0) {
       await processResponseAlerts(
         supabase,
-        (source.locations as any).org_id,
+        typedSource.locations.org_id,
         source.location_id,
-        (source.locations as any).name,
+        typedSource.locations.name,
         source.platform,
         reviewsWithNewReplies
       )
@@ -171,7 +174,7 @@ export async function POST(request: NextRequest) {
         supabase,
         source_id,
         source.location_id,
-        (source.locations as any).name,
+        typedSource.locations.name,
         newReviews
       )
     }
@@ -232,12 +235,12 @@ async function processAlertRules(
           shouldAlert = true
           break
         case 'negative_review': {
-          const threshold = (rule.config as any)?.threshold ?? 3
+          const threshold = (rule.config.threshold as number) ?? 3
           shouldAlert = review.rating !== null && review.rating <= threshold
           break
         }
         case 'keyword_match': {
-          const keywords = (rule.config as any)?.keywords || []
+          const keywords = (rule.config.keywords as string[]) || []
           const text = (review.body || '').toLowerCase()
           shouldAlert = keywords.some((kw: string) => text.includes(kw.toLowerCase()))
           break
