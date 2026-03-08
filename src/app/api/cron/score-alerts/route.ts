@@ -30,15 +30,29 @@ export async function GET(request: NextRequest) {
     drop: number
   }> = []
 
-  for (const loc of locations) {
-    // Get last 2 audit scores
-    const { data: audits } = await adminClient
-      .from('audit_history')
-      .select('score, created_at')
-      .eq('location_id', loc.id)
-      .order('created_at', { ascending: false })
-      .limit(2)
+  // Batch fetch all audit_history records for active locations
+  const locationIds = locations.map((l) => l.id)
+  const { data: allAudits } = await adminClient
+    .from('audit_history')
+    .select('location_id, score, created_at')
+    .in('location_id', locationIds)
+    .order('created_at', { ascending: false })
 
+  // Group by location_id, keeping only the 2 most recent per location
+  const auditsByLocation = new Map<string, Array<{ score: number; created_at: string }>>()
+  if (allAudits) {
+    for (const audit of allAudits) {
+      const existing = auditsByLocation.get(audit.location_id)
+      if (!existing) {
+        auditsByLocation.set(audit.location_id, [audit])
+      } else if (existing.length < 2) {
+        existing.push(audit)
+      }
+    }
+  }
+
+  for (const loc of locations) {
+    const audits = auditsByLocation.get(loc.id)
     if (!audits || audits.length < 2) continue
 
     const current = audits[0].score
@@ -103,8 +117,18 @@ export async function GET(request: NextRequest) {
     emailsSent++
   }
 
-  // Log alerts to agent_activity_log
+  // Log alerts to agent_activity_log (deduplicate by location + action_type + date)
+  const today = new Date().toISOString().split('T')[0]
   for (const alert of alerts) {
+    const { count } = await adminClient
+      .from('agent_activity_log')
+      .select('id', { count: 'exact', head: true })
+      .eq('location_id', alert.locationId)
+      .eq('action_type', 'score_drop_alert')
+      .gte('created_at', today)
+
+    if ((count || 0) > 0) continue
+
     await adminClient.from('agent_activity_log').insert({
       location_id: alert.locationId,
       action_type: 'score_drop_alert',

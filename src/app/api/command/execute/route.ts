@@ -142,6 +142,11 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ error: 'Update failed: ' + error.message }, { status: 500 })
       }
 
+      // TODO: Push changes to Google via updateGBPProfile() from @/lib/google/profiles.
+      // Currently only updates the local DB. Requires fetching each profile's
+      // gbp_location_name and mapping fields to GBP API format. Needs proper
+      // error handling and rate-limit awareness before enabling.
+
       return NextResponse.json({
         updated: locationIds.length,
         message: `Updated ${locationIds.length} location${locationIds.length === 1 ? '' : 's'}`,

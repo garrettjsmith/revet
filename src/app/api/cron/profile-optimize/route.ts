@@ -182,12 +182,12 @@ export async function GET(request: NextRequest) {
 
       // Merge services from profile + intake
       const profileServices = (profile.service_items || [])
-        .map((s: Record<string, unknown>) => {
-          const freeLabel = (s as any).freeFormServiceItem?.label
-          return (s as any).structuredServiceItem?.description || (typeof freeLabel === 'object' ? freeLabel?.displayName : freeLabel) || ''
+        .map((s: Record<string, any>) => {
+          const freeLabel = s.freeFormServiceItem?.label
+          return s.structuredServiceItem?.description || (typeof freeLabel === 'object' ? freeLabel?.displayName : freeLabel) || ''
         })
         .filter(Boolean) as string[]
-      const intakeServiceNames = (intake.services || []).map((s: any) => s.name || s)
+      const intakeServiceNames = (intake.services || []).map((s: { name: string }) => s.name)
       const allServices = Array.from(new Set([...profileServices, ...intakeServiceNames]))
 
       if (actionableSections.length === 0 && intakeServiceNames.length === 0) {

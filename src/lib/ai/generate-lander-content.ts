@@ -1,12 +1,4 @@
-import Anthropic from '@anthropic-ai/sdk'
-
-let _client: Anthropic | null = null
-function getClient() {
-  if (!_client) {
-    _client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
-  }
-  return _client
-}
+import { getAnthropicClient as getClient } from './client'
 
 export interface LanderAIContent {
   local_context: string
@@ -132,7 +124,12 @@ Rules:
     throw new Error('Unexpected response type from Claude')
   }
 
-  const raw = JSON.parse(block.text.trim()) as Record<string, unknown>
+  let cleaned = block.text.trim()
+  if (cleaned.startsWith('```')) {
+    cleaned = cleaned.replace(/^```(?:json)?\n?/, '').replace(/\n?```$/, '')
+  }
+
+  const raw = JSON.parse(cleaned) as Record<string, unknown>
 
   // Validate structure
   if (typeof raw.local_context !== 'string' || !Array.isArray(raw.faq)) {

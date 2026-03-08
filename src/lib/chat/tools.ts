@@ -1609,7 +1609,7 @@ async function execApprovePost(input: Record<string, unknown>, ctx: ToolContext)
       return {
         status: 'client_review',
         post_id: postId,
-        message: 'Post approved and moved to client review. Email notification sent.',
+        message: 'Post approved and moved to client review.',
       }
     }
     case 'reject': {

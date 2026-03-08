@@ -2,16 +2,9 @@ import Anthropic from '@anthropic-ai/sdk'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { getToolDefinitions, executeTool } from './tools'
 import { buildSystemPrompt } from './system-prompt'
+import { getAnthropicClient as getClient } from '../ai/client'
 
 const MAX_TOOL_ROUNDS = 10
-
-let _client: Anthropic | null = null
-function getClient() {
-  if (!_client) {
-    _client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
-  }
-  return _client
-}
 
 interface StreamContext {
   supabase: SupabaseClient

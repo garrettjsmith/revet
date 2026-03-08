@@ -41,12 +41,10 @@ export function PublicForm({ form }: { form: FormTemplate }) {
   }
 
   return (
-    <div className="min-h-screen bg-cream relative">
-      {/* Blueprint grid overlay */}
-      <div className="absolute inset-0 blueprint-grid pointer-events-none" />
+    <div className="min-h-screen bg-white relative">
 
       {/* Top accent bar */}
-      <div className="h-1 bg-ink relative z-10" />
+      <div className="h-1 relative z-10" style={{ background: primary }} />
 
       <div className="max-w-[520px] mx-auto px-6 pt-16 pb-20 relative z-10">
 
@@ -60,7 +58,7 @@ export function PublicForm({ form }: { form: FormTemplate }) {
             />
           ) : form.logo_text ? (
             <div
-              className="inline-flex flex-col items-center px-8 py-4 rounded-xl text-cream"
+              className="inline-flex flex-col items-center px-8 py-4 rounded-xl text-white"
               style={{ background: primary }}
             >
               <div className="text-xl font-bold tracking-[0.15em] leading-tight">
@@ -78,17 +76,17 @@ export function PublicForm({ form }: { form: FormTemplate }) {
         {/* Form step */}
         {step !== 'success' && (
           <div className="animate-[fadeUp_0.5s_ease]">
-            <h1 className="text-3xl font-serif text-ink mb-3 leading-snug text-center text-balance">
+            <h1 className="text-3xl font-semibold text-gray-900 mb-3 leading-snug text-center text-balance">
               {form.heading}
             </h1>
-            <p className="text-base text-warm-gray mb-10 leading-relaxed text-center">
+            <p className="text-base text-gray-500 mb-10 leading-relaxed text-center">
               {form.subtext}
             </p>
 
             <form onSubmit={handleSubmit} className="space-y-4">
               {form.fields.map((field) => (
                 <div key={field.id}>
-                  <label className="block text-sm font-medium text-ink mb-1.5">
+                  <label className="block text-sm font-medium text-gray-900 mb-1.5">
                     {field.label}
                     {field.required && <span className="text-red-500 ml-0.5">*</span>}
                   </label>
@@ -100,14 +98,14 @@ export function PublicForm({ form }: { form: FormTemplate }) {
                       placeholder={field.placeholder}
                       required={field.required}
                       rows={4}
-                      className="w-full px-4 py-3 border border-warm-border rounded-xl text-sm text-ink bg-white outline-none focus:ring-2 focus:ring-ink/20 focus:border-ink transition-colors resize-y placeholder:text-warm-gray"
+                      className="w-full px-4 py-3 border border-gray-200 rounded-xl text-sm text-gray-900 bg-white outline-none focus:ring-2 focus:ring-gray-900/20 focus:border-gray-900 transition-colors resize-y placeholder:text-gray-500"
                     />
                   ) : field.type === 'select' ? (
                     <select
                       value={values[field.id] || ''}
                       onChange={(e) => setValue(field.id, e.target.value)}
                       required={field.required}
-                      className="w-full px-4 py-3 border border-warm-border rounded-xl text-sm text-ink bg-white outline-none focus:ring-2 focus:ring-ink/20 focus:border-ink transition-colors"
+                      className="w-full px-4 py-3 border border-gray-200 rounded-xl text-sm text-gray-900 bg-white outline-none focus:ring-2 focus:ring-gray-900/20 focus:border-gray-900 transition-colors"
                     >
                       <option value="">{field.placeholder || 'Select...'}</option>
                       {(field.options || []).map((opt) => (
@@ -122,7 +120,7 @@ export function PublicForm({ form }: { form: FormTemplate }) {
                         onChange={(e) => setValue(field.id, e.target.checked ? 'true' : 'false')}
                         className="rounded"
                       />
-                      <span className="text-sm text-warm-gray">{field.placeholder || field.label}</span>
+                      <span className="text-sm text-gray-500">{field.placeholder || field.label}</span>
                     </label>
                   ) : (
                     <input
@@ -131,7 +129,7 @@ export function PublicForm({ form }: { form: FormTemplate }) {
                       onChange={(e) => setValue(field.id, e.target.value)}
                       placeholder={field.placeholder}
                       required={field.required}
-                      className="w-full px-4 py-3 border border-warm-border rounded-xl text-sm text-ink bg-white outline-none focus:ring-2 focus:ring-ink/20 focus:border-ink transition-colors placeholder:text-warm-gray"
+                      className="w-full px-4 py-3 border border-gray-200 rounded-xl text-sm text-gray-900 bg-white outline-none focus:ring-2 focus:ring-gray-900/20 focus:border-gray-900 transition-colors placeholder:text-gray-500"
                     />
                   )}
                 </div>
@@ -144,7 +142,7 @@ export function PublicForm({ form }: { form: FormTemplate }) {
               <button
                 type="submit"
                 disabled={step === 'submitting'}
-                className="w-full py-3.5 text-cream text-base font-medium rounded-full transition-all duration-200 disabled:opacity-50"
+                className="w-full py-3.5 text-white text-base font-medium rounded-full transition-all duration-200 disabled:opacity-50"
                 style={{ background: primary }}
               >
                 {step === 'submitting' ? 'Submitting...' : 'Submit'}
@@ -156,16 +154,16 @@ export function PublicForm({ form }: { form: FormTemplate }) {
         {/* Success step */}
         {step === 'success' && (
           <div className="animate-[fadeUp_0.4s_ease] text-center">
-            <div className="text-ink mb-5">
+            <div className="text-gray-900 mb-5">
               <svg className="mx-auto" width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
                 <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14" />
                 <polyline points="22 4 12 14.01 9 11.01" />
               </svg>
             </div>
-            <h2 className="text-2xl font-serif text-ink mb-3">
+            <h2 className="text-2xl font-semibold text-gray-900 mb-3">
               {form.confirmation_heading}
             </h2>
-            <p className="text-base text-warm-gray leading-relaxed">
+            <p className="text-base text-gray-500 leading-relaxed">
               {form.confirmation_message}
             </p>
           </div>
@@ -173,8 +171,8 @@ export function PublicForm({ form }: { form: FormTemplate }) {
       </div>
 
       {/* Footer */}
-      <div className="fixed bottom-0 left-0 right-0 text-center py-3 bg-gradient-to-t from-cream via-cream to-transparent relative z-10">
-        <span className="text-[11px] text-warm-border">Powered by revet.app</span>
+      <div className="fixed bottom-0 left-0 right-0 text-center py-3 bg-gradient-to-t from-white via-white to-transparent relative z-10">
+        <span className="text-[11px] text-gray-300">Powered by revet.app</span>
       </div>
     </div>
   )

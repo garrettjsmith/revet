@@ -8,7 +8,7 @@ function safeHref(url: string): string {
   try {
     const parsed = new URL(url)
     if (parsed.protocol === 'https:' || parsed.protocol === 'http:') return url
-  } catch {}
+  } catch (err) { console.error('[email] Invalid URL in safeHref:', url, err) }
   return '#'
 }
 

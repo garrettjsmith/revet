@@ -33,7 +33,7 @@ export function ProfileAuditCard({ locationId, isAgencyAdmin }: Props) {
       .then((data) => {
         if (data.score !== undefined) setAudit(data)
       })
-      .catch(() => {})
+      .catch((err) => console.error('[profile-audit-card] Failed to fetch audit:', err))
       .finally(() => setLoading(false))
   }, [locationId])
 

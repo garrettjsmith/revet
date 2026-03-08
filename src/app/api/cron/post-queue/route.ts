@@ -36,15 +36,17 @@ export async function GET(request: NextRequest) {
 
   const supabase = createAdminClient()
 
-  // Fetch pending entries ready to post
+  // Atomically claim pending entries by setting status to 'sending'
+  const now = new Date().toISOString()
   const { data: entries } = await supabase
     .from('gbp_post_queue')
-    .select('*')
+    .update({ status: 'sending' })
     .eq('status', 'pending')
-    .or('scheduled_for.is.null,scheduled_for.lte.' + new Date().toISOString())
+    .or('scheduled_for.is.null,scheduled_for.lte.' + now)
     .lt('attempts', MAX_ATTEMPTS)
     .order('created_at', { ascending: true })
     .limit(20)
+    .select('*')
 
   if (!entries || entries.length === 0) {
     return NextResponse.json({ ok: true, processed: 0 })
@@ -75,10 +77,10 @@ export async function GET(request: NextRequest) {
       continue
     }
 
-    // Mark as sending
+    // Increment attempts count
     await supabase
       .from('gbp_post_queue')
-      .update({ status: 'sending', attempts: entry.attempts + 1 })
+      .update({ attempts: (entry.attempts || 0) + 1 })
       .eq('id', entry.id)
 
     const accountLocationName = profile.gbp_account_name
@@ -157,7 +159,7 @@ export async function GET(request: NextRequest) {
       confirmed++
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'Unknown error'
-      const newAttempts = entry.attempts + 1
+      const newAttempts = (entry.attempts || 0) + 1
       const newStatus = newAttempts >= MAX_ATTEMPTS ? 'failed' : 'pending'
 
       await supabase

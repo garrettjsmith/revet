@@ -23,7 +23,7 @@ export default function TeamPage() {
       if (org) setOrgId(org.id)
     }
     load()
-  }, [orgSlug, supabase])
+  }, [orgSlug])
 
   if (!orgId) {
     return <div className="text-warm-gray text-sm">Loading...</div>

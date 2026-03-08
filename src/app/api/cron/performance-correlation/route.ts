@@ -132,13 +132,23 @@ export async function POST(request: NextRequest) {
       .map(([k, v]) => `${k}: ${v.change_pct > 0 ? '+' : ''}${v.change_pct}%`)
 
     if (significantChanges.length > 0) {
-      await adminClient.from('agent_activity_log').insert({
-        location_id: c.location_id,
-        action_type: 'performance_correlation',
-        status: 'completed',
-        summary: `After ${c.field} update: ${significantChanges.join(', ')}`,
-        details: { field: c.field, applied_at: c.applied_at, changes: c.changes },
-      })
+      const today = new Date().toISOString().split('T')[0]
+      const { count: existingCount } = await adminClient
+        .from('agent_activity_log')
+        .select('id', { count: 'exact', head: true })
+        .eq('location_id', c.location_id)
+        .eq('action_type', 'performance_correlation')
+        .gte('created_at', today)
+
+      if ((existingCount || 0) === 0) {
+        await adminClient.from('agent_activity_log').insert({
+          location_id: c.location_id,
+          action_type: 'performance_correlation',
+          status: 'completed',
+          summary: `After ${c.field} update: ${significantChanges.join(', ')}`,
+          details: { field: c.field, applied_at: c.applied_at, changes: c.changes },
+        })
+      }
     }
   }
 

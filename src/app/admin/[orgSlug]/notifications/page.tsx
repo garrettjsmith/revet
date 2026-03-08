@@ -72,7 +72,7 @@ export default function NotificationsPage() {
       setLoading(false)
     }
     load()
-  }, [orgSlug, supabase])
+  }, [orgSlug])
 
   if (loading || isAgencyAdmin === null) {
     return <div className="text-warm-gray text-sm">Loading...</div>

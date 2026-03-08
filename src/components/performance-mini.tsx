@@ -28,7 +28,7 @@ export function PerformanceMini({ locationId }: { locationId: string }) {
     fetch(`/api/locations/${locationId}/performance?period=7d`)
       .then((res) => res.json())
       .then((d) => { if (d.metrics) setData(d) })
-      .catch(() => {})
+      .catch((err) => console.error('[performance-mini] Failed to fetch performance data:', err))
   }, [locationId])
 
   if (!data) return null

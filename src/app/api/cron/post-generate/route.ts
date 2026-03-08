@@ -205,6 +205,7 @@ export async function GET(request: NextRequest) {
     // 3. Generate copy + image for each, stagger scheduling
     const now = new Date()
     const intervalDays = location.posts_per_month >= 4 ? 7 : 30
+    let locationGenerated = 0
 
     for (let i = 0; i < selectedTopics.length; i++) {
       const topicRow = selectedTopics[i]
@@ -271,16 +272,19 @@ export async function GET(request: NextRequest) {
           .eq('id', topicRow.id)
 
         generated++
+        locationGenerated++
       } catch (err) {
         console.error(`[post-generate] Failed for location ${location.id}, topic "${topicRow.topic}":`, err)
       }
     }
 
-    // Stamp the location so the 30-day timer resets
-    await supabase
-      .from('locations')
-      .update({ posts_last_generated_at: new Date().toISOString() })
-      .eq('id', location.id)
+    // Stamp the location so the 30-day timer resets (only if posts were generated)
+    if (locationGenerated > 0) {
+      await supabase
+        .from('locations')
+        .update({ posts_last_generated_at: new Date().toISOString() })
+        .eq('id', location.id)
+    }
   }
 
   return NextResponse.json({

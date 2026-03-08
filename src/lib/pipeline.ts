@@ -497,10 +497,15 @@ async function advancePipelineFromPhases(locationId: string, phases: PhaseRecord
       case 'benchmark': {
         // Trigger performance metrics fetch
         await startPhase(locationId, 'benchmark')
-        fetch(`${baseUrl}/api/locations/${locationId}/performance`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json', ...authHeaders },
-        }).catch(() => {})
+        try {
+          await fetch(`${baseUrl}/api/locations/${locationId}/performance`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', ...authHeaders },
+          })
+        } catch (err) {
+          console.error(`[pipeline] benchmark fetch failed for ${locationId}:`, err)
+          await failPhase(locationId, 'benchmark', err instanceof Error ? err.message : 'Fetch failed')
+        }
         triggered.push('benchmark')
         break
       }
@@ -508,10 +513,15 @@ async function advancePipelineFromPhases(locationId: string, phases: PhaseRecord
       case 'audit': {
         // Trigger audit + recommendations generation
         await startPhase(locationId, 'audit')
-        fetch(`${baseUrl}/api/locations/${locationId}/recommendations/generate`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json', ...authHeaders },
-        }).catch(() => {})
+        try {
+          await fetch(`${baseUrl}/api/locations/${locationId}/recommendations/generate`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', ...authHeaders },
+          })
+        } catch (err) {
+          console.error(`[pipeline] audit fetch failed for ${locationId}:`, err)
+          await failPhase(locationId, 'audit', err instanceof Error ? err.message : 'Fetch failed')
+        }
         triggered.push('audit')
         break
       }
@@ -538,11 +548,16 @@ async function advancePipelineFromPhases(locationId: string, phases: PhaseRecord
       case 'citations': {
         // Trigger citation audit
         await startPhase(locationId, 'citations')
-        fetch(`${baseUrl}/api/citations/audit`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json', ...authHeaders },
-          body: JSON.stringify({ location_id: locationId }),
-        }).catch(() => {})
+        try {
+          await fetch(`${baseUrl}/api/citations/audit`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', ...authHeaders },
+            body: JSON.stringify({ location_id: locationId }),
+          })
+        } catch (err) {
+          console.error(`[pipeline] citations fetch failed for ${locationId}:`, err)
+          await failPhase(locationId, 'citations', err instanceof Error ? err.message : 'Fetch failed')
+        }
         triggered.push('citations')
         break
       }
@@ -550,10 +565,15 @@ async function advancePipelineFromPhases(locationId: string, phases: PhaseRecord
       case 'lander': {
         // Trigger lander generation
         await startPhase(locationId, 'lander')
-        fetch(`${baseUrl}/api/locations/${locationId}/lander/generate`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json', ...authHeaders },
-        }).catch(() => {})
+        try {
+          await fetch(`${baseUrl}/api/locations/${locationId}/lander/generate`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', ...authHeaders },
+          })
+        } catch (err) {
+          console.error(`[pipeline] lander fetch failed for ${locationId}:`, err)
+          await failPhase(locationId, 'lander', err instanceof Error ? err.message : 'Fetch failed')
+        }
         triggered.push('lander')
         break
       }

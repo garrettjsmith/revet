@@ -98,7 +98,7 @@ export async function fetchPerformanceMetrics(
   for (const series of data.multiDailyMetricTimeSeries || []) {
     const metricName = METRIC_DB_MAP[series.dailyMetric] || series.dailyMetric
     for (const dv of series.timeSeries?.datedValues || []) {
-      if (!dv.value) continue
+      if (dv.value == null) continue
       const dateStr = `${dv.date.year}-${String(dv.date.month).padStart(2, '0')}-${String(dv.date.day).padStart(2, '0')}`
       rows.push({
         date: dateStr,

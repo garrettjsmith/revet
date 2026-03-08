@@ -4,6 +4,8 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { generateReviewReply } from '@/lib/ai/generate-reply'
 import { checkAgencyAdmin } from '@/lib/locations'
 
+export const maxDuration = 60
+
 /**
  * POST /api/reviews/[reviewId]/ai-reply
  *

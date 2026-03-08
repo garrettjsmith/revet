@@ -172,12 +172,12 @@ export async function POST(
 
   // Merge services from profile + intake
   const profileServices = (profile.service_items || [])
-    .map((s: Record<string, unknown>) => {
-      const freeLabel = (s as any).freeFormServiceItem?.label
-      return (s as any).structuredServiceItem?.description || (typeof freeLabel === 'object' ? freeLabel?.displayName : freeLabel) || ''
+    .map((s: Record<string, any>) => {
+      const freeLabel = s.freeFormServiceItem?.label
+      return s.structuredServiceItem?.description || (typeof freeLabel === 'object' ? freeLabel?.displayName : freeLabel) || ''
     })
     .filter(Boolean) as string[]
-  const intakeServices = (intake.services || []).map((s: any) => s.name || s)
+  const intakeServices = (intake.services || []).map((s: { name: string }) => s.name)
   const allServices = Array.from(new Set([...profileServices, ...intakeServices]))
 
   // Generate AI recommendations for ALL actionable fields

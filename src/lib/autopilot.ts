@@ -1,5 +1,6 @@
 import { createAdminClient } from '@/lib/supabase/admin'
 import { generateReviewReply } from '@/lib/ai/generate-reply'
+import type { AutopilotConfig } from '@/lib/types'
 
 /**
  * Generate AI reply drafts for reviews via the autopilot system.
@@ -28,7 +29,8 @@ export async function processAutopilot(
 
   if (!config) return
 
-  const autoRatings: number[] = (config as any).auto_reply_ratings || [4, 5]
+  const typedConfig = config as AutopilotConfig
+  const autoRatings: number[] = typedConfig.auto_reply_ratings || [4, 5]
   const limit = options?.limit ?? 10
 
   const eligible = reviews
@@ -60,11 +62,11 @@ export async function processAutopilot(
     try {
       const draft = await generateReviewReply({
         businessName: locationName,
-        businessContext: (config as any).business_context,
+        businessContext: typedConfig.business_context,
         reviewerName: review.reviewer_name,
         rating: review.rating,
         reviewBody: review.body,
-        tone: (config as any).tone,
+        tone: typedConfig.tone ?? undefined,
       })
 
       // Save draft on the review
@@ -77,9 +79,9 @@ export async function processAutopilot(
         .eq('id', dbReview.id)
 
       // If not requiring approval, queue for auto-posting with random delay
-      if (!(config as any).require_approval) {
-        const minDelay = ((config as any).delay_min_minutes || 30) * 60 * 1000
-        const maxDelay = ((config as any).delay_max_minutes || 180) * 60 * 1000
+      if (!typedConfig.require_approval) {
+        const minDelay = (typedConfig.delay_min_minutes || 30) * 60 * 1000
+        const maxDelay = (typedConfig.delay_max_minutes || 180) * 60 * 1000
         const delay = minDelay + Math.random() * (maxDelay - minDelay)
         const scheduledFor = new Date(Date.now() + delay).toISOString()
 

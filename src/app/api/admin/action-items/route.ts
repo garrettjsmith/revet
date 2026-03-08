@@ -94,8 +94,8 @@ export async function GET(req: NextRequest) {
       .limit(10),
     adminClient
       .from('review_reply_queue')
-      .select('*', { count: 'exact', head: true })
-      .in('review_id', locationIds)
+      .select('*, reviews!inner(location_id)', { count: 'exact', head: true })
+      .in('reviews.location_id', locationIds)
       .eq('status', 'pending'),
     adminClient
       .from('reviews')

@@ -76,13 +76,23 @@ export async function GET(request: NextRequest) {
     if (isLowAcceptance || isHighEditRate) {
       const recForField = recs.find(r => r.field === field)
       if (recForField) {
-        await adminClient.from('agent_activity_log').insert({
-          location_id: recForField.location_id,
-          action_type: 'recommendation_effectiveness',
-          status: 'completed',
-          summary: `${field} recommendations: ${stats.acceptance_rate}% accepted, ${stats.edit_rate}% edited${isLowAcceptance ? ' (low acceptance)' : ''}${isHighEditRate ? ' (high edit rate)' : ''}`,
-          details: { field, ...stats, period: '30d' },
-        })
+        const today = new Date().toISOString().split('T')[0]
+        const { count: existingCount } = await adminClient
+          .from('agent_activity_log')
+          .select('id', { count: 'exact', head: true })
+          .eq('location_id', recForField.location_id)
+          .eq('action_type', 'recommendation_effectiveness')
+          .gte('created_at', today)
+
+        if ((existingCount || 0) === 0) {
+          await adminClient.from('agent_activity_log').insert({
+            location_id: recForField.location_id,
+            action_type: 'recommendation_effectiveness',
+            status: 'completed',
+            summary: `${field} recommendations: ${stats.acceptance_rate}% accepted, ${stats.edit_rate}% edited${isLowAcceptance ? ' (low acceptance)' : ''}${isHighEditRate ? ' (high edit rate)' : ''}`,
+            details: { field, ...stats, period: '30d' },
+          })
+        }
       }
     }
   }

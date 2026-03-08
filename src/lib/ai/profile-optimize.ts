@@ -1,13 +1,5 @@
-import Anthropic from '@anthropic-ai/sdk'
 import type { GBPHoursPeriod } from '@/lib/types'
-
-let _client: Anthropic | null = null
-function getClient() {
-  if (!_client) {
-    _client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
-  }
-  return _client
-}
+import { getAnthropicClient as getClient } from './client'
 
 /**
  * Generate an optimized business description for a GBP profile.

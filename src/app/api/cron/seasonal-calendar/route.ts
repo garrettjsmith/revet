@@ -94,19 +94,29 @@ export async function GET(request: NextRequest) {
       totalTopics += insertedCount
       locationsProcessed++
 
-      // Log to agent_activity_log
+      // Log to agent_activity_log (deduplicate by location + action_type + date)
       if (insertedCount > 0) {
-        await supabase.from('agent_activity_log').insert({
-          location_id: location.id,
-          action_type: 'post_generated',
-          status: 'completed',
-          summary: `Generated ${insertedCount} seasonal topics for ${month}/${targetYear}`,
-          details: {
-            month,
-            year: targetYear,
-            topics: topics.map((t) => ({ topic: t.topic, type: t.type, suggested_date: t.suggested_date })),
-          },
-        })
+        const today = new Date().toISOString().split('T')[0]
+        const { count: existingCount } = await supabase
+          .from('agent_activity_log')
+          .select('id', { count: 'exact', head: true })
+          .eq('location_id', location.id)
+          .eq('action_type', 'post_generated')
+          .gte('created_at', today)
+
+        if ((existingCount || 0) === 0) {
+          await supabase.from('agent_activity_log').insert({
+            location_id: location.id,
+            action_type: 'post_generated',
+            status: 'completed',
+            summary: `Generated ${insertedCount} seasonal topics for ${month}/${targetYear}`,
+            details: {
+              month,
+              year: targetYear,
+              topics: topics.map((t) => ({ topic: t.topic, type: t.type, suggested_date: t.suggested_date })),
+            },
+          })
+        }
       }
     } catch (err) {
       console.error(`[seasonal-calendar] Failed for location ${location.id}:`, err)

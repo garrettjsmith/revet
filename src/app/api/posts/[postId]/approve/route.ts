@@ -3,6 +3,8 @@ import { createServerSupabase } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { sendEmail, buildPostReviewEmail } from '@/lib/email'
 
+export const maxDuration = 30
+
 /**
  * POST /api/posts/[postId]/approve
  *
