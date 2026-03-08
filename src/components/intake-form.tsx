@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useCallback, useEffect, useRef } from 'react'
+import { useRouter } from 'next/navigation'
 
 // ─── Voice & Style Options ──────────────────────────────────
 
@@ -87,6 +88,7 @@ interface IntakeFormProps {
   existingBrand: { primaryColor: string | null; logoUrl: string | null } | null
   existingIntakeData?: IntakeData | null
   googlePlacesApiKey: string
+  returnTo?: string
 }
 
 interface ServiceRow {
@@ -105,7 +107,9 @@ export function IntakeForm({
   existingBrand,
   existingIntakeData,
   googlePlacesApiKey,
+  returnTo,
 }: IntakeFormProps) {
+  const router = useRouter()
   const existing = existingIntakeData || null
 
   const [step, setStep] = useState(0)
@@ -363,6 +367,10 @@ export function IntakeForm({
       })
 
       if (res.ok) {
+        if (returnTo) {
+          router.push(returnTo)
+          return
+        }
         setSubmitted(true)
       }
     } catch { /* ignore */ }

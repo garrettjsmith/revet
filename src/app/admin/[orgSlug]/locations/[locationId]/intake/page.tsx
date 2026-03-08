@@ -8,8 +8,10 @@ export const dynamic = 'force-dynamic'
 
 export default async function IntakePage({
   params,
+  searchParams,
 }: {
   params: { orgSlug: string; locationId: string }
+  searchParams: { returnTo?: string }
 }) {
   const org = await getOrgBySlug(params.orgSlug)
   const location = await getLocation(params.locationId, org.id)
@@ -57,6 +59,7 @@ export default async function IntakePage({
         existingBrand={existingBrand ? { primaryColor: existingBrand.primary_color, logoUrl: existingBrand.logo_url } : null}
         existingIntakeData={locationData?.intake_data ?? null}
         googlePlacesApiKey={process.env.NEXT_PUBLIC_GOOGLE_PLACES_API_KEY || ''}
+        returnTo={searchParams.returnTo === 'setup' ? `/admin/${params.orgSlug}/locations/${params.locationId}/setup` : undefined}
       />
     </div>
   )

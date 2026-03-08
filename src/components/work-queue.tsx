@@ -1451,6 +1451,18 @@ function ProfileOptDetail({
   const [editingId, setEditingId] = useState<string | null>(null)
   const [editValue, setEditValue] = useState('')
 
+  const formatValue = (val: unknown): string => {
+    if (val == null) return '—'
+    if (typeof val === 'string') return val
+    if (Array.isArray(val)) return val.join(', ')
+    if (typeof val === 'object') {
+      const obj = val as Record<string, unknown>
+      if (obj.missing && Array.isArray(obj.missing)) return `Missing: ${(obj.missing as string[]).join(', ')}`
+      return JSON.stringify(val, null, 2)
+    }
+    return String(val)
+  }
+
   const pendingRecs = opt.recommendations.filter((r) => r.status === 'pending')
   const clientReviewRecs = opt.recommendations.filter((r) => r.status === 'client_review')
 
@@ -1459,6 +1471,10 @@ function ProfileOptDetail({
     categories: 'Additional Categories',
     attributes: 'Business Attributes',
     hours: 'Business Hours',
+    media: 'Photos & Media',
+    services: 'Services',
+    website: 'Website & Tracking',
+    menu: 'Menu',
   }
 
   return (
@@ -1552,14 +1568,129 @@ function ProfileOptDetail({
                 </div>
               )}
 
+              {rec.field === 'attributes' && rec.proposed_value != null && (
+                <div className="mb-3">
+                  <div className="text-[10px] text-warm-gray uppercase tracking-wider mb-1">Missing Attributes</div>
+                  <div className="flex flex-wrap gap-1.5">
+                    {((rec.proposed_value as any)?.missing || []).map((attr: string, i: number) => (
+                      <span key={i} className="text-xs bg-white border border-warm-border rounded-full px-2.5 py-1 text-ink">{attr}</span>
+                    ))}
+                  </div>
+                  {(rec.proposed_value as any)?.total_available && (
+                    <p className="text-[10px] text-warm-gray mt-2">{(rec.proposed_value as any).total_available} total attributes available for this category</p>
+                  )}
+                </div>
+              )}
+
               {rec.field === 'hours' && (
                 <div className="mb-3">
-                  <p className="text-xs text-ink">Business hours need to be set manually.</p>
+                  {rec.proposed_value != null && typeof rec.proposed_value === 'object' && (rec.proposed_value as any).from_intake ? (
+                    <div>
+                      <div className="text-[10px] text-emerald-600 uppercase tracking-wider mb-1">From Intake</div>
+                      <p className="text-xs text-ink leading-relaxed">{(rec.proposed_value as any).from_intake}</p>
+                    </div>
+                  ) : (
+                    <p className="text-xs text-ink">Business hours need to be set manually.</p>
+                  )}
+                </div>
+              )}
+
+              {rec.field === 'media' && (
+                <div className="mb-3">
+                  {rec.proposed_value != null && (
+                    <div>
+                      <div className="text-[10px] text-warm-gray uppercase tracking-wider mb-1">Missing</div>
+                      <div className="flex flex-wrap gap-1.5">
+                        {((rec.proposed_value as any)?.missing || []).map((m: string, i: number) => (
+                          <span key={i} className="text-xs bg-white border border-warm-border rounded-full px-2.5 py-1 text-ink">{m}</span>
+                        ))}
+                      </div>
+                      {(rec.proposed_value as any)?.cloud_folder_url && (
+                        <p className="text-[10px] text-warm-gray mt-2">Client media folder available — check for assets.</p>
+                      )}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {rec.field === 'services' && (
+                <div className="mb-3">
+                  {rec.current_value != null && (
+                    <div className="mb-2">
+                      <div className="text-[10px] text-warm-gray uppercase tracking-wider mb-1">Current ({(rec.current_value as string[])?.length || 0})</div>
+                      <div className="flex flex-wrap gap-1">
+                        {(rec.current_value as string[] || []).map((s, i) => (
+                          <span key={i} className="text-[10px] bg-warm-light border border-warm-border rounded-full px-2 py-0.5 text-warm-gray">{s}</span>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                  <div>
+                    <div className="text-[10px] text-emerald-600 uppercase tracking-wider mb-1">Proposed</div>
+                    <div className="flex flex-wrap gap-1.5">
+                      {(rec.proposed_value as string[] || []).map((s, i) => (
+                        <span key={i} className="text-xs bg-white border border-warm-border rounded-full px-2.5 py-1 text-ink">{s}</span>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {rec.field === 'website' && (
+                <div className="mb-3">
+                  {rec.current_value != null && (
+                    <div className="mb-2">
+                      <div className="text-[10px] text-warm-gray uppercase tracking-wider mb-1">Current URL</div>
+                      <p className="text-xs text-ink/60 font-mono break-all">{String(rec.current_value)}</p>
+                    </div>
+                  )}
+                  <div>
+                    <div className="text-[10px] text-emerald-600 uppercase tracking-wider mb-1">With UTM Tracking</div>
+                    {editingId === rec.id ? (
+                      <div>
+                        <input
+                          type="text"
+                          value={editValue}
+                          onChange={(e) => setEditValue(e.target.value)}
+                          className="w-full text-xs text-ink font-mono p-3 border border-warm-border rounded-lg bg-white focus:outline-none focus:border-ink"
+                        />
+                        <div className="flex items-center gap-2 mt-2">
+                          <div className="flex-1" />
+                          <button
+                            onClick={() => setEditingId(null)}
+                            className="text-xs text-warm-gray hover:text-ink transition-colors"
+                          >
+                            Cancel
+                          </button>
+                          <button
+                            onClick={() => {
+                              onEditRec(rec.id, editValue)
+                              setEditingId(null)
+                            }}
+                            className="px-3 py-1.5 text-xs bg-ink text-cream rounded-full hover:bg-ink/80 transition-colors"
+                          >
+                            Save Edit
+                          </button>
+                        </div>
+                      </div>
+                    ) : (
+                      <p className="text-xs text-ink font-mono break-all">{String(rec.edited_value || rec.proposed_value)}</p>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {rec.field === 'menu' && (
+                <div className="mb-3">
+                  <div>
+                    <div className="text-[10px] text-emerald-600 uppercase tracking-wider mb-1">Proposed</div>
+                    <p className="text-xs text-ink leading-relaxed">{formatValue(rec.edited_value || rec.proposed_value)}</p>
+                  </div>
                 </div>
               )}
 
               <div className="flex items-center gap-2 pt-2 border-t border-warm-border/50">
-                {rec.field !== 'hours' && (
+                {rec.field !== 'media' && (
                   <button
                     onClick={() => onApproveRec(rec.id, rec.edited_value || undefined)}
                     disabled={actionLoading === `approve_rec_${rec.id}`}
@@ -1568,7 +1699,7 @@ function ProfileOptDetail({
                     {actionLoading === `approve_rec_${rec.id}` ? 'Approving...' : (rec.requires_client_approval ? 'Approve & Send to Client' : 'Approve & Apply')}
                   </button>
                 )}
-                {rec.field === 'description' && editingId !== rec.id && (
+                {['description', 'website'].includes(rec.field) && editingId !== rec.id && (
                   <button
                     onClick={() => {
                       setEditingId(rec.id)
